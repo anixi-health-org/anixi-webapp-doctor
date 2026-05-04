@@ -138,7 +138,7 @@ export const SharingRequestsList: React.FC<SharingRequestsListProps> = ({
                   )}
                   
                   <p className="text-sm text-gray-600">
-                    📅 Request: {request.createdAt.toLocaleDateString()}
+                    📅 Request: {(request.createdAt instanceof Date ? request.createdAt : new Date(request.createdAt)).toLocaleDateString()}
                   </p>
                   {request.reason && (
                     <p className="text-sm text-gray-600">

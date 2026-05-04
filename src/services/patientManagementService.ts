@@ -35,7 +35,7 @@ export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> =>
     const patients: Patient[] = [];
     const patientFetchPromises = patientIds.map(async (patientId) => {
       try {
-        const userRef = doc(db, 'patients', patientId);
+        const userRef = doc(db, 'Users', patientId);
         const userSnap = await getDoc(userRef);
         if (!userSnap.exists()) {
           return null;

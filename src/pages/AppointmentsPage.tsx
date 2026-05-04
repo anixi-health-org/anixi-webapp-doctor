@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { getDoctorAppointments } from '../services/appointmentService';
 import { Appointment } from '../types';
 import { AppointmentList } from '../components/appointments/AppointmentList';
 import { AppointmentDetails } from '../components/appointments/AppointmentDetails';
+import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { customColors } from '../lib/customColors';
 type FilterType = Appointment['status'] | 'All' | 'Today';
@@ -15,24 +16,27 @@ export const AppointmentsPage: React.FC = () => {
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [filterStatus, setFilterStatus] = useState<Appointment['status'] | 'All'>('All');
   const [selectedCard, setSelectedCard] = useState<FilterType | null>(null);
-  useEffect(() => {
-    const fetchAppointments = async () => {
-      if (!user?.id) return;
-      try {
-        setIsLoading(true);
-        setError(null);
-        const data = await getDoctorAppointments(user.id);
-        setAppointments(data);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to load appointments';
-        ;
-        setError(errorMessage);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchAppointments();
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  const fetchAppointments = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      setIsLoading(true);
+      setError(null);
+      const data = await getDoctorAppointments(user.id);
+      setAppointments(data);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load appointments';
+      ;
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
   }, [user?.id]);
+
+  useEffect(() => {
+    fetchAppointments();
+  }, [fetchAppointments]);
   const handleStatusChange = (appointmentId: string, newStatus: Appointment['status']) => {
     setAppointments(prev =>
       prev.map(apt =>
@@ -43,22 +47,24 @@ export const AppointmentsPage: React.FC = () => {
     );
   };
 
-  const handleReschedule = (appointmentId: string, newDate: Date, newTime: string) => {
+  const handleReschedule = async (appointmentId: string, newDate: Date, newTime: string) => {
     setAppointments(prev =>
       prev.map(apt =>
         apt.id === appointmentId
-          ? { ...apt, date: newDate, time: newTime, status: 'Confirmed', updatedAt: new Date() }
+          ? { ...apt, date: newDate, time: newTime, status: 'confirmed', updatedAt: new Date() }
           : apt
       )
     );
+    // Reload appointments to ensure data is synced with database
+    await fetchAppointments();
   };
 
   const stats = {
     total: appointments.length,
-    confirmed: appointments.filter((a) => a.status === 'Confirmed').length,
-    pending: appointments.filter((a) => a.status === 'Pending').length,
-    completed: appointments.filter((a) => a.status === 'Completed').length,
-    cancelled: appointments.filter((a) => a.status === 'Cancelled').length,
+    confirmed: appointments.filter((a) => a.status === 'confirmed').length,
+    pending: appointments.filter((a) => a.status === 'pending').length,
+    completed: appointments.filter((a) => a.status === 'completed').length,
+    cancelled: appointments.filter((a) => a.status === 'cancelled').length,
     today: appointments.filter((a) => {
       const today = new Date();
       const appointmentDate = new Date(a.date);
@@ -103,8 +109,22 @@ export const AppointmentsPage: React.FC = () => {
     <div className={`min-h-screen bg-[${customColors.backgroundLight}] p-6 max-w-7xl mx-auto`}>
       {}
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-gray-900">Appointments</h1>
-        <p className="mt-2 text-gray-600">Manage and view all patient appointments</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold text-gray-900">Appointments</h1>
+            <p className="mt-2 text-gray-600">Manage and view all patient appointments</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => {
+                setShowCreateModal(true);
+              }}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+            >
+              ➕ New Appointment
+            </button>
+          </div>
+        </div>
       </div>
       {}
       {error && (
@@ -151,26 +171,26 @@ export const AppointmentsPage: React.FC = () => {
           </button>
           {}
           <button
-            onClick={() => handleCardClick('Confirmed')}
+            onClick={() => handleCardClick('confirmed')}
             className={`transition-all duration-300 transform hover:scale-105 ${
-              selectedCard === 'Confirmed' ? 'ring-2 ring-green-500 ring-offset-2' : ''
+              selectedCard === 'confirmed' ? 'ring-2 ring-green-500 ring-offset-2' : ''
             }`}
           >
             <Card
               className={`cursor-pointer transition-all duration-300 ${
-                selectedCard === 'Confirmed'
+                selectedCard === 'confirmed'
                   ? 'bg-green-50 border-green-300'
                   : 'hover:shadow-lg hover:border-gray-300'
               }`}
             >
               <CardContent className="pt-6">
                 <p className={`text-xs font-medium ${
-                  selectedCard === 'Confirmed' ? 'text-green-700' : 'text-gray-600'
+                  selectedCard === 'confirmed' ? 'text-green-700' : 'text-gray-600'
                 }`}>
                   Confirmed
                 </p>
                 <p className={`text-2xl font-bold mt-1 ${
-                  selectedCard === 'Confirmed' ? 'text-green-700' : 'text-green-600'
+                  selectedCard === 'confirmed' ? 'text-green-700' : 'text-green-600'
                 }`}>
                   {stats.confirmed}
                 </p>
@@ -179,26 +199,26 @@ export const AppointmentsPage: React.FC = () => {
           </button>
           {}
           <button
-            onClick={() => handleCardClick('Pending')}
+            onClick={() => handleCardClick('pending')}
             className={`transition-all duration-300 transform hover:scale-105 ${
-              selectedCard === 'Pending' ? 'ring-2 ring-yellow-500 ring-offset-2' : ''
+              selectedCard === 'pending' ? 'ring-2 ring-yellow-500 ring-offset-2' : ''
             }`}
           >
             <Card
               className={`cursor-pointer transition-all duration-300 ${
-                selectedCard === 'Pending'
+                selectedCard === 'pending'
                   ? 'bg-yellow-50 border-yellow-300'
                   : 'hover:shadow-lg hover:border-gray-300'
               }`}
             >
               <CardContent className="pt-6">
                 <p className={`text-xs font-medium ${
-                  selectedCard === 'Pending' ? 'text-yellow-700' : 'text-gray-600'
+                  selectedCard === 'pending' ? 'text-yellow-700' : 'text-gray-600'
                 }`}>
                   Pending
                 </p>
                 <p className={`text-2xl font-bold mt-1 ${
-                  selectedCard === 'Pending' ? 'text-yellow-700' : 'text-yellow-600'
+                  selectedCard === 'pending' ? 'text-yellow-700' : 'text-yellow-600'
                 }`}>
                   {stats.pending}
                 </p>
@@ -207,26 +227,26 @@ export const AppointmentsPage: React.FC = () => {
           </button>
           {}
           <button
-            onClick={() => handleCardClick('Completed')}
+            onClick={() => handleCardClick('completed')}
             className={`transition-all duration-300 transform hover:scale-105 ${
-              selectedCard === 'Completed' ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+              selectedCard === 'completed' ? 'ring-2 ring-blue-500 ring-offset-2' : ''
             }`}
           >
             <Card
               className={`cursor-pointer transition-all duration-300 ${
-                selectedCard === 'Completed'
+                selectedCard === 'completed'
                   ? 'bg-blue-50 border-blue-300'
                   : 'hover:shadow-lg hover:border-gray-300'
               }`}
             >
               <CardContent className="pt-6">
                 <p className={`text-xs font-medium ${
-                  selectedCard === 'Completed' ? 'text-blue-700' : 'text-gray-600'
+                  selectedCard === 'completed' ? 'text-blue-700' : 'text-gray-600'
                 }`}>
                   Completed
                 </p>
                 <p className={`text-2xl font-bold mt-1 ${
-                  selectedCard === 'Completed' ? 'text-blue-700' : 'text-blue-600'
+                  selectedCard === 'completed' ? 'text-blue-700' : 'text-blue-600'
                 }`}>
                   {stats.completed}
                 </p>
@@ -235,26 +255,26 @@ export const AppointmentsPage: React.FC = () => {
           </button>
           {}
           <button
-            onClick={() => handleCardClick('Cancelled')}
+            onClick={() => handleCardClick('cancelled')}
             className={`transition-all duration-300 transform hover:scale-105 ${
-              selectedCard === 'Cancelled' ? 'ring-2 ring-red-500 ring-offset-2' : ''
+              selectedCard === 'cancelled' ? 'ring-2 ring-red-500 ring-offset-2' : ''
             }`}
           >
             <Card
               className={`cursor-pointer transition-all duration-300 ${
-                selectedCard === 'Cancelled'
+                selectedCard === 'cancelled'
                   ? 'bg-red-50 border-red-300'
                   : 'hover:shadow-lg hover:border-gray-300'
               }`}
             >
               <CardContent className="pt-6">
                 <p className={`text-xs font-medium ${
-                  selectedCard === 'Cancelled' ? 'text-red-700' : 'text-gray-600'
+                  selectedCard === 'cancelled' ? 'text-red-700' : 'text-gray-600'
                 }`}>
                   Cancelled
                 </p>
                 <p className={`text-2xl font-bold mt-1 ${
-                  selectedCard === 'Cancelled' ? 'text-red-700' : 'text-red-600'
+                  selectedCard === 'cancelled' ? 'text-red-700' : 'text-red-600'
                 }`}>
                   {stats.cancelled}
                 </p>
@@ -297,10 +317,10 @@ export const AppointmentsPage: React.FC = () => {
           <CardHeader>
             <CardTitle>
               {selectedCard === 'Today' && '📅 Today\'s Appointments'}
-              {selectedCard === 'Confirmed' && '✅ Confirmed Appointments'}
-              {selectedCard === 'Pending' && '⏳ Pending Appointments'}
-              {selectedCard === 'Completed' && '✓ Completed Appointments'}
-              {selectedCard === 'Cancelled' && '✗ Cancelled Appointments'}
+              {selectedCard === 'confirmed' && '✅ Confirmed Appointments'}
+              {selectedCard === 'pending' && '⏳ Pending Appointments'}
+              {selectedCard === 'completed' && '✓ Completed Appointments'}
+              {selectedCard === 'cancelled' && '✗ Cancelled Appointments'}
               {selectedCard === 'All' && 'All Appointments'}
             </CardTitle>
           </CardHeader>
@@ -327,6 +347,12 @@ export const AppointmentsPage: React.FC = () => {
           onReschedule={handleReschedule}
         />
       )}
+
+      <CreateAppointmentModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onAppointmentCreated={fetchAppointments}
+      />
     </div>
   );
 };

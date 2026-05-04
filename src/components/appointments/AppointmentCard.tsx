@@ -10,13 +10,13 @@ interface AppointmentCardProps {
 
 const getStatusColor = (status: Appointment['status']): string => {
   switch (status) {
-    case 'Confirmed':
+    case 'confirmed':
       return 'bg-green-100 text-green-800 border-green-300';
-    case 'Pending':
+    case 'pending':
       return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-    case 'Completed':
+    case 'completed':
       return 'bg-gray-100 text-gray-800 border-gray-300';
-    case 'Cancelled':
+    case 'cancelled':
       return 'bg-red-100 text-red-800 border-red-300';
     default:
       return `bg-[${customColors.backgroundLight}] text-[${customColors.textPrimary}] border-[${customColors.borderLight}]`;

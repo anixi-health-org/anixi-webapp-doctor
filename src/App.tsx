@@ -21,10 +21,6 @@ import MoodCheckerPage from './pages/MoodCheckerPage';
 import AdherenceCalendarPage from './pages/AdherenceCalendarPage';
 import AdherenceLogsPage from './pages/AdherenceLogsPage';
 import VitalsHistoryPage from './pages/VitalsHistoryPage';
-//import './utils/debugUtils'; 
-//import './utils/requestDiagnostics'; 
-//import './utils/testTimestampConversion';
-//import './utils/appointmentDebugConsole';
 const queryClient = new QueryClient();
 
 const checkPatientFields = async () => {

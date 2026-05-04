@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Appointment } from '../../types';
 import { convertTimestamp } from '../../utils/dateFormatter';
 import { customColors } from '../../lib/customColors';
-import { updateAppointment, checkAppointmentConflict } from '../../services/appointmentService';
+import { updateAppointment, syncAppointmentStatus } from '../../services/appointmentService';
 
 interface AppointmentDetailsProps {
   appointment: Appointment;
@@ -14,13 +14,13 @@ interface AppointmentDetailsProps {
 
 const getStatusColor = (status: Appointment['status']): string => {
   switch (status) {
-    case 'Confirmed':
+    case 'confirmed':
       return 'bg-green-100 text-green-800 border-green-300';
-    case 'Pending':
+    case 'pending':
       return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-    case 'Completed':
+    case 'completed':
       return 'bg-gray-100 text-gray-800 border-gray-300';
-    case 'Cancelled':
+    case 'cancelled':
       return 'bg-red-100 text-red-800 border-red-300';
     default:
       return `bg-[${customColors.backgroundLight}] text-[${customColors.textPrimary}] border-[${customColors.borderLight}]`;
@@ -40,6 +40,31 @@ const getTypeIcon = (type: Appointment['type']): string => {
       return '📅';
   }
 };
+
+const convertTo12Hour = (time24: string): string => {
+  if (typeof time24 !== 'string') {
+    return '10:00 AM';
+  }
+  const [hour, minute] = time24.split(':').map(Number);
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minute.toString().padStart(2, '0')} ${period}`;
+};
+
+const convertTo24Hour = (timeStr: string): string => {
+  if (typeof timeStr !== 'string') {
+    return '10:00';
+  }
+  if (timeStr.includes('AM') || timeStr.includes('PM')) {
+    const [time, period] = timeStr.split(' ');
+    const [hour, minute] = time.split(':').map(Number);
+    const hour24 = period === 'PM' && hour !== 12 ? hour + 12 : period === 'AM' && hour === 12 ? 0 : hour;
+    return `${hour24.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+  } else {
+    // Assume it's already 24-hour
+    return timeStr;
+  }
+};
 export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   appointment,
   onClose,
@@ -49,7 +74,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
 }) => {
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [rescheduleDate, setRescheduleDate] = useState(appointment.date.toISOString().split('T')[0]);
-  const [rescheduleTime, setRescheduleTime] = useState(appointment.time);
+  const [rescheduleTime, setRescheduleTime] = useState(convertTo24Hour(appointment.time));
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const appointmentDate = convertTimestamp(appointment.date) || new Date();
@@ -62,7 +87,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   const patientName = String(appointment.patientName || 'Unknown');
   const patientEmail = String(appointment.patientEmail || 'N/A');
   const appointmentType = String(appointment.type || 'In-Person');
-  const appointmentStatus = String(appointment.status || 'Pending');
+  const appointmentStatus = String(appointment.status || 'pending');
   const appointmentTime = typeof appointment.time === 'string' ? appointment.time : '10:00 AM';
   const appointmentNotes = String(appointment.notes || '');
 
@@ -71,8 +96,10 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     setIsProcessing(true);
     setError(null);
     try {
-      await updateAppointment(appointment.doctorId, appointment.id, { status: 'Confirmed' });
-      onStatusChange(appointment.id, 'Confirmed');
+      await updateAppointment(appointment.doctorId, appointment.id, { status: 'confirmed' });
+      // Force sync to ensure mobile app sees the changes
+      await syncAppointmentStatus(appointment.id);
+      onStatusChange(appointment.id, 'confirmed');
       onClose();
     } catch (err) {
       ;
@@ -87,8 +114,10 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     setIsProcessing(true);
     setError(null);
     try {
-      await updateAppointment(appointment.doctorId, appointment.id, { status: 'Cancelled' });
-      onStatusChange(appointment.id, 'Cancelled');
+      await updateAppointment(appointment.doctorId, appointment.id, { status: 'cancelled' });
+      // Force sync to ensure mobile app sees the changes
+      await syncAppointmentStatus(appointment.id);
+      onStatusChange(appointment.id, 'cancelled');
       onClose();
     } catch (err) {
       ;
@@ -104,26 +133,28 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     setError(null);
     try {
       const newDate = new Date(rescheduleDate);
-      const hasConflict = await checkAppointmentConflict(
-        appointment.doctorId,
-        newDate,
-        rescheduleTime,
-        appointment.id
-      );
+      // Allow 24/7 scheduling - no conflict check
+      // const hasConflict = await checkAppointmentConflict(
+      //   appointment.doctorId,
+      //   newDate,
+      //   convertTo12Hour(rescheduleTime),
+      //   appointment.id
+      // );
 
-      if (hasConflict) {
-        ;
-        setError('This time slot is already booked. Please choose a different date or time.');
-        setIsProcessing(false);
-        return;
-      }
+      // if (hasConflict) {
+      //   setError('This time slot is already booked. Please choose a different date or time.');
+      //   setIsProcessing(false);
+      //   return;
+      // }
 
       await updateAppointment(appointment.doctorId, appointment.id, {
         date: newDate,
-        time: rescheduleTime,
-        status: 'Confirmed'
+        time: convertTo12Hour(rescheduleTime),
+        status: 'confirmed'
       });
-      onReschedule(appointment.id, newDate, rescheduleTime);
+      // Force sync to ensure mobile app sees the changes
+      await syncAppointmentStatus(appointment.id);
+      onReschedule(appointment.id, newDate, convertTo12Hour(rescheduleTime));
       setShowRescheduleModal(false);
       onClose();
     } catch (err) {
@@ -233,7 +264,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
           )}
 
           <div className="flex gap-2 flex-1">
-            {appointment.status === 'Pending' && (
+            {appointment.status === 'pending' && (
               <button
                 onClick={handleAccept}
                 disabled={isProcessing}
@@ -243,7 +274,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               </button>
             )}
 
-            {appointment.status !== 'Cancelled' && appointment.status !== 'Completed' && (
+            {appointment.status !== 'cancelled' && appointment.status !== 'completed' && (
               <button
                 onClick={() => setShowRescheduleModal(true)}
                 disabled={isProcessing}
@@ -253,7 +284,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               </button>
             )}
 
-            {appointment.status !== 'Cancelled' && appointment.status !== 'Completed' && (
+            {appointment.status !== 'cancelled' && appointment.status !== 'completed' && (
               <button
                 onClick={handleCancel}
                 disabled={isProcessing}
@@ -317,29 +348,12 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   New Time
                 </label>
-                <select
+                <input
+                  type="time"
                   value={rescheduleTime}
                   onChange={(e) => setRescheduleTime(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="9:00 AM">9:00 AM</option>
-                  <option value="9:30 AM">9:30 AM</option>
-                  <option value="10:00 AM">10:00 AM</option>
-                  <option value="10:30 AM">10:30 AM</option>
-                  <option value="11:00 AM">11:00 AM</option>
-                  <option value="11:30 AM">11:30 AM</option>
-                  <option value="12:00 PM">12:00 PM</option>
-                  <option value="12:30 PM">12:30 PM</option>
-                  <option value="1:00 PM">1:00 PM</option>
-                  <option value="1:30 PM">1:30 PM</option>
-                  <option value="2:00 PM">2:00 PM</option>
-                  <option value="2:30 PM">2:30 PM</option>
-                  <option value="3:00 PM">3:00 PM</option>
-                  <option value="3:30 PM">3:30 PM</option>
-                  <option value="4:00 PM">4:00 PM</option>
-                  <option value="4:30 PM">4:00 PM</option>
-                  <option value="5:00 PM">5:00 PM</option>
-                </select>
+                />
               </div>
 
               {error && (

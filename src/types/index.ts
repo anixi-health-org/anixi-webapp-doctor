@@ -83,7 +83,7 @@ export interface Appointment {
     patientName: string;          
     patientEmail: string;         
     type: 'In-Person' | 'Virtual' | 'Phone' | 'Follow-up';
-    status: 'Confirmed' | 'Pending' | 'Completed' | 'Cancelled';
+    status: 'confirmed' | 'pending' | 'completed' | 'cancelled';
     date: Date;                   
     time: string;                 
     notes?: string;

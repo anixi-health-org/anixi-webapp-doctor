@@ -1,73 +1,102 @@
 import {
   collection,
   doc,
-  query,
-  where,
   getDocs,
   getDoc,
-  QueryConstraint,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Patient } from '../types';
-const DEBUG_NAMESPACE = '🔗[UnifiedPatientDataSource]';
 const DEBUG_ENABLED = true;
 const log = (message: string, data?: any) => {
   if (DEBUG_ENABLED) {
-    if (data === undefined) {
-    } else {
-    }
   }
 };
 const logError = (message: string, error?: any) => {
-  ;
+  console.error(message, error);
 };
 export const getPatientsByDoctorId = async (
   doctorId: string | undefined
 ): Promise<Patient[]> => {
   log('📡 Starting patient fetch', { doctorId });
-  if (!validateDoctorId(doctorId)) {
+  if (!doctorId || typeof doctorId !== 'string' || doctorId.trim().length === 0) {
     logError('❌ Invalid doctor ID', { doctorId });
     return [];
   }
   try {
-    const constraints: QueryConstraint[] = [
-      where('doctorId', '==', doctorId),
-      where('role', '==', 'patient'),
-    ];
-    log('🔍 Building query', { constraints: constraints.length });
-    const usersRef = collection(db, 'Users');
-    const q = query(usersRef, ...constraints);
-    log('⏳ Executing query...');
-    const snapshot = await getDocs(q);
-    log('📦 Query completed', { documentCount: snapshot.docs.length });
-    const patients = snapshot.docs.map((doc) => {
-      const data = doc.data();
-      log(`  ✅ Patient: ${data.displayName || 'Unknown'} (${doc.id})`);
-      return {
-        id: doc.id,
-        email: data.email ?? '',
-        displayName: data.displayName ?? 'Unknown',
-        role: data.role ?? 'patient',
-        dateOfBirth: data.dateOfBirth ?? null,
-        gender: data.gender ?? '',
-        maritalStatus: data.maritalStatus ?? '',
-        language: data.language ?? 'en',
-        address: data.address ?? '',
-        phoneNumber: data.phoneNumber ?? '',
-        assignedDoctorId: data.doctorId ?? data.assignedDoctorId ?? '',
-        emergencyContact: data.emergencyContact ?? '',
-        medicalAid: data.medicalAid ?? '',
-        chronicDiseases: data.chronicDiseases ?? [],
-        allergies: data.allergies ?? [],
-        currentTreatments: data.currentTreatments ?? [],
-        createdAt: data.createdAt ?? null,
-        updatedAt: data.updatedAt ?? null,
-      } as Patient;
-    });
-    log(`✨ Successfully loaded ${patients.length} patients`, {
-      doctorId,
-      patientCount: patients.length,
-    });
+    const patients: Patient[] = [];
+
+    // APPROCHE CORRECTE: Utiliser la même logique que listenToDoctorPatients
+    // 1. Chercher les patients approuvés dans Users/{doctorId}/approved_patients
+    // 2. Récupérer les détails depuis la collection patients
+    log('🔍 Searching approved patients for doctor:', doctorId);
+
+    const approvedPatientsRef = collection(db, 'Users', doctorId, 'approved_patients');
+    const approvedSnapshot = await getDocs(approvedPatientsRef);
+
+    log(`📦 Found ${approvedSnapshot.docs.length} approved patient references for doctor ${doctorId}`);
+
+    if (approvedSnapshot.docs.length === 0) {
+      log('⚠️ No approved patients found for this doctor');
+      return patients;
+    }
+
+    // Pour chaque patient approuvé, récupérer les détails depuis la collection patients
+    for (const approvedDoc of approvedSnapshot.docs) {
+      const approvedData = approvedDoc.data();
+      const patientId = approvedData.patientId || approvedDoc.id;
+
+      log(`🔍 Processing approved patient ${patientId}`);
+
+      try {
+        // Récupérer les détails depuis la collection patients
+        const patientRef = doc(db, 'patients', patientId);
+        const patientSnap = await getDoc(patientRef);
+
+        if (patientSnap.exists()) {
+          const patientData = patientSnap.data();
+          log(`✅ Found patient details for ${patientId}:`, {
+            fullName: patientData?.fullName,
+            displayName: patientData?.displayName,
+            email: patientData?.email,
+            allFields: Object.keys(patientData || {})
+          });
+
+          const displayName = patientData?.fullName ?? patientData?.displayName ?? 'Patient';
+
+          patients.push({
+            id: patientId,
+            email: patientData?.email ?? '',
+            displayName: displayName,
+            role: 'patient' as const,
+            dateOfBirth: patientData?.dateOfBirth?.toDate?.() ?? null,
+            gender: patientData?.gender ?? '',
+            maritalStatus: patientData?.maritalStatus ?? '',
+            language: patientData?.language ?? 'en',
+            address: patientData?.address ?? '',
+            phoneNumber: patientData?.phoneNumber ?? '',
+            assignedDoctorId: doctorId,
+            emergencyContact: patientData?.emergencyContact ?? '',
+            medicalAid: patientData?.medicalAid ?? '',
+            chronicDiseases: patientData?.chronicDiseases ?? [],
+            allergies: patientData?.allergies ?? [],
+            currentTreatments: (patientData?.currentTreatments || []).map((treatment: any) => ({
+              name: treatment.name,
+              dosage: treatment.dosage,
+              frequency: treatment.frequency,
+              startDate: treatment.startDate?.toDate?.() || new Date(),
+            })),
+            createdAt: patientData?.createdAt?.toDate?.() ?? null,
+            updatedAt: patientData?.updatedAt?.toDate?.() ?? null,
+          } as Patient);
+        } else {
+          log(`❌ Patient ${patientId} not found in patients collection`);
+        }
+      } catch (error) {
+        logError(`❌ Error fetching patient ${patientId}:`, error);
+      }
+    }
+
+    log(`✨ Successfully loaded ${patients.length} patients using approved_patients approach`);
     return patients;
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
