@@ -269,3 +269,17 @@ export interface PracticeSession {
     member: PracticeMember;
     bookingPolicy: BookingPolicy;
 }
+
+// ─── Practice Daily Schedule ───────────────────────────────────────────────────
+
+export type AvailabilityStatus = 'open' | 'limited' | 'closed';
+
+export interface PracticeDailySchedule {
+    practiceId: string;
+    date: string; // YYYY-MM-DD
+    availability: AvailabilityStatus;
+    openTime?: string; // HH:mm
+    closeTime?: string; // HH:mm
+    note?: string;
+    updatedAt: Date;
+}

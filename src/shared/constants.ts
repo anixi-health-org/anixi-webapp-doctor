@@ -11,3 +11,4 @@ export const SOFT_BLOCKS_SUBCOLLECTION = 'softBlocks';
 export const PRACTICE_APPOINTMENTS_SUBCOLLECTION = 'appointments';
 export const BOOKING_POLICIES_SUBCOLLECTION = 'config';
 export const BOOKING_POLICIES_DOC_ID = 'bookingPolicy';
+export const PRACTICE_DAILY_SCHEDULE_SUBCOLLECTION = 'dailySchedule';

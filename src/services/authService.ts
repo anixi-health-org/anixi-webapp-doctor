@@ -1,12 +1,56 @@
 import { signInWithEmailAndPassword, signOut, User } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { DOCTORS_COLLECTION } from '../shared/constants';
+import { DOCTORS_COLLECTION, USERS_COLLECTION } from '../shared/constants';
 import { Doctor } from '../types';
 export const loginDoctor = async (email: string, password: string): Promise<Doctor> => {
     try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const firebaseUser = userCredential.user;
+
+        const userRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
+        const userDoc = await getDoc(userRef);
+
+        let isDoctor = false;
+
+        if (userDoc.exists()) {
+            const userData = userDoc.data();
+            
+            if (userData.role === 'doctor') {
+                isDoctor = true;
+            } else if (!userData.role) {
+                const doctorRef = doc(db, DOCTORS_COLLECTION, firebaseUser.uid);
+                const doctorDoc = await getDoc(doctorRef);
+                
+                if (doctorDoc.exists()) {
+                    await setDoc(userRef, {
+                        ...userData,
+                        role: 'doctor',
+                        updatedAt: new Date(),
+                    }, { merge: true });
+                    isDoctor = true;
+                }
+            }
+        } else {
+            const doctorRef = doc(db, DOCTORS_COLLECTION, firebaseUser.uid);
+            const doctorDoc = await getDoc(doctorRef);
+
+            if (doctorDoc.exists()) {
+                await setDoc(userRef, {
+                    id: firebaseUser.uid,
+                    email: firebaseUser.email,
+                    role: 'doctor',
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                });
+                isDoctor = true;
+            }
+        }
+
+        if (!isDoctor) {
+            throw new Error("Access denied. Only doctors can access this application.");
+        }
+
         const ref = doc(db, DOCTORS_COLLECTION, firebaseUser.uid);
         const doctorDoc = await getDoc(ref);
         if (doctorDoc.exists()) {
@@ -24,7 +68,6 @@ export const loginDoctor = async (email: string, password: string): Promise<Doct
                 updatedAt: doctorData.updatedAt?.toDate() || new Date(),
             } as Doctor;
         }
-        ;
         return {
             id: firebaseUser.uid,
             email: firebaseUser.email || email,
@@ -38,7 +81,6 @@ export const loginDoctor = async (email: string, password: string): Promise<Doct
             updatedAt: new Date(),
         } as Doctor;
     } catch (error: any) {
-        ;
         throw new Error(error.message || "Login failed");
     }
 };
@@ -52,6 +94,49 @@ export const loginDoctor = async (email: string, password: string): Promise<Doct
         };
         export const getCurrentDoctor = async (firebaseUser: User): Promise<Doctor | null> => {
             try {
+                const userRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
+                const userDoc = await getDoc(userRef);
+
+                let isDoctor = false;
+
+                if (userDoc.exists()) {
+                    const userData = userDoc.data();
+                    
+                    if (userData.role === 'doctor') {
+                        isDoctor = true;
+                    } else if (!userData.role) {
+                        const doctorRef = doc(db, DOCTORS_COLLECTION, firebaseUser.uid);
+                        const doctorDoc = await getDoc(doctorRef);
+                        
+                        if (doctorDoc.exists()) {
+                            await setDoc(userRef, {
+                                ...userData,
+                                role: 'doctor',
+                                updatedAt: new Date(),
+                            }, { merge: true });
+                            isDoctor = true;
+                        }
+                    }
+                } else {
+                    const doctorRef = doc(db, DOCTORS_COLLECTION, firebaseUser.uid);
+                    const doctorDoc = await getDoc(doctorRef);
+
+                    if (doctorDoc.exists()) {
+                        await setDoc(userRef, {
+                            id: firebaseUser.uid,
+                            email: firebaseUser.email,
+                            role: 'doctor',
+                            createdAt: new Date(),
+                            updatedAt: new Date(),
+                        });
+                        isDoctor = true;
+                    }
+                }
+
+                if (!isDoctor) {
+                    return null;
+                }
+
                 const ref = doc(db, DOCTORS_COLLECTION, firebaseUser.uid);
                 const doctorDoc = await getDoc(ref);
                 if (doctorDoc.exists()) {
@@ -82,7 +167,6 @@ export const loginDoctor = async (email: string, password: string): Promise<Doct
                     updatedAt: new Date(),
                 } as Doctor;
             } catch (error) {
-                ;
                 return null;
             }
         };
