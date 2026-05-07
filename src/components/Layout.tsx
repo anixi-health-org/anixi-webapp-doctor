@@ -6,6 +6,7 @@ import {
     UserGroupIcon,
     ShareIcon,
     QuestionMarkCircleIcon,
+    BuildingOffice2Icon,
 } from '@heroicons/react/24/outline';
 import React from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -25,6 +26,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
     { name: 'Appointments', href: '/appointments', icon: CalendarIcon },
     { name: 'My Patients', href: '/patients', icon: UserGroupIcon },
+    { name: 'Practice Settings', href: '/practice-settings', icon: BuildingOffice2Icon },
     { name: 'Professional Profile', href: '/professional-profile', icon: Cog6ToothIcon },
     { name: 'Share Anixi', href: '/share-anixi', icon: ShareIcon },
     { name: 'Support', href: '/support', icon: QuestionMarkCircleIcon },

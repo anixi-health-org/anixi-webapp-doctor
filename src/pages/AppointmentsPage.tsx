@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { usePermissions } from '../hooks/usePermissions';
 import { getDoctorAppointments } from '../services/appointmentService';
 import { Appointment } from '../types';
 import { AppointmentList } from '../components/appointments/AppointmentList';
@@ -10,6 +11,7 @@ import { customColors } from '../lib/customColors';
 type FilterType = Appointment['status'] | 'All' | 'Today';
 export const AppointmentsPage: React.FC = () => {
   const { user } = useAuth();
+  const { can } = usePermissions();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,14 +117,16 @@ export const AppointmentsPage: React.FC = () => {
             <p className="mt-2 text-gray-600">Manage and view all patient appointments</p>
           </div>
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => {
-                setShowCreateModal(true);
-              }}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
-            >
-              ➕ New Appointment
-            </button>
+            {can('manageAppointments') && (
+              <button
+                onClick={() => {
+                  setShowCreateModal(true);
+                }}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+              >
+                ➕ New Appointment
+              </button>
+            )}
           </div>
         </div>
       </div>

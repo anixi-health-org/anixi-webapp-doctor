@@ -15,6 +15,7 @@ import { PatientProfile } from './pages/PatientProfile';
 import { Patients } from './pages/Patients';
 import { DoctorSearch } from './pages/DoctorSearch';
 import ProfessionalProfile from './pages/Profile';
+import PracticeSettingsPage from './pages/PracticeSettingsPage';
 import ShareAnixi from './pages/ShareAnixi';
 import Support from './pages/Support';
 import MoodCheckerPage from './pages/MoodCheckerPage';
@@ -157,6 +158,7 @@ function App() {
                     <Route path="/debug/appointments" element={<AppointmentDebug />} />
                     <Route path="/debug/firestore" element={<FirestoreInspector />} />
                     <Route path="/professional-profile" element={<ProfessionalProfile />} />
+                    <Route path="/practice-settings" element={<PracticeSettingsPage />} />
                     <Route path="/share-anixi" element={<ShareAnixi />} />
                     <Route path="/support" element={<Support />} />
                   </Routes>

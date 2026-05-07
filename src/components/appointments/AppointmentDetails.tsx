@@ -3,6 +3,7 @@ import { Appointment } from '../../types';
 import { convertTimestamp } from '../../utils/dateFormatter';
 import { customColors } from '../../lib/customColors';
 import { updateAppointment, syncAppointmentStatus } from '../../services/appointmentService';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface AppointmentDetailsProps {
   appointment: Appointment;
@@ -72,6 +73,8 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   onStatusChange,
   onReschedule,
 }) => {
+  const { can } = usePermissions();
+  const canManage = can('manageAppointments');
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [rescheduleDate, setRescheduleDate] = useState(appointment.date.toISOString().split('T')[0]);
   const [rescheduleTime, setRescheduleTime] = useState(convertTo24Hour(appointment.time));
@@ -264,7 +267,12 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
           )}
 
           <div className="flex gap-2 flex-1">
-            {appointment.status === 'pending' && (
+            {!canManage && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex-1">
+                🔒 You have read-only access to appointments.
+              </p>
+            )}
+            {canManage && appointment.status === 'pending' && (
               <button
                 onClick={handleAccept}
                 disabled={isProcessing}
@@ -274,7 +282,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               </button>
             )}
 
-            {appointment.status !== 'cancelled' && appointment.status !== 'completed' && (
+            {canManage && appointment.status !== 'cancelled' && appointment.status !== 'completed' && (
               <button
                 onClick={() => setShowRescheduleModal(true)}
                 disabled={isProcessing}
@@ -284,7 +292,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               </button>
             )}
 
-            {appointment.status !== 'cancelled' && appointment.status !== 'completed' && (
+            {canManage && appointment.status !== 'cancelled' && appointment.status !== 'completed' && (
               <button
                 onClick={handleCancel}
                 disabled={isProcessing}
