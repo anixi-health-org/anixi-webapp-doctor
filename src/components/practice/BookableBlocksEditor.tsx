@@ -78,6 +78,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
   const [form, setForm] = useState<BlockForm>(defaultForm(user?.id ?? ''));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const toggleConsultType = (ct: ConsultType) => {
     setForm((prev) => ({
@@ -93,10 +94,12 @@ export const BookableBlocksEditor: React.FC<Props> = ({
     if (form.allowedConsultTypes.length === 0) { setError('Select at least one consult type'); return; }
     setSaving(true);
     setError(null);
+    setSuccess(null);
     try {
       await createBookableBlock(practiceId, { ...form, practiceId, active: true });
       setShowForm(false);
       setForm(defaultForm(user?.id ?? ''));
+      setSuccess('Bookable block saved successfully.');
       onChanged();
     } catch (e: any) {
       setError(e?.message ?? 'Failed to save block');
@@ -108,11 +111,18 @@ export const BookableBlocksEditor: React.FC<Props> = ({
   const handleDelete = async (blockId: string) => {
     if (!window.confirm('Remove this availability block?')) return;
     await deleteBookableBlock(practiceId, blockId);
+    setSuccess('Bookable block removed.');
     onChanged();
   };
 
   return (
     <div className="space-y-4">
+      {success && (
+        <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+          {success}
+        </p>
+      )}
+
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-gray-900">Bookable Blocks</h3>
         <button

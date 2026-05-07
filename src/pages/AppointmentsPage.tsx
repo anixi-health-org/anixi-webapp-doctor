@@ -7,6 +7,7 @@ import { AppointmentList } from '../components/appointments/AppointmentList';
 import { AppointmentDetails } from '../components/appointments/AppointmentDetails';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import { Toast } from '../components/ui';
 import { customColors } from '../lib/customColors';
 type FilterType = Appointment['status'] | 'All' | 'Today';
 export const AppointmentsPage: React.FC = () => {
@@ -19,6 +20,19 @@ export const AppointmentsPage: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<Appointment['status'] | 'All'>('All');
   const [selectedCard, setSelectedCard] = useState<FilterType | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
+
+  useEffect(() => {
+    if (!toast.visible) return;
+    const timer = setTimeout(() => {
+      setToast({ visible: false, message: '', type: 'success' });
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [toast.visible]);
 
   const fetchAppointments = useCallback(async () => {
     if (!user?.id) return;
@@ -47,6 +61,13 @@ export const AppointmentsPage: React.FC = () => {
           : apt
       )
     );
+    const msg =
+      newStatus === 'confirmed'
+        ? 'Appointment accepted successfully.'
+        : newStatus === 'cancelled'
+        ? 'Appointment cancelled successfully.'
+        : `Appointment updated to ${newStatus}.`;
+    setToast({ visible: true, message: msg, type: 'success' });
   };
 
   const handleReschedule = async (appointmentId: string, newDate: Date, newTime: string) => {
@@ -59,6 +80,7 @@ export const AppointmentsPage: React.FC = () => {
     );
     // Reload appointments to ensure data is synced with database
     await fetchAppointments();
+    setToast({ visible: true, message: 'Appointment rescheduled successfully.', type: 'success' });
   };
 
   const stats = {
@@ -109,6 +131,13 @@ export const AppointmentsPage: React.FC = () => {
   }
   return (
     <div className={`min-h-screen bg-[${customColors.backgroundLight}] p-6 max-w-7xl mx-auto`}>
+      {toast.visible && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ visible: false, message: '', type: 'success' })}
+        />
+      )}
       {}
       <div className="mb-8">
         <div className="flex items-center justify-between">
@@ -355,7 +384,14 @@ export const AppointmentsPage: React.FC = () => {
       <CreateAppointmentModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        onAppointmentCreated={fetchAppointments}
+        onAppointmentCreated={async (message?: string) => {
+          await fetchAppointments();
+          setToast({
+            visible: true,
+            message: message ?? 'Appointment created successfully.',
+            type: 'success',
+          });
+        }}
       />
     </div>
   );
