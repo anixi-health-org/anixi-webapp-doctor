@@ -65,9 +65,17 @@ service cloud.firestore {
         // Members can read their own record; owners can read all
         allow read: if isSignedIn() &&
           (uid() == memberId || isOwner(practiceId));
-        // Only owners can add or modify delegates
-        allow write: if isSignedIn() &&
-          (isOwner(practiceId) || uid() == memberId);
+        // Owner bootstrap: allow creating your own owner membership on your own practice
+        allow create: if isSignedIn() && (
+          isOwner(practiceId) ||
+          (
+            uid() == memberId &&
+            get(/databases/$(database)/documents/practices/$(practiceId)).data.ownerId == uid() &&
+            request.resource.data.role == 'owner'
+          )
+        );
+        // Only owners can update/delete member permissions and role assignments
+        allow update, delete: if isSignedIn() && isOwner(practiceId);
       }
 
       // ─── Bookable Blocks ───────────────────────────────────────────────────────

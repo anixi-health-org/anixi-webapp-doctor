@@ -9,33 +9,26 @@ export const loginDoctor = async (email: string, password: string): Promise<Doct
         const firebaseUser = userCredential.user;
         const ref = doc(db, DOCTORS_COLLECTION, firebaseUser.uid);
         const doctorDoc = await getDoc(ref);
-        if (doctorDoc.exists()) {
-            const doctorData = doctorDoc.data();
-            return {
-                id: firebaseUser.uid,
-                email: firebaseUser.email!,
-                displayName: doctorData.displayName || firebaseUser.displayName,
-                role: 'doctor',
-                specialty: doctorData.specialty,
-                licenseNumber: doctorData.licenseNumber,
-                phoneNumber: doctorData.phoneNumber,
-                officeAddress: doctorData.officeAddress,
-                createdAt: doctorData.createdAt?.toDate() || new Date(),
-                updatedAt: doctorData.updatedAt?.toDate() || new Date(),
-            } as Doctor;
+        if (!doctorDoc.exists()) {
+            await signOut(auth);
+            throw new Error('Access denied. This portal is for registered doctors only. Please use the Anixi patient app.');
         }
-        ;
+        const doctorData = doctorDoc.data();
+        if (doctorData.role && doctorData.role !== 'doctor') {
+            await signOut(auth);
+            throw new Error('Access denied. This portal is for registered doctors only. Please use the Anixi patient app.');
+        }
         return {
             id: firebaseUser.uid,
-            email: firebaseUser.email || email,
-            displayName: firebaseUser.displayName || undefined,
+            email: firebaseUser.email!,
+            displayName: doctorData.displayName || firebaseUser.displayName,
             role: 'doctor',
-            specialty: undefined,
-            licenseNumber: undefined,
-            phoneNumber: undefined,
-            officeAddress: undefined,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            specialty: doctorData.specialty,
+            licenseNumber: doctorData.licenseNumber,
+            phoneNumber: doctorData.phoneNumber,
+            officeAddress: doctorData.officeAddress,
+            createdAt: doctorData.createdAt?.toDate() || new Date(),
+            updatedAt: doctorData.updatedAt?.toDate() || new Date(),
         } as Doctor;
     } catch (error: any) {
         ;
@@ -54,32 +47,25 @@ export const loginDoctor = async (email: string, password: string): Promise<Doct
             try {
                 const ref = doc(db, DOCTORS_COLLECTION, firebaseUser.uid);
                 const doctorDoc = await getDoc(ref);
-                if (doctorDoc.exists()) {
-                    const doctorData = doctorDoc.data();
-                    return {
-                        id: firebaseUser.uid,
-                        email: firebaseUser.email || '',
-                        displayName: doctorData.displayName || firebaseUser.displayName || undefined,
-                        role: 'doctor',
-                        specialty: doctorData.specialty,
-                        licenseNumber: doctorData.licenseNumber,
-                        phoneNumber: doctorData.phoneNumber,
-                        officeAddress: doctorData.officeAddress,
-                        createdAt: doctorData.createdAt?.toDate() || new Date(),
-                        updatedAt: doctorData.updatedAt?.toDate() || new Date(),
-                    } as Doctor;
+                if (!doctorDoc.exists()) {
+                    return null;
+                }
+                const doctorData = doctorDoc.data();
+                if (doctorData.role && doctorData.role !== 'doctor') {
+                    await signOut(auth);
+                    return null;
                 }
                 return {
                     id: firebaseUser.uid,
                     email: firebaseUser.email || '',
-                    displayName: firebaseUser.displayName || undefined,
+                    displayName: doctorData.displayName || firebaseUser.displayName || undefined,
                     role: 'doctor',
-                    specialty: undefined,
-                    licenseNumber: undefined,
-                    phoneNumber: undefined,
-                    officeAddress: undefined,
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
+                    specialty: doctorData.specialty,
+                    licenseNumber: doctorData.licenseNumber,
+                    phoneNumber: doctorData.phoneNumber,
+                    officeAddress: doctorData.officeAddress,
+                    createdAt: doctorData.createdAt?.toDate() || new Date(),
+                    updatedAt: doctorData.updatedAt?.toDate() || new Date(),
                 } as Doctor;
             } catch (error) {
                 ;

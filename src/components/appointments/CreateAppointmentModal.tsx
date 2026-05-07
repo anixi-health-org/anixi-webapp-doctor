@@ -6,6 +6,7 @@ import { createAppointment } from '../../services/appointmentService';
 import { getAvailableSlots, validateSlot, createScheduledAppointment } from '../../services/schedulingService';
 import { Patient, Appointment, AvailableSlot, ConsultType } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
+import { Toast } from '../ui';
 
 const CONSULT_TYPES: { value: ConsultType; label: string }[] = [
   { value: 'initial', label: 'Initial Consultation' },
@@ -22,7 +23,7 @@ const fmt12 = (d: Date) =>
 interface CreateAppointmentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAppointmentCreated: () => void;
+  onAppointmentCreated: (message?: string) => void;
 }
 
 export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
@@ -36,6 +37,11 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
 
   // Slot-picker state
   const [selectedDate, setSelectedDate] = useState('');
@@ -86,6 +92,14 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
       .catch(() => setAvailableSlots([]))
       .finally(() => setLoadingSlots(false));
   }, [selectedDate, selectedConsultType, practiceId, user?.id]);
+
+  useEffect(() => {
+    if (!toast.visible) return;
+    const timer = setTimeout(() => {
+      setToast({ visible: false, message: '', type: 'success' });
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [toast.visible]);
 
   const handlePatientChange = (patientId: string) => {
     const p = patients.find((pt) => pt.id === patientId);
@@ -216,7 +230,11 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
         });
       }
 
-      onAppointmentCreated();
+      onAppointmentCreated(
+        overrideApplied
+          ? 'Appointment created with override successfully.'
+          : 'Appointment created successfully.'
+      );
       onClose();
       // Reset form
       setFormData({ patientId: '', patientName: '', patientEmail: '', notes: '' });
@@ -225,7 +243,9 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
       setOverrideMode(false);
       setOverrideTime('');
     } catch (err: any) {
-      setError(err?.message || 'Failed to create appointment');
+      const msg = err?.message || 'Failed to create appointment';
+      setError(msg);
+      setToast({ visible: true, message: msg, type: 'error' });
     } finally {
       setIsSubmitting(false);
     }
@@ -235,6 +255,13 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      {toast.visible && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ visible: false, message: '', type: 'success' })}
+        />
+      )}
       <div className="bg-white rounded-lg max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
         <Card className="border-0 shadow-none">
           <CardHeader>

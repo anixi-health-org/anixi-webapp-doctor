@@ -56,15 +56,24 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
   const [form, setForm] = useState<SoftForm>(defaultForm());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const handleSave = async () => {
     if (!form.title.trim()) { setError('Title is required'); return; }
     const startAt = new Date(form.startAt);
     const endAt = new Date(form.endAt);
     if (endAt <= startAt) { setError('End time must be after start time'); return; }
+    if (form.recurring && form.recurrenceEndDate) {
+      const recurrenceEnd = new Date(form.recurrenceEndDate);
+      if (recurrenceEnd < startAt) {
+        setError('Recurrence end date must be on or after the start date');
+        return;
+      }
+    }
 
     setSaving(true);
     setError(null);
+    setSuccess(null);
     try {
       await createSoftBlock(practiceId, {
         practiceId,
@@ -85,6 +94,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
       });
       setShowForm(false);
       setForm(defaultForm());
+      setSuccess('Soft block saved successfully.');
       onChanged();
     } catch (e: any) {
       setError(e?.message ?? 'Failed to save soft block');
@@ -101,6 +111,12 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
 
   return (
     <div className="space-y-4">
+      {success && (
+        <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+          {success}
+        </p>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">Soft Blocks</h3>
@@ -211,7 +227,6 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
           )}
 
           {error && <p className="text-xs text-red-600">{error}</p>}
-
           <button
             onClick={handleSave}
             disabled={saving}

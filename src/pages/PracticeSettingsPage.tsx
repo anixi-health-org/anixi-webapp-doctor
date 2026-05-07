@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { usePracticeSettings } from '../hooks/usePracticeSettings';
@@ -6,6 +6,7 @@ import { BookableBlocksEditor } from '../components/practice/BookableBlocksEdito
 import { SoftBlocksEditor } from '../components/practice/SoftBlocksEditor';
 import { BookingPoliciesForm } from '../components/practice/BookingPoliciesForm';
 import { PracticePermissionsPanel } from '../components/practice/PracticePermissionsPanel';
+import { Toast } from '../components/ui';
 import { updatePractice } from '../services/practiceSettingsService';
 
 type Tab = 'overview' | 'availability' | 'soft-blocks' | 'policies' | 'permissions';
@@ -34,9 +35,22 @@ const PracticeSettingsPage: React.FC = () => {
   const [editingName, setEditingName] = useState(false);
   const [practiceNameDraft, setPracticeNameDraft] = useState('');
   const [savingName, setSavingName] = useState(false);
+  const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
 
   const practice = practiceSession?.practice;
   const member = practiceSession?.member;
+
+  useEffect(() => {
+    if (!toast.visible) return;
+    const timer = setTimeout(() => {
+      setToast({ visible: false, message: '', type: 'success' });
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [toast.visible]);
 
   if (!practice) {
     return (
@@ -53,6 +67,13 @@ const PracticeSettingsPage: React.FC = () => {
       await updatePractice(practice.id, { name: practiceNameDraft.trim() });
       await refreshPracticeSession();
       setEditingName(false);
+      setToast({ visible: true, message: 'Practice name updated successfully.', type: 'success' });
+    } catch (e: any) {
+      setToast({
+        visible: true,
+        message: e?.message ?? 'Failed to update practice name.',
+        type: 'error',
+      });
     } finally {
       setSavingName(false);
     }
@@ -60,6 +81,14 @@ const PracticeSettingsPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
+      {toast.visible && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ visible: false, message: '', type: 'success' })}
+        />
+      )}
+
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-1">
