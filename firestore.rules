@@ -1,0 +1,133 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helpers ────────────────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    // Fetch the caller's membership document for a practice
+    function getMember(practiceId) {
+      return get(/databases/$(database)/documents/practices/$(practiceId)/members/$(uid())).data;
+    }
+
+    function isMember(practiceId) {
+      return exists(/databases/$(database)/documents/practices/$(practiceId)/members/$(uid()))
+        && getMember(practiceId).status == 'active';
+    }
+
+    function isOwner(practiceId) {
+      return isMember(practiceId) && getMember(practiceId).role == 'owner';
+    }
+
+    function hasPerm(practiceId, perm) {
+      return isMember(practiceId) && getMember(practiceId).permissions[perm] == true;
+    }
+
+    // ─── Legacy collections (unchanged for mobile compatibility) ────────────────
+
+    match /Users/{userId}/{document=**} {
+      allow read, write: if isSignedIn() && uid() == userId;
+    }
+
+    match /appointments/{appointmentId} {
+      allow read: if isSignedIn() &&
+        (resource.data.doctorId == uid() || resource.data.patientId == uid());
+      allow create: if isSignedIn() && request.resource.data.doctorId == uid();
+      allow update: if isSignedIn() &&
+        (resource.data.doctorId == uid() || resource.data.patientId == uid());
+    }
+
+    match /doctors/{doctorId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && uid() == doctorId;
+    }
+
+    // ─── Practices ──────────────────────────────────────────────────────────────
+
+    match /practices/{practiceId} {
+      // Any signed-in member may read practice context
+      allow read: if isSignedIn() && isMember(practiceId);
+      // Only owners can create or update practice metadata
+      allow create: if isSignedIn();   // owner auto-provisioned on first login
+      allow update: if isSignedIn() && isOwner(practiceId);
+
+      // ─── Members ──────────────────────────────────────────────────────────────
+
+      match /members/{memberId} {
+        // Members can read their own record; owners can read all
+        allow read: if isSignedIn() &&
+          (uid() == memberId || isOwner(practiceId));
+        // Only owners can add or modify delegates
+        allow write: if isSignedIn() &&
+          (isOwner(practiceId) || uid() == memberId);
+      }
+
+      // ─── Bookable Blocks ───────────────────────────────────────────────────────
+      // Patients NEVER read bookable block documents directly.
+      // Slot availability is served as derived AvailableSlot objects.
+
+      match /bookableBlocks/{blockId} {
+        allow read: if isSignedIn() && isMember(practiceId);
+        allow create, update, delete: if isSignedIn() &&
+          hasPerm(practiceId, 'manageAppointments');
+      }
+
+      // ─── Soft Blocks ───────────────────────────────────────────────────────────
+      // Strictly doctor/practice only. Patients can NEVER access.
+
+      match /softBlocks/{softBlockId} {
+        allow read: if isSignedIn() &&
+          isMember(practiceId) && hasPerm(practiceId, 'manageSoftBlocks');
+        allow create, update: if isSignedIn() &&
+          hasPerm(practiceId, 'manageSoftBlocks');
+        allow delete: if isSignedIn() &&
+          hasPerm(practiceId, 'manageSoftBlocks');
+      }
+
+      // ─── Practice Appointments ─────────────────────────────────────────────────
+
+      match /appointments/{appointmentId} {
+        allow read: if isSignedIn() &&
+          (isMember(practiceId) ||
+           resource.data.patientId == uid());
+
+        allow create: if isSignedIn() &&
+          hasPerm(practiceId, 'manageAppointments') &&
+          // Patients cannot set overrideApplied = true
+          (!request.resource.data.keys().hasAny(['overrideApplied']) ||
+            request.resource.data.overrideApplied == false ||
+            hasPerm(practiceId, 'overrideConflicts'));
+
+        allow update: if isSignedIn() && (
+          // Practice members with permission can update
+          hasPerm(practiceId, 'manageAppointments') ||
+          // Patients may only update their own appointment status (cancellation)
+          (resource.data.patientId == uid() &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'updatedAt']))
+        ) && (
+          // Only permissioned members may set overrideApplied = true
+          !request.resource.data.keys().hasAny(['overrideApplied']) ||
+          request.resource.data.overrideApplied == resource.data.overrideApplied ||
+          hasPerm(practiceId, 'overrideConflicts')
+        );
+      }
+
+      // ─── Booking Policy ────────────────────────────────────────────────────────
+
+      match /config/bookingPolicy {
+        allow read: if isSignedIn() && isMember(practiceId);
+        allow write: if isSignedIn() &&
+          hasPerm(practiceId, 'editBookingPolicies');
+      }
+    }
+  }
+}
