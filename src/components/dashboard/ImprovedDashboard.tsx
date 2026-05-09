@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Patient } from '../../types';
 import { DashboardStatsCard } from './DashboardStatsCard';
 import { PatientListPanel } from './PatientListPanel';
@@ -26,6 +27,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
   stableCount = 0,
   inactiveCount = 0,
 }) => {
+  const navigate = useNavigate();
   const colors = {
     primary: '#425950',
     primaryLight: '#5a6f6a',
@@ -299,6 +301,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
                 <MedicationAdherenceCalendar
                   patientId={selectedPatient.id}
                   onSelectDate={(date) => setSelectedAdherenceDate(date)}
+                  onViewDetails={() => navigate(`/patient-profile/${selectedPatient.id}/adherence-calendar`)}
                 />
               )}
 
@@ -306,6 +309,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
               {!selectedAdherenceDate && (
                 <MedicationAdherenceLogs
                   patientId={selectedPatient.id}
+                  onViewDetails={() => navigate(`/patient-profile/${selectedPatient.id}/adherence-logs`)}
                 />
               )}
             </div>

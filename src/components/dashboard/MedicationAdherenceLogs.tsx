@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { USERS_COLLECTION } from '../../shared/constants';
+import { convertTimestamp } from '../../utils/dateFormatter';
 
 interface AdherenceLog {
   id: string;
   date: string;
-  medications: string[];
-  taken: boolean;
+  medicationName: string;
+  status: 'taken' | 'missed' | 'pending';
   notes?: string;
 }
 
@@ -23,23 +24,29 @@ export const MedicationAdherenceLogs: React.FC<MedicationAdherenceLogsProps> = (
   const [logs, setLogs] = useState<AdherenceLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const PREVIEW_LIMIT = 2;
 
   useEffect(() => {
     const fetchLogs = async () => {
       try {
         setLoading(true);
-        const logsRef = collection(db, USERS_COLLECTION, patientId, 'medication_adherence');
-        const q = query(logsRef, orderBy('date', 'desc'), limit(10));
+        const logsRef = collection(db, USERS_COLLECTION, patientId, 'adherence_records');
+        const q = query(logsRef, orderBy('scheduledTime', 'desc'), limit(PREVIEW_LIMIT));
         const snapshot = await getDocs(q);
 
         const data: AdherenceLog[] = [];
         snapshot.docs.forEach((doc) => {
+          const record = doc.data();
+          const scheduledTime = convertTimestamp(record.scheduledTime);
+          const fallbackTime = convertTimestamp(record.timestamp);
+          const resolvedDate = scheduledTime || fallbackTime;
+
           data.push({
             id: doc.id,
-            date: doc.data().date,
-            medications: doc.data().medications || [],
-            taken: doc.data().taken || false,
-            notes: doc.data().notes,
+            date: resolvedDate ? resolvedDate.toISOString() : new Date().toISOString(),
+            medicationName: record.medicationName || 'Medication',
+            status: record.status === 'missed' || record.status === 'pending' ? record.status : 'taken',
+            notes: record.notes,
           });
         });
 
@@ -98,8 +105,10 @@ export const MedicationAdherenceLogs: React.FC<MedicationAdherenceLogsProps> = (
               className={`
                 p-4 rounded-lg border-l-4 transition-all
                 ${
-                  log.taken
+                  log.status === 'taken'
                     ? 'bg-green-50 border-green-400'
+                    : log.status === 'pending'
+                      ? 'bg-yellow-50 border-yellow-400'
                     : 'bg-red-50 border-red-400'
                 }
               `}
@@ -107,7 +116,9 @@ export const MedicationAdherenceLogs: React.FC<MedicationAdherenceLogsProps> = (
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-lg">{log.taken ? '✓' : '✗'}</span>
+                    <span className="text-lg">
+                      {log.status === 'taken' ? '✓' : log.status === 'pending' ? '⏱' : '✗'}
+                    </span>
                     <p className="font-bold text-gray-900">
                       {formatDate(log.date)}
                     </p>
@@ -115,32 +126,23 @@ export const MedicationAdherenceLogs: React.FC<MedicationAdherenceLogsProps> = (
                       className={`
                         px-2 py-1 rounded text-xs font-medium
                         ${
-                          log.taken
+                          log.status === 'taken'
                             ? 'bg-green-200 text-green-800'
+                            : log.status === 'pending'
+                              ? 'bg-yellow-200 text-yellow-800'
                             : 'bg-red-200 text-red-800'
                         }
                       `}
                     >
-                      {log.taken ? 'Taken' : 'Missed'}
+                      {log.status === 'taken'
+                        ? 'Taken'
+                        : log.status === 'pending'
+                          ? 'Pending'
+                          : 'Missed'}
                     </span>
                   </div>
 
-                  {}
-                  {log.medications && log.medications.length > 0 && (
-                    <div className="mb-2">
-                      <p className="text-xs text-gray-600 font-medium mb-1">Medications:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {log.medications.map((med, idx) => (
-                          <span
-                            key={idx}
-                            className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs"
-                          >
-                            💊 {med}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  <p className="text-sm text-gray-700">💊 {log.medicationName}</p>
 
                   {}
                   {log.notes && (
@@ -153,6 +155,10 @@ export const MedicationAdherenceLogs: React.FC<MedicationAdherenceLogsProps> = (
             </div>
           ))}
         </div>
+      )}
+
+      {!loading && !error && logs.length > 0 && (
+        <p className="mt-3 text-xs text-gray-500">Showing latest {Math.min(PREVIEW_LIMIT, logs.length)} logs</p>
       )}
     </div>
   );
