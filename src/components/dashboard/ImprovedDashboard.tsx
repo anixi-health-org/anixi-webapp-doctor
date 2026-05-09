@@ -112,6 +112,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
       {}
       <div className={`sticky top-0 z-40 bg-[${customColors.backgroundLight}] border-b border-gray-200 shadow-sm`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
           <h1 className="text-3xl font-bold text-gray-900 mb-6">📊 Medical Dashboard</h1>
 
           {}
@@ -172,6 +173,14 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
               description="Not engaged"
             />
           </div>
+          {selectedPatient && (
+            <button
+              onClick={() => setSelectedPatient(null)}
+              className="mt-6 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition-colors"
+            >
+              ← Back
+            </button>
+          )}
         </div>
       </div>
 
@@ -179,37 +188,15 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
       {selectedPatient && selectedAdherenceDate && (
         <div className={`bg-[${customColors.backgroundLight}] border-t border-gray-200 py-6`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            {}
             <div
               className="text-white p-4 rounded-lg mb-6"
               style={{
                 background: `linear-gradient(to right, ${colors.gradientStart}, ${colors.gradientEnd})`
               }}
             >
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-col mb-2">
                 <h3 className="text-lg font-bold">{selectedPatient.displayName || selectedPatient.email}</h3>
-                <button
-                  onClick={() => setSelectedPatient(null)}
-                  className="text-white font-medium py-1 px-3 rounded transition-colors text-sm"
-                  style={{
-                    backgroundColor: 'transparent'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = colors.primaryHover;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                  }}
-                >
-                  ← Back
-                </button>
               </div>
-              <p
-                className="text-sm"
-                style={{ color: colors.secondaryLight }}
-              >
-                All Patients
-              </p>
             </div>
 
             {}
@@ -269,23 +256,8 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
                     background: `linear-gradient(to right, ${colors.gradientStart}, ${colors.gradientEnd})`
                   }}
                 >
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex flex-col mb-2">
                     <h3 className="text-lg font-bold">{selectedPatient.displayName || selectedPatient.email}</h3>
-                    <button
-                      onClick={() => setSelectedPatient(null)}
-                      className="text-white font-medium py-1 px-3 rounded transition-colors text-sm"
-                      style={{
-                        backgroundColor: 'transparent'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = colors.primaryHover;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                      }}
-                    >
-                      ← Back
-                    </button>
                   </div>
                   <p
                     className="text-sm"

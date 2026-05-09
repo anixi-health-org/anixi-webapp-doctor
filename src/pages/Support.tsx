@@ -26,10 +26,6 @@ export const Support: React.FC = () => {
       question: 'How do I share Anixi with colleagues?',
       answer: 'Use the "Share Anixi" page to get your referral link or send email invitations. You can track how many people you\'ve referred.',
     },
-    {
-      question: 'How is my data secured?',
-      answer: 'Anixi uses end-to-end encryption and HIPAA-compliant servers. All patient data is encrypted and securely stored in Firebase. We never share your data with third parties.',
-    },
   ];
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -59,18 +55,10 @@ export const Support: React.FC = () => {
         <p className="text-lg text-gray-600">Find answers to common questions or contact our support team</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
-        <a href="https://docs.anixi.health">
-          <h3 className="font-semibold text-gray-900 mb-1">Documentation</h3>
-          <p className="text-sm text-gray-600">Read guides and tutorials</p>
-        </a>
+      <div className="grid grid-cols-1 gap-4 mb-12">
         <a href="mailto:support@anixi.health" className="p-6 bg-white rounded-lg shadow hover:shadow-lg transition-shadow border-l-4 border-purple-600">
           <h3 className="font-semibold text-gray-900 mb-1">Email Support</h3>
           <p className="text-sm text-gray-600">support@anixi.health</p>
-        </a>
-        <a href="https://status.anixi.health">
-          <h3 className="font-semibold text-gray-900 mb-1">System Status</h3>
-          <p className="text-sm text-gray-600">Check service status</p>
         </a>
       </div>
 

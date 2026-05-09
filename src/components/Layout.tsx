@@ -3,10 +3,10 @@ import {
     CalendarIcon,
     Cog6ToothIcon,
     HomeIcon,
-    UserGroupIcon,
-    ShareIcon,
     QuestionMarkCircleIcon,
-    BuildingOffice2Icon,
+    ShareIcon,
+    TrashIcon,
+    UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import React from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -26,11 +26,11 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
     { name: 'Appointments', href: '/appointments', icon: CalendarIcon },
     { name: 'My Patients', href: '/patients', icon: UserGroupIcon },
-    { name: 'Practice Settings', href: '/practice-settings', icon: BuildingOffice2Icon },
     { name: 'Practice Calendar', href: '/practice-calendar', icon: CalendarIcon },
     { name: 'Professional Profile', href: '/professional-profile', icon: Cog6ToothIcon },
     { name: 'Share Anixi', href: '/share-anixi', icon: ShareIcon },
     { name: 'Support', href: '/support', icon: QuestionMarkCircleIcon },
+    { name: 'Delete Account', href: '/delete-account', icon: TrashIcon },
   ];
   return (
     <div className="min-h-screen bg-anixi-beige flex">
@@ -73,13 +73,6 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
               </div>
             </div>
             <div className="mt-4 space-y-1">
-              <Link
-                to="/professional-profile"
-                className="group flex items-center px-2 py-2 text-sm font-medium rounded-md text-anixi-beige hover:bg-anixi-beige hover:text-anixi-green transition-colors"
-              >
-                <Cog6ToothIcon className="mr-3 h-5 w-5" />
-                Settings
-              </Link>
               <button
                 onClick={handleLogout}
                 className="group flex w-full items-center px-2 py-2 text-sm font-medium rounded-md text-anixi-beige hover:bg-anixi-beige hover:text-anixi-green transition-colors"
