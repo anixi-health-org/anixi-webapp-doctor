@@ -1,11 +1,15 @@
 import React from 'react';
 import { Patient, PatientStatus } from '../types';
-import { calculateAge, formatGender, formatPhone, calculateAdherence, isEmpty } from '../utils/dataFormatter';
+import { calculateAge, formatGender, formatPhone, isEmpty } from '../utils/dataFormatter';
 import { customColors } from '../lib/customColors';
 
 interface PatientCardProps {
   patient: Patient;
   status: PatientStatus;
+  adherenceRate?: number;
+  adherenceLabel?: string;
+  onOpenAdherenceCalendar?: () => void;
+  onOpenAdherenceLogs?: () => void;
   onClick: () => void;
 }
 
@@ -34,11 +38,26 @@ const getStatusBadgeColor = (status: PatientStatus) => {
       return `bg-[${customColors.backgroundLight}] text-[${customColors.textPrimary}]`;
   }
 };
-export const PatientCard: React.FC<PatientCardProps> = ({ patient, status, onClick }) => {
+const getAdherencePill = (label: string | undefined): string => {
+  if (label === 'excellent') return 'bg-green-100 text-green-800';
+  if (label === 'moderate') return 'bg-yellow-100 text-yellow-800';
+  if (label === 'low') return 'bg-red-100 text-red-800';
+  return 'bg-gray-100 text-gray-700';
+};
+
+export const PatientCard: React.FC<PatientCardProps> = ({
+  patient,
+  status,
+  adherenceRate,
+  adherenceLabel,
+  onOpenAdherenceCalendar,
+  onOpenAdherenceLogs,
+  onClick,
+}) => {
   const age = calculateAge(patient.dateOfBirth);
   const formattedGender = formatGender(patient.gender);
   const formattedPhone = formatPhone(patient.phoneNumber);
-  const adherence = calculateAdherence([]);
+  const hasAdherence = typeof adherenceRate === 'number';
   return (
     <div
       onClick={onClick}
@@ -83,18 +102,50 @@ export const PatientCard: React.FC<PatientCardProps> = ({ patient, status, onCli
               <span className="truncate">{patient.email}</span>
             </div>
           )}
-          {adherence > 0 && (
+          {hasAdherence && (
             <div className="mt-2">
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="text-gray-600">Adherence</span>
-                <span className="font-semibold text-gray-900">{adherence}%</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-900">{adherenceRate}%</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${getAdherencePill(adherenceLabel)}`}>
+                    {adherenceLabel || 'no-data'}
+                  </span>
+                </div>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-1.5">
                 <div
                   className="bg-green-500 h-1.5 rounded-full"
-                  style={{ width: `${adherence}%` }}
+                  style={{ width: `${adherenceRate}%` }}
                 ></div>
               </div>
+            </div>
+          )}
+
+          {(onOpenAdherenceCalendar || onOpenAdherenceLogs) && (
+            <div className="mt-4 flex gap-2">
+              {onOpenAdherenceCalendar && (
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenAdherenceCalendar();
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100"
+                >
+                  Calendar
+                </button>
+              )}
+              {onOpenAdherenceLogs && (
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenAdherenceLogs();
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-md bg-green-50 text-green-700 hover:bg-green-100"
+                >
+                  Logs
+                </button>
+              )}
             </div>
           )}
         </div>

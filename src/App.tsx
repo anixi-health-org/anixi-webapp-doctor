@@ -22,6 +22,7 @@ import Support from './pages/Support';
 import MoodCheckerPage from './pages/MoodCheckerPage';
 import AdherenceCalendarPage from './pages/AdherenceCalendarPage';
 import AdherenceLogsPage from './pages/AdherenceLogsPage';
+import AdherenceDailyPage from './pages/AdherenceDailyPage';
 import VitalsHistoryPage from './pages/VitalsHistoryPage';
 const queryClient = new QueryClient();
 
@@ -152,6 +153,7 @@ function App() {
                     <Route path="/patient-profile/:patientId/mood-checker" element={<MoodCheckerPage />} />
                     <Route path="/patient-profile/:patientId/adherence-calendar" element={<AdherenceCalendarPage />} />
                     <Route path="/patient-profile/:patientId/adherence-logs" element={<AdherenceLogsPage />} />
+                    <Route path="/patient-profile/:patientId/adherence-daily/:date" element={<AdherenceDailyPage />} />
                     <Route path="/patient-profile/:patientId/vitals-history" element={<VitalsHistoryPage />} />
                     <Route path="/patients" element={<Patients />} />
                     <Route path="/find-doctor" element={<DoctorSearch />} />

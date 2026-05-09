@@ -13,6 +13,12 @@ service cloud.firestore {
       return request.auth.uid;
     }
 
+    function isApprovedDoctorForPatient(patientId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/Users/$(patientId)/approved_doctors/$(uid()))
+        && get(/databases/$(database)/documents/Users/$(patientId)/approved_doctors/$(uid())).data.status == 'active';
+    }
+
     // Fetch the caller's membership document for a practice
     function getMember(practiceId) {
       return get(/databases/$(database)/documents/practices/$(practiceId)/members/$(uid())).data;
@@ -32,6 +38,21 @@ service cloud.firestore {
     }
 
     // ─── Legacy collections (unchanged for mobile compatibility) ────────────────
+
+    match /Users/{userId}/adherence_records/{recordId} {
+      allow read: if isSignedIn() && (uid() == userId || isApprovedDoctorForPatient(userId));
+      allow write: if isSignedIn() && uid() == userId;
+    }
+
+    match /Users/{userId}/mood_entries/{entryId} {
+      allow read: if isSignedIn() && (uid() == userId || isApprovedDoctorForPatient(userId));
+      allow write: if isSignedIn() && uid() == userId;
+    }
+
+    match /Users/{userId}/vitals_records/{recordId} {
+      allow read: if isSignedIn() && (uid() == userId || isApprovedDoctorForPatient(userId));
+      allow write: if isSignedIn() && uid() == userId;
+    }
 
     match /Users/{userId}/{document=**} {
       allow read, write: if isSignedIn() && uid() == userId;

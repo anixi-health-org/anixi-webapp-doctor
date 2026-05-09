@@ -182,6 +182,7 @@ export const PatientHealthDashboard: React.FC<{ patientId: string }> = ({ patien
             <CardContent>
               <AdherenceCalendar
                 patientId={patientId}
+                doctorId={user?.id}
                 onDayClick={(date) => {
                   setSelectedDate(date);
                   setActiveView('daily-adherence');
@@ -198,6 +199,7 @@ export const PatientHealthDashboard: React.FC<{ patientId: string }> = ({ patien
             <CardContent>
               <DailyAdherenceView
                 patientId={patientId}
+                doctorId={user?.id}
                 date={selectedDate}
                 onPreviousDay={() => {
                   const newDate = new Date(selectedDate);
@@ -219,7 +221,7 @@ export const PatientHealthDashboard: React.FC<{ patientId: string }> = ({ patien
               <CardTitle>Adherence History</CardTitle>
             </CardHeader>
             <CardContent>
-              <AdherenceLogs patientId={patientId} />
+              {user ? <AdherenceLogs patientId={patientId} doctorId={user.id} /> : null}
             </CardContent>
           </Card>
         )}
