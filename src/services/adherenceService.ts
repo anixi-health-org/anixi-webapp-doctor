@@ -1,15 +1,21 @@
 import {
-  collection,
-  query,
-  where,
-  getDocs,
-  orderBy,
   addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  startAfter,
   updateDoc,
-} from 'firebase/firestore';
+  where,
+  type QueryConstraint,
+} from '../lib/firestoreAdapter';
 import { db } from '../lib/firebase';
 import { USERS_COLLECTION } from '../shared/constants';
 import { getVitalsRecordsForDate } from './logsService';
+import { convertTimestamp } from '../utils/dateFormatter';
 
 interface AdherenceRecord {
   date: string;
@@ -30,6 +36,166 @@ interface DailyAdherenceSummary {
   adherencePercentage: number;
 }
 
+export interface DayAdherenceDetails {
+  date: string;
+  taken: number;
+  missed: number;
+  pending: number;
+  total: number;
+  percentage: number;
+}
+
+export interface MonthlyAdherenceSummary {
+  takenTotal: number;
+  missedTotal: number;
+  pendingTotal: number;
+  adherencePercentage: number;
+}
+
+export interface MonthlyAdherenceDetailsResult {
+  dayMap: Map<string, DayAdherenceDetails>;
+  monthStats: MonthlyAdherenceSummary;
+}
+
+export interface DoctorAdherenceLog {
+  id: string;
+  medicationName: string;
+  dosage: string;
+  status: 'taken' | 'missed' | 'pending';
+  scheduledTime: Date | null;
+  takenTime: Date | null;
+  timestamp: Date | null;
+  notes?: string;
+}
+
+export interface DoctorAdherenceLogsPage {
+  logs: DoctorAdherenceLog[];
+  hasMore: boolean;
+  cursor: Date | null;
+}
+
+export interface PatientAdherenceListSummary {
+  patientId: string;
+  adherenceRate: number;
+  takenCount: number;
+  missedCount: number;
+  pendingCount: number;
+  statusLabel: 'excellent' | 'moderate' | 'low' | 'no-data';
+}
+
+const getStartAndEndOfMonth = (year: number, month: number) => {
+  const startDate = new Date(year, month, 1, 0, 0, 0, 0);
+  const endDate = new Date(year, month + 1, 0, 23, 59, 59, 999);
+  return { startDate, endDate };
+};
+
+const toDateKey = (value: Date): string => value.toISOString().split('T')[0];
+
+const normalizeStatus = (status: unknown): 'taken' | 'missed' | 'pending' => {
+  if (status === 'taken' || status === 'missed' || status === 'pending') {
+    return status;
+  }
+  return 'pending';
+};
+
+const getAdherenceCollectionRef = (patientId: string) => {
+  return collection(db, USERS_COLLECTION, patientId, 'adherence_records');
+};
+
+const ensureDoctorPatientAccess = async (
+  doctorId: string,
+  patientId: string
+): Promise<void> => {
+  const approvedRef = doc(db, USERS_COLLECTION, doctorId, 'approved_patients', patientId);
+  const approvedSnapshot = await getDoc(approvedRef);
+  if (!approvedSnapshot.exists()) {
+    throw new Error('Access denied: patient is not approved for this doctor.');
+  }
+
+  const approvedData = approvedSnapshot.data();
+  const status = approvedData?.status as string | undefined;
+  if (status && status !== 'active') {
+    throw new Error('Access denied: patient approval is not active.');
+  }
+};
+
+const parseDoctorLog = (id: string, data: Record<string, any>): DoctorAdherenceLog => {
+  const scheduledTime = convertTimestamp(data.scheduledTime);
+  const takenTime = convertTimestamp(data.takenTime);
+  const timestamp = convertTimestamp(data.timestamp) ?? scheduledTime;
+
+  return {
+    id,
+    medicationName: data.medicationName || 'Unknown',
+    dosage: data.dosage || 'Not specified',
+    status: normalizeStatus(data.status),
+    scheduledTime,
+    takenTime,
+    timestamp,
+    notes: data.notes,
+  };
+};
+
+const getMonthlyAdherenceDetailsCore = async (
+  patientId: string,
+  year: number,
+  month: number
+): Promise<MonthlyAdherenceDetailsResult> => {
+  const { startDate, endDate } = getStartAndEndOfMonth(year, month);
+
+  const adherenceQuery = query(
+    getAdherenceCollectionRef(patientId),
+    where('scheduledTime', '>=', startDate),
+    where('scheduledTime', '<=', endDate)
+  );
+
+  const snapshot = await getDocs(adherenceQuery);
+  const dayMap = new Map<string, DayAdherenceDetails>();
+
+  snapshot.docs.forEach((entryDoc) => {
+    const data = entryDoc.data();
+    const scheduledTime = convertTimestamp(data.scheduledTime);
+    if (!scheduledTime) return;
+
+    const dateKey = toDateKey(scheduledTime);
+    const status = normalizeStatus(data.status);
+
+    if (!dayMap.has(dateKey)) {
+      dayMap.set(dateKey, {
+        date: dateKey,
+        taken: 0,
+        missed: 0,
+        pending: 0,
+        total: 0,
+        percentage: 0,
+      });
+    }
+
+    const day = dayMap.get(dateKey)!;
+    day.total += 1;
+    if (status === 'taken') day.taken += 1;
+    if (status === 'missed') day.missed += 1;
+    if (status === 'pending') day.pending += 1;
+    day.percentage = day.total > 0 ? Math.round((day.taken / day.total) * 100) : 0;
+  });
+
+  const dayValues = Array.from(dayMap.values());
+  const takenTotal = dayValues.reduce((sum, day) => sum + day.taken, 0);
+  const missedTotal = dayValues.reduce((sum, day) => sum + day.missed, 0);
+  const pendingTotal = dayValues.reduce((sum, day) => sum + day.pending, 0);
+  const totalCount = takenTotal + missedTotal + pendingTotal;
+
+  return {
+    dayMap,
+    monthStats: {
+      takenTotal,
+      missedTotal,
+      pendingTotal,
+      adherencePercentage: totalCount > 0 ? Math.round((takenTotal / totalCount) * 100) : 0,
+    },
+  };
+};
+
 
 export const getMonthlyAdherence = async (
   patientId: string,
@@ -37,31 +203,14 @@ export const getMonthlyAdherence = async (
   month: number
 ): Promise<Map<string, 'taken' | 'missed' | 'pending'>> => {
   try {
-    const startDate = new Date(year, month, 1);
-    const endDate = new Date(year, month + 1, 0);
-
-    const adherenceRef = collection(
-      db,
-      USERS_COLLECTION,
-      patientId,
-      'adherence_records'
-    );
-
-    const q = query(
-      adherenceRef,
-      where('scheduledTime', '>=', startDate),
-      where('scheduledTime', '<=', endDate)
-    );
-
-    const snapshot = await getDocs(q);
+    const details = await getMonthlyAdherenceDetailsCore(patientId, year, month);
     const adherenceMap = new Map<string, 'taken' | 'missed' | 'pending'>();
 
-    snapshot.docs.forEach((doc) => {
-      const data = doc.data();
-      const scheduledTime = data.scheduledTime?.toDate?.() || new Date(data.scheduledTime);
-      const dateStr = scheduledTime.toISOString().split('T')[0];
-      const status = data.status || 'pending';
-
+    details.dayMap.forEach((day) => {
+      const dateStr = day.date;
+      let status: 'taken' | 'missed' | 'pending' = 'pending';
+      if (day.taken > 0) status = 'taken';
+      else if (day.missed > 0 && day.pending === 0) status = 'missed';
       const existing = adherenceMap.get(dateStr);
       if (!existing || status === 'taken') {
         adherenceMap.set(dateStr, status);
@@ -73,6 +222,34 @@ export const getMonthlyAdherence = async (
     ;
     throw err;
   }
+};
+
+export const getMonthlyAdherenceDetails = async (
+  patientId: string,
+  year: number,
+  month: number
+): Promise<MonthlyAdherenceDetailsResult> => {
+  return getMonthlyAdherenceDetailsCore(patientId, year, month);
+};
+
+export const getDoctorMonthlyAdherenceDetails = async (
+  doctorId: string,
+  patientId: string,
+  year: number,
+  month: number
+): Promise<MonthlyAdherenceDetailsResult> => {
+  await ensureDoctorPatientAccess(doctorId, patientId);
+  return getMonthlyAdherenceDetailsCore(patientId, year, month);
+};
+
+export const getDoctorMonthlyAdherence = async (
+  doctorId: string,
+  patientId: string,
+  year: number,
+  month: number
+): Promise<Map<string, 'taken' | 'missed' | 'pending'>> => {
+  await ensureDoctorPatientAccess(doctorId, patientId);
+  return getMonthlyAdherence(patientId, year, month);
 };
 
 
@@ -87,12 +264,7 @@ export const getDailyAdherence = async (
   summary: DailyAdherenceSummary;
 }> => {
   try {
-    const adherenceRef = collection(
-      db,
-      USERS_COLLECTION,
-      patientId,
-      'adherence_records'
-    );
+    const adherenceRef = getAdherenceCollectionRef(patientId);
 
     const startOfDay = new Date(date + 'T00:00:00');
     const endOfDay = new Date(date + 'T23:59:59');
@@ -108,7 +280,7 @@ export const getDailyAdherence = async (
 
     snapshot.docs.forEach((doc) => {
       const data = doc.data();
-      const scheduledTime = data.scheduledTime?.toDate?.() || new Date(data.scheduledTime);
+      const scheduledTime = convertTimestamp(data.scheduledTime) || new Date(date + 'T00:00:00');
 
       const hour = scheduledTime.getHours();
       let timeSlot: 'morning' | 'afternoon' | 'evening' = 'morning';
@@ -144,7 +316,7 @@ export const getDailyAdherence = async (
     if (!moodSnapshot.empty) {
       moodSnapshot.docs.forEach((doc) => {
         const data = doc.data();
-        const createdAt = data.createdAt?.toDate?.() || new Date(data.createdAt);
+        const createdAt = convertTimestamp(data.createdAt) || new Date(date + 'T00:00:00');
         const hour = createdAt.getHours();
 
         let timeSlot: 'morning' | 'afternoon' | 'evening' = 'morning';
@@ -206,6 +378,127 @@ export const getDailyAdherence = async (
     ;
     throw err;
   }
+};
+
+export const getDoctorDailyAdherence = async (
+  doctorId: string,
+  patientId: string,
+  date: string
+): Promise<{
+  date: string;
+  medications: AdherenceRecord[];
+  mood?: any;
+  vitals?: any;
+  summary: DailyAdherenceSummary;
+}> => {
+  await ensureDoctorPatientAccess(doctorId, patientId);
+  return getDailyAdherence(patientId, date);
+};
+
+export const getDoctorAdherenceLogsPage = async (
+  doctorId: string,
+  patientId: string,
+  pageSize = 10,
+  cursor: Date | null = null
+): Promise<DoctorAdherenceLogsPage> => {
+  await ensureDoctorPatientAccess(doctorId, patientId);
+
+  const constraints: QueryConstraint[] = [orderBy('scheduledTime', 'desc'), limit(pageSize)];
+  if (cursor) {
+    constraints.splice(1, 0, startAfter(cursor));
+  }
+
+  const adherenceQuery = query(getAdherenceCollectionRef(patientId), ...constraints);
+  const snapshot = await getDocs(adherenceQuery);
+
+  const logs = snapshot.docs.map((entryDoc) =>
+    parseDoctorLog(entryDoc.id, entryDoc.data() as Record<string, any>)
+  );
+
+  const lastLog = logs[logs.length - 1];
+  return {
+    logs,
+    hasMore: logs.length === pageSize,
+    cursor: lastLog?.scheduledTime ?? lastLog?.timestamp ?? null,
+  };
+};
+
+export const getDoctorPatientAdherenceSummary = async (
+  doctorId: string,
+  patientId: string,
+  daysBack = 30
+): Promise<PatientAdherenceListSummary> => {
+  await ensureDoctorPatientAccess(doctorId, patientId);
+
+  const since = new Date();
+  since.setDate(since.getDate() - daysBack);
+  since.setHours(0, 0, 0, 0);
+
+  const adherenceQuery = query(
+    getAdherenceCollectionRef(patientId),
+    where('scheduledTime', '>=', since),
+    orderBy('scheduledTime', 'desc')
+  );
+  const snapshot = await getDocs(adherenceQuery);
+
+  let takenCount = 0;
+  let missedCount = 0;
+  let pendingCount = 0;
+
+  snapshot.docs.forEach((entryDoc) => {
+    const status = normalizeStatus(entryDoc.data().status);
+    if (status === 'taken') takenCount += 1;
+    if (status === 'missed') missedCount += 1;
+    if (status === 'pending') pendingCount += 1;
+  });
+
+  const total = takenCount + missedCount + pendingCount;
+  const adherenceRate = total > 0 ? Math.round((takenCount / total) * 100) : 0;
+
+  let statusLabel: PatientAdherenceListSummary['statusLabel'] = 'no-data';
+  if (total > 0 && adherenceRate >= 85) statusLabel = 'excellent';
+  else if (total > 0 && adherenceRate >= 60) statusLabel = 'moderate';
+  else if (total > 0) statusLabel = 'low';
+
+  return {
+    patientId,
+    adherenceRate,
+    takenCount,
+    missedCount,
+    pendingCount,
+    statusLabel,
+  };
+};
+
+export const getDoctorPatientsAdherenceSummary = async (
+  doctorId: string,
+  patientIds: string[],
+  daysBack = 30
+): Promise<Map<string, PatientAdherenceListSummary>> => {
+  const summaryMap = new Map<string, PatientAdherenceListSummary>();
+
+  const results = await Promise.all(
+    patientIds.map(async (patientId) => {
+      try {
+        return await getDoctorPatientAdherenceSummary(doctorId, patientId, daysBack);
+      } catch {
+        return {
+          patientId,
+          adherenceRate: 0,
+          takenCount: 0,
+          missedCount: 0,
+          pendingCount: 0,
+          statusLabel: 'no-data' as const,
+        };
+      }
+    })
+  );
+
+  results.forEach((summary) => {
+    summaryMap.set(summary.patientId, summary);
+  });
+
+  return summaryMap;
 };
 
 

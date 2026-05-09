@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { convertTimestamp, getTimeSlot } from '../utils/dateFormatter';
+import { getTimeSlot } from '../utils/dateFormatter';
+import { getDailyAdherence, getDoctorDailyAdherence } from '../services/adherenceService';
 
 interface MedicationAdherenceDetailsPanelProps {
   patientId: string;
+  doctorId?: string;
   selectedDate: Date | null;
   isOpen: boolean;
   onClose: () => void;
@@ -74,11 +74,11 @@ const formatTime = (date: Date | null): string => {
 
 export const MedicationAdherenceDetailsPanel: React.FC<MedicationAdherenceDetailsPanelProps> = ({
   patientId,
+  doctorId,
   selectedDate,
   isOpen,
   onClose,
 }) => {
-  const [medications, setMedications] = useState<MedicationRecord[]>([]); 
   const [groupedByTimeSlot, setGroupedByTimeSlot] = useState<{
     morning: MedicationRecord[];
     afternoon: MedicationRecord[];
@@ -102,37 +102,26 @@ export const MedicationAdherenceDetailsPanel: React.FC<MedicationAdherenceDetail
 
       try {
         setIsLoading(true);
-        
-        const dayStart = new Date(selectedDate);
-        dayStart.setHours(0, 0, 0, 0);
-        
-        const dayEnd = new Date(selectedDate);
-        dayEnd.setHours(23, 59, 59, 999);
+        const selectedDateStr = selectedDate.toISOString().split('T')[0];
+        const dailyData = doctorId
+          ? await getDoctorDailyAdherence(doctorId, patientId, selectedDateStr)
+          : await getDailyAdherence(patientId, selectedDateStr);
 
-        const adherenceQuery = query(
-          collection(db, `Users/${patientId}/adherence_records`),
-          where('scheduledTime', '>=', dayStart),
-          where('scheduledTime', '<=', dayEnd)
-        );
-
-        const snapshot = await getDocs(adherenceQuery);
-        const medicationRecords: MedicationRecord[] = [];
-
-        snapshot.docs.forEach((doc) => {
-          const data = doc.data();
-          const scheduledTime = convertTimestamp(data.scheduledTime);
+        const medicationRecords: MedicationRecord[] = dailyData.medications.map((record, idx) => {
+          const scheduledTime = record.scheduledTime?.toDate?.() || record.scheduledTime || null;
+          const takenTime = record.takenTime?.toDate?.() || record.takenTime || null;
           const timeSlot = getTimeSlot(scheduledTime) as 'morning' | 'afternoon' | 'evening';
 
-          medicationRecords.push({
-            id: doc.id,
-            medicationName: data.medicationName || 'Unknown Medication',
-            dosage: data.dosage || 'Not specified',
+          return {
+            id: `${record.medicationName}-${idx}`,
+            medicationName: record.medicationName || 'Unknown Medication',
+            dosage: record.dosage || 'Not specified',
             scheduledTime,
-            status: (data.status || 'pending') as 'taken' | 'missed' | 'pending',
-            takenTime: convertTimestamp(data.takenTime),
-            notes: data.notes,
+            status: (record.status || 'pending') as 'taken' | 'missed' | 'pending',
+            takenTime,
+            notes: record.notes,
             timeSlot,
-          });
+          };
         });
 
         const grouped = {
@@ -141,7 +130,6 @@ export const MedicationAdherenceDetailsPanel: React.FC<MedicationAdherenceDetail
           evening: medicationRecords.filter((m) => m.timeSlot === 'evening'),
         };
 
-        setMedications(medicationRecords);
         setGroupedByTimeSlot(grouped);
 
         const taken = medicationRecords.filter((m) => m.status === 'taken').length;
@@ -164,7 +152,7 @@ export const MedicationAdherenceDetailsPanel: React.FC<MedicationAdherenceDetail
     if (isOpen && selectedDate) {
       loadMedicationDetails();
     }
-  }, [isOpen, selectedDate, patientId]);
+  }, [isOpen, selectedDate, patientId, doctorId]);
 
   if (!isOpen) return null;
 
@@ -178,8 +166,8 @@ export const MedicationAdherenceDetailsPanel: React.FC<MedicationAdherenceDetail
     : '';
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center">
-      <div className="bg-white w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-t-2xl">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4">
+      <div className="bg-white w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl">
         {}
         <div className="sticky top-0 bg-gradient-to-r from-orange-500 to-orange-600 px-6 py-4 flex items-center justify-between">
           <div>
