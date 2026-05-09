@@ -1,88 +1,50 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { collection, query, where, orderBy, limit, startAfter, getDocs, QueryConstraint } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { formatTimestamp, getTimeSlot, transformAdherenceRecord } from '../utils/dateFormatter';
+import { formatTimestamp, getTimeSlot } from '../utils/dateFormatter';
+import {
+  getDoctorAdherenceLogsPage,
+  type DoctorAdherenceLog,
+} from '../services/adherenceService';
 interface AdherenceLogsProps {
   patientId: string;
-}
-interface AdherenceLog {
-  id: string;
-  timestamp?: Date;
-  scheduledTime?: Date;
-  takenTime?: Date;
-  status: 'taken' | 'missed' | 'pending';
-  medicationName: string;
-  dosage: string;
-  notes?: string;
+  doctorId: string;
 }
 const PAGE_SIZE = 10;
-export const AdherenceLogs: React.FC<AdherenceLogsProps> = ({ patientId }) => {
-  const [logs, setLogs] = useState<AdherenceLog[]>([]);
+export const AdherenceLogs: React.FC<AdherenceLogsProps> = ({ patientId, doctorId }) => {
+  const [logs, setLogs] = useState<DoctorAdherenceLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [lastDoc, setLastDoc] = useState<any>(null);
+  const [cursor, setCursor] = useState<Date | null>(null);
   const [isPulling, setIsPulling] = useState(false);
   const pullStartRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const loadInitialLogs = useCallback(async () => {
     try {
       setIsLoading(true);
-      const constraints: QueryConstraint[] = [
-        where('patientId', '==', patientId),
-        orderBy('timestamp', 'desc'),
-        limit(PAGE_SIZE),
-      ];
-      const q = query(collection(db, 'adherence_records'), ...constraints);
-      const snapshot = await getDocs(q);
-      const fetchedLogs = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        const transformed = transformAdherenceRecord(data);
-        return {
-          id: doc.id,
-          ...transformed,
-          timestamp: transformed?.timestamp || transformed?.scheduledTime,
-        };
-      });
-      setLogs(fetchedLogs);
-      setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
-      setHasMore(snapshot.docs.length === PAGE_SIZE);
+      const page = await getDoctorAdherenceLogsPage(doctorId, patientId, PAGE_SIZE);
+      setLogs(page.logs);
+      setCursor(page.cursor);
+      setHasMore(page.hasMore);
     } catch (error) {
       ;
     } finally {
       setIsLoading(false);
     }
-  }, [patientId]);
+  }, [doctorId, patientId]);
   const loadMore = useCallback(async () => {
-    if (!lastDoc || !hasMore) return;
+    if (!cursor || !hasMore) return;
     try {
       setIsLoadingMore(true);
-      const constraints: QueryConstraint[] = [
-        where('patientId', '==', patientId),
-        orderBy('timestamp', 'desc'),
-        startAfter(lastDoc),
-        limit(PAGE_SIZE),
-      ];
-      const q = query(collection(db, 'adherence_records'), ...constraints);
-      const snapshot = await getDocs(q);
-      const fetchedLogs = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        const transformed = transformAdherenceRecord(data);
-        return {
-          id: doc.id,
-          ...transformed,
-          timestamp: transformed?.timestamp || transformed?.scheduledTime,
-        };
-      });
-      setLogs((prev) => [...prev, ...fetchedLogs]);
-      setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
-      setHasMore(snapshot.docs.length === PAGE_SIZE);
+      const page = await getDoctorAdherenceLogsPage(doctorId, patientId, PAGE_SIZE, cursor);
+      setLogs((prev) => [...prev, ...page.logs]);
+      setCursor(page.cursor);
+      setHasMore(page.hasMore);
     } catch (error) {
       ;
     } finally {
       setIsLoadingMore(false);
     }
-  }, [patientId, lastDoc, hasMore]);
+  }, [doctorId, patientId, cursor, hasMore]);
 
   useEffect(() => {
     loadInitialLogs();
@@ -150,7 +112,7 @@ export const AdherenceLogs: React.FC<AdherenceLogsProps> = ({ patientId }) => {
       onTouchStart={handlePullToRefresh}
       onTouchMove={handlePullToRefresh}
       onTouchEnd={handlePullToRefresh}
-      className="h-[10vh] overflow-y-auto space-y-3 p-4 bg-gray-50 rounded-lg"
+      className="min-h-[24rem] max-h-[70vh] overflow-y-auto space-y-3 p-4 bg-gray-50 rounded-lg"
     >
       {isPulling && (
         <div className="text-center py-2 text-blue-600 font-medium">

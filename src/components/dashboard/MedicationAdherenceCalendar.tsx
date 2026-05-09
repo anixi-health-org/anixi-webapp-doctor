@@ -81,12 +81,6 @@ export const MedicationAdherenceCalendar: React.FC<MedicationAdherenceCalendarPr
     <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-gray-900">📅 Adherence Calendar</h3>
-        <button
-          onClick={onViewDetails}
-          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-        >
-          View Details →
-        </button>
       </div>
 
       {loading ? (

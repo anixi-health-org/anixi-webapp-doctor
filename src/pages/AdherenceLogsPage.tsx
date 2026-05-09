@@ -2,9 +2,11 @@ import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { AdherenceLogs } from '../components/AdherenceLogs';
+import { useAuth } from '../hooks/useAuth';
 export const AdherenceLogsPage: React.FC = () => {
   const navigate = useNavigate();
   const { patientId } = useParams<{ patientId: string }>();
+  const { user } = useAuth();
   if (!patientId) {
     return (
       <div className="p-6 bg-anixi-beige min-h-screen">
@@ -32,7 +34,7 @@ export const AdherenceLogsPage: React.FC = () => {
             <CardTitle>Adherence History</CardTitle>
           </CardHeader>
           <CardContent>
-            <AdherenceLogs patientId={patientId} />
+            {user ? <AdherenceLogs patientId={patientId} doctorId={user.id} /> : null}
           </CardContent>
         </Card>
       </div>

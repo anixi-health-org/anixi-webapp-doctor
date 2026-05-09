@@ -14,7 +14,7 @@ import {
   PRACTICES_COLLECTION,
   PRACTICE_APPOINTMENTS_SUBCOLLECTION,
 } from '../shared/constants';
-import { getBookableBlocks, getSoftBlocks } from './practiceSettingsService';
+import { getBookableBlocks, getAllSoftBlocks } from './practiceSettingsService';
 import { getDoctorAppointments } from './appointmentService';
 import type {
   AvailableSlot,
@@ -50,6 +50,83 @@ const dateAtTime = (date: Date, hhmm: string): Date => {
 
 const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean =>
   aStart < bEnd && aEnd > bStart;
+
+const startOfDay = (date: Date): Date => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const endOfDay = (date: Date): Date => {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+};
+
+const addDays = (date: Date, days: number): Date => {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+};
+
+const addMonths = (date: Date, months: number): Date => {
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + months);
+  return d;
+};
+
+const advanceOccurrence = (date: Date, recurrence: SoftBlock['recurrence']): Date => {
+  if (!recurrence) return date;
+  const interval = Math.max(1, recurrence.interval || 1);
+  if (recurrence.frequency === 'daily') return addDays(date, interval);
+  if (recurrence.frequency === 'weekly') return addDays(date, 7 * interval);
+  return addMonths(date, interval);
+};
+
+const expandSoftBlockForDay = (
+  block: SoftBlock,
+  dayStart: Date,
+  dayEnd: Date
+): SoftBlock[] => {
+  if (!block.recurrence) {
+    return overlaps(block.startAt, block.endAt, dayStart, dayEnd) ? [block] : [];
+  }
+
+  const durationMs = block.endAt.getTime() - block.startAt.getTime();
+  if (durationMs <= 0) return [];
+
+  const recurrenceEnd = block.recurrence.endDate ? endOfDay(block.recurrence.endDate) : null;
+  if (recurrenceEnd && recurrenceEnd < dayStart) return [];
+
+  const occurrences: SoftBlock[] = [];
+  let cursor = new Date(block.startAt);
+  let safety = 0;
+
+  while (cursor <= dayEnd && safety < 5000) {
+    if (recurrenceEnd && cursor > recurrenceEnd) break;
+    const occurrenceEnd = new Date(cursor.getTime() + durationMs);
+
+    if (overlaps(cursor, occurrenceEnd, dayStart, dayEnd)) {
+      occurrences.push({
+        ...block,
+        startAt: new Date(cursor),
+        endAt: occurrenceEnd,
+      });
+    }
+
+    cursor = advanceOccurrence(cursor, block.recurrence);
+    safety += 1;
+  }
+
+  return occurrences;
+};
+
+const getEffectiveSoftBlocksForDay = (
+  allSoftBlocks: SoftBlock[],
+  dayStart: Date,
+  dayEnd: Date
+): SoftBlock[] =>
+  allSoftBlocks.flatMap((block) => expandSoftBlockForDay(block, dayStart, dayEnd));
 
 // ─── Slot generation ──────────────────────────────────────────────────────────
 
@@ -99,18 +176,21 @@ export const getAvailableSlots = async (
   date: Date,
   consultType?: ConsultType
 ): Promise<AvailableSlot[]> => {
-  const dayStart = new Date(date);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(date);
-  dayEnd.setHours(23, 59, 59, 999);
+  const dayStart = startOfDay(date);
+  const dayEnd = endOfDay(date);
 
-  const [blocks, softBlocks, appointments] = await Promise.all([
+  const [blocks, allSoftBlocks, appointments] = await Promise.all([
     getBookableBlocks(practiceId),
-    getSoftBlocks(practiceId, dayStart, dayEnd),
+    getAllSoftBlocks(practiceId),
     getDoctorAppointments(doctorId),
   ]);
 
   const doctorBlocks = blocks.filter((b) => b.doctorId === doctorId);
+  const softBlocks = getEffectiveSoftBlocksForDay(
+    allSoftBlocks.filter((b) => b.doctorId === doctorId),
+    dayStart,
+    dayEnd
+  );
   const raw = generateRawSlots(date, doctorBlocks);
 
   const dayAppointments = appointments.filter((a) => {
@@ -150,18 +230,21 @@ export const validateSlot = async (
   consultType: ConsultType,
   excludeAppointmentId?: string
 ): Promise<SlotValidationResult> => {
-  const dayStart = new Date(startAt);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(startAt);
-  dayEnd.setHours(23, 59, 59, 999);
+  const dayStart = startOfDay(startAt);
+  const dayEnd = endOfDay(startAt);
 
-  const [blocks, softBlocks, appointments] = await Promise.all([
+  const [blocks, allSoftBlocks, appointments] = await Promise.all([
     getBookableBlocks(practiceId),
-    getSoftBlocks(practiceId, dayStart, dayEnd),
+    getAllSoftBlocks(practiceId),
     getDoctorAppointments(doctorId),
   ]);
 
   const doctorBlocks = blocks.filter((b) => b.doctorId === doctorId);
+  const softBlocks = getEffectiveSoftBlocksForDay(
+    allSoftBlocks.filter((b) => b.doctorId === doctorId),
+    dayStart,
+    dayEnd
+  );
   const dow = startAt.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
   const slotStartMin = startAt.getHours() * 60 + startAt.getMinutes();
   const slotEndMin = endAt.getHours() * 60 + endAt.getMinutes();

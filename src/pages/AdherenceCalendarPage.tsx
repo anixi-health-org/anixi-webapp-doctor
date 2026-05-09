@@ -2,9 +2,11 @@ import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { AdherenceCalendar } from '../components/AdherenceCalendar';
+import { useAuth } from '../hooks/useAuth';
 export const AdherenceCalendarPage: React.FC = () => {
   const navigate = useNavigate();
   const { patientId } = useParams<{ patientId: string }>();
+  const { user } = useAuth();
   if (!patientId) {
     return (
       <div className="p-6 bg-anixi-beige min-h-screen">
@@ -32,7 +34,14 @@ export const AdherenceCalendarPage: React.FC = () => {
             <CardTitle>Medication Adherence</CardTitle>
           </CardHeader>
           <CardContent>
-            <AdherenceCalendar patientId={patientId} onDayClick={() => {}} />
+            <AdherenceCalendar
+              patientId={patientId}
+              doctorId={user?.id}
+              onDayClick={(date) => {
+                const day = date.toISOString().split('T')[0];
+                navigate(`/patient-profile/${patientId}/adherence-daily/${day}`);
+              }}
+            />
           </CardContent>
         </Card>
       </div>

@@ -108,13 +108,13 @@ export const PatientProfile: React.FC = () => {
   const formattedEmail = formatEmail(patient.email);
   return (
     <div className="p-6 bg-anixi-beige min-h-screen">
+      <button
+        onClick={() => navigate(-1)}
+        className="mb-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition-colors"
+      >
+        ← Back
+      </button>
       <div className="mb-8">
-        <button
-          onClick={() => navigate(-1)}
-          className="mb-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition-colors"
-        >
-          ← Back
-        </button>
         <h1 className="text-3xl font-bold text-gray-900">{formattedName || 'Patient Profile'}</h1>
         {age !== null && (
           <p className="mt-2 text-gray-600">
@@ -246,7 +246,6 @@ export const PatientProfile: React.FC = () => {
             <p className="text-3xl mb-2">📅</p>
             <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-700">Adherence Calendar</h3>
             <p className="text-sm text-gray-600 mt-1">View medication adherence by date</p>
-            <p className="text-xs text-blue-600 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">View Details →</p>
           </button>
           <button
             onClick={() => navigate(`/patient-profile/${patient.id}/adherence-logs`)}

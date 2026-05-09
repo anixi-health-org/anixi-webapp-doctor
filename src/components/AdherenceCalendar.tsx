@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { getDateString, convertTimestamp } from '../utils/dateFormatter';
+import { getDateString } from '../utils/dateFormatter';
 import { MedicationAdherenceDetailsPanel } from './MedicationAdherenceDetailsPanel';
+import {
+  getDoctorMonthlyAdherenceDetails,
+  getMonthlyAdherenceDetails,
+  type DayAdherenceDetails,
+} from '../services/adherenceService';
 interface AdherenceCalendarProps {
   patientId: string;
+  doctorId?: string;
   onDayClick?: (date: Date) => void;
 }
 interface DayAdherence {
@@ -20,7 +24,7 @@ interface DayAdherence {
     scheduledTime: Date | null;
   }>;
 }
-export const AdherenceCalendar: React.FC<AdherenceCalendarProps> = ({ patientId, onDayClick }) => {
+export const AdherenceCalendar: React.FC<AdherenceCalendarProps> = ({ patientId, doctorId, onDayClick }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [dayAdherence, setDayAdherence] = useState<Map<string, DayAdherence>>(new Map());
   const [monthStats, setMonthStats] = useState({
@@ -36,63 +40,34 @@ export const AdherenceCalendar: React.FC<AdherenceCalendarProps> = ({ patientId,
     const loadMonthAdherence = async () => {
       try {
         setIsLoading(true);
-        const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-        const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-        const adherenceQuery = query(
-          collection(db, `Users/${patientId}/adherence_records`),
-          where('scheduledTime', '>=', monthStart),
-          where('scheduledTime', '<=', monthEnd)
-        );
-        const snapshot = await getDocs(adherenceQuery);
         const dayMap = new Map<string, DayAdherence>();
 
-        snapshot.docs.forEach((doc) => {
-          const data = doc.data();
-          const scheduledTime = convertTimestamp(data.scheduledTime);
-          if (scheduledTime) {
-            const dateKey = getDateString(scheduledTime);
-            if (!dayMap.has(dateKey)) {
-              dayMap.set(dateKey, {
-                date: dateKey,
-                taken: 0,
-                missed: 0,
-                pending: 0,
-                percentage: 0,
-                medications: [],
-              });
-            }
-            const day = dayMap.get(dateKey)!;
-            if (data.status === 'taken') {
-              day.taken++;
-            } else if (data.status === 'missed') {
-              day.missed++;
-            } else {
-              day.pending++;
-            }
-            day.medications.push({
-              id: doc.id,
-              name: data.medicationName || 'Unknown',
-              status: data.status,
-              scheduledTime: scheduledTime,
-            });
-          }
-        });
+        const details = doctorId
+          ? await getDoctorMonthlyAdherenceDetails(
+              doctorId,
+              patientId,
+              currentMonth.getFullYear(),
+              currentMonth.getMonth()
+            )
+          : await getMonthlyAdherenceDetails(
+              patientId,
+              currentMonth.getFullYear(),
+              currentMonth.getMonth()
+            );
 
-        const daysArray = Array.from(dayMap.values());
+        details.dayMap.forEach((day: DayAdherenceDetails) => {
+          dayMap.set(day.date, {
+            date: day.date,
+            taken: day.taken,
+            missed: day.missed,
+            pending: day.pending,
+            percentage: day.percentage,
+            medications: [],
+          });
+        });
         setDayAdherence(dayMap);
 
-        const takenTotal = daysArray.reduce((sum, day) => sum + day.taken, 0);
-        const missedTotal = daysArray.reduce((sum, day) => sum + day.missed, 0);
-        const pendingTotal = daysArray.reduce((sum, day) => sum + day.pending, 0);
-        const totalDoses = takenTotal + missedTotal + pendingTotal;
-        const adherencePercentage = totalDoses > 0 ? Math.round((takenTotal / totalDoses) * 100) : 0;
-
-        setMonthStats({
-          takenTotal,
-          missedTotal,
-          pendingTotal,
-          adherencePercentage,
-        });
+        setMonthStats(details.monthStats);
       } catch (error) {
         console.error('Error loading month adherence:', error);
       } finally {
@@ -101,7 +76,7 @@ export const AdherenceCalendar: React.FC<AdherenceCalendarProps> = ({ patientId,
     };
 
     loadMonthAdherence();
-  }, [currentMonth, patientId]);
+  }, [currentMonth, patientId, doctorId]);
   const getDaysInMonth = (date: Date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   };
@@ -144,8 +119,8 @@ export const AdherenceCalendar: React.FC<AdherenceCalendarProps> = ({ patientId,
     );
   }
   return (
-    <div className="max-w-sm mx-auto space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <div className="max-w-5xl mx-auto space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <div className="space-y-2">
           <div className="p-3 bg-green-50 border-l-4 border-green-500 rounded">
             <p className="text-xs text-gray-600">Medications Taken</p>
@@ -170,7 +145,11 @@ export const AdherenceCalendar: React.FC<AdherenceCalendarProps> = ({ patientId,
                 fill="none"
                 stroke="#f87171"
                 strokeWidth="8"
-                strokeDasharray={`${(monthStats.missedTotal / (monthStats.takenTotal + monthStats.missedTotal + monthStats.pendingTotal)) * 251} 251`}
+                strokeDasharray={`${
+                  (monthStats.missedTotal /
+                    Math.max(1, monthStats.takenTotal + monthStats.missedTotal + monthStats.pendingTotal)) *
+                  251
+                } 251`}
                 transform="rotate(-90 50 50)"
               />
               <circle
@@ -180,8 +159,16 @@ export const AdherenceCalendar: React.FC<AdherenceCalendarProps> = ({ patientId,
                 fill="none"
                 stroke="#60a5fa"
                 strokeWidth="8"
-                strokeDasharray={`${(monthStats.pendingTotal / (monthStats.takenTotal + monthStats.missedTotal + monthStats.pendingTotal)) * 251} 251`}
-                strokeDashoffset={`-${(monthStats.missedTotal / (monthStats.takenTotal + monthStats.missedTotal + monthStats.pendingTotal)) * 251}`}
+                strokeDasharray={`${
+                  (monthStats.pendingTotal /
+                    Math.max(1, monthStats.takenTotal + monthStats.missedTotal + monthStats.pendingTotal)) *
+                  251
+                } 251`}
+                strokeDashoffset={`-${
+                  (monthStats.missedTotal /
+                    Math.max(1, monthStats.takenTotal + monthStats.missedTotal + monthStats.pendingTotal)) *
+                  251
+                }`}
                 transform="rotate(-90 50 50)"
               />
               <circle
@@ -191,8 +178,16 @@ export const AdherenceCalendar: React.FC<AdherenceCalendarProps> = ({ patientId,
                 fill="none"
                 stroke="#34d399"
                 strokeWidth="8"
-                strokeDasharray={`${(monthStats.takenTotal / (monthStats.takenTotal + monthStats.missedTotal + monthStats.pendingTotal)) * 251} 251`}
-                strokeDashoffset={`-${((monthStats.missedTotal + monthStats.pendingTotal) / (monthStats.takenTotal + monthStats.missedTotal + monthStats.pendingTotal)) * 251}`}
+                strokeDasharray={`${
+                  (monthStats.takenTotal /
+                    Math.max(1, monthStats.takenTotal + monthStats.missedTotal + monthStats.pendingTotal)) *
+                  251
+                } 251`}
+                strokeDashoffset={`-${
+                  ((monthStats.missedTotal + monthStats.pendingTotal) /
+                    Math.max(1, monthStats.takenTotal + monthStats.missedTotal + monthStats.pendingTotal)) *
+                  251
+                }`}
                 transform="rotate(-90 50 50)"
               />
             </svg>
@@ -219,7 +214,7 @@ export const AdherenceCalendar: React.FC<AdherenceCalendarProps> = ({ patientId,
           </div>
         </div>
       </div>
-      <div className="bg-white p-4 rounded-lg border border-gray-200">
+      <div className="bg-white p-4 rounded-lg border border-gray-200 overflow-x-auto">
         <div className="flex items-center justify-between mb-4 gap-2">
           <button
             onClick={handlePrevMonth}
@@ -257,9 +252,12 @@ export const AdherenceCalendar: React.FC<AdherenceCalendarProps> = ({ patientId,
                 key={day}
                 onClick={() => {
                   const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-                  setSelectedDate(date);
-                  setShowDetailsPanel(true);
-                  onDayClick?.(date);
+                  if (onDayClick) {
+                    onDayClick(date);
+                  } else {
+                    setSelectedDate(date);
+                    setShowDetailsPanel(true);
+                  }
                 }}
                 className={`w-8 h-8 p-1 rounded-lg border-2 cursor-pointer transition-all hover:shadow-md flex items-center justify-center ${getAdherenceColor(percentage)}`}
               >
@@ -278,6 +276,7 @@ export const AdherenceCalendar: React.FC<AdherenceCalendarProps> = ({ patientId,
       </div>
 
       <MedicationAdherenceDetailsPanel
+        doctorId={doctorId}
         patientId={patientId}
         selectedDate={selectedDate}
         isOpen={showDetailsPanel}

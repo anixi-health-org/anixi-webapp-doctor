@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { formatTimestamp, getDateString, getTimeSlot, convertTimestamp, transformVitalsRecord } from '../utils/dateFormatter';
+import { formatTimestamp, getDateString, getTimeSlot } from '../utils/dateFormatter';
+import { getDailyAdherence, getDoctorDailyAdherence } from '../services/adherenceService';
 interface DailyAdherenceViewProps {
   patientId: string;
+  doctorId?: string;
   date: Date;
   onPreviousDay: () => void;
   onNextDay: () => void;
@@ -28,6 +28,7 @@ interface DailyData {
 }
 export const DailyAdherenceView: React.FC<DailyAdherenceViewProps> = ({
   patientId,
+  doctorId,
   date,
   onPreviousDay,
   onNextDay,
@@ -35,69 +36,61 @@ export const DailyAdherenceView: React.FC<DailyAdherenceViewProps> = ({
   const [dailyData, setDailyData] = useState<DailyData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const dateStr = getDateString(date);
+
   useEffect(() => {
-    loadDailyData();
-  }, [dateStr, patientId]);
-  const loadDailyData = async () => {
-    try {
-      setIsLoading(true);
-      const moodQuery = query(
-        collection(db, `Users/${patientId}/mood_entries`),
-        where('timestamp', '>=', new Date(date.getTime())),
-        where('timestamp', '<', new Date(date.getTime() + 24 * 60 * 60 * 1000))
-      );
-      const moodSnapshot = await getDocs(moodQuery);
-      const moodEntries = moodSnapshot.docs.map((doc) => ({
-        timestamp: convertTimestamp(doc.data().timestamp),
-        mood: doc.data().mood,
-        notes: doc.data().notes,
-      }));
-      const adherenceQuery = query(
-        collection(db, `Users/${patientId}/adherence_records`),
-        where('scheduledTime', '>=', new Date(date.getTime())),
-        where('scheduledTime', '<', new Date(date.getTime() + 24 * 60 * 60 * 1000))
-      );
-      const adherenceSnapshot = await getDocs(adherenceQuery);
-      const medicationsByTimeSlot: { [key in 'morning' | 'afternoon' | 'evening']: MedicationEntry[] } = {
-        morning: [],
-        afternoon: [],
-        evening: [],
-      };
-      adherenceSnapshot.docs.forEach((doc) => {
-        const data = doc.data();
-        const scheduledTime = convertTimestamp(data.scheduledTime);
-        const timeSlot = getTimeSlot(scheduledTime);
-        medicationsByTimeSlot[timeSlot].push({
-          medicationName: data.medicationName,
-          dosage: data.dosage,
-          scheduledTime,
-          status: data.status || 'pending',
-          takenTime: convertTimestamp(data.takenTime),
-          timeSlot,
+    const loadDailyData = async () => {
+      try {
+        setIsLoading(true);
+        const result = doctorId
+          ? await getDoctorDailyAdherence(doctorId, patientId, dateStr)
+          : await getDailyAdherence(patientId, dateStr);
+
+        const moodEntries = Object.values(result.mood || {}).map((mood: any) => ({
+          timestamp: mood.createdAt ? new Date(mood.createdAt) : null,
+          mood: mood.level || 'neutral',
+          notes: mood.notes,
+        }));
+
+        const medicationsByTimeSlot: {
+          [key in 'morning' | 'afternoon' | 'evening']: MedicationEntry[];
+        } = {
+          morning: [],
+          afternoon: [],
+          evening: [],
+        };
+
+        result.medications.forEach((data) => {
+          const scheduledTime = data.scheduledTime?.toDate?.() || data.scheduledTime || null;
+          const takenTime = data.takenTime?.toDate?.() || data.takenTime || null;
+          const timeSlot = getTimeSlot(scheduledTime);
+          medicationsByTimeSlot[timeSlot].push({
+            medicationName: data.medicationName || 'Unknown',
+            dosage: data.dosage || 'Not specified',
+            scheduledTime,
+            status: data.status || 'pending',
+            takenTime,
+            timeSlot,
+          });
         });
-      });
-      const vitalsQuery = query(
-        collection(db, `Users/${patientId}/vitals_records`),
-        where('timestamp', '>=', new Date(date.getTime())),
-        where('timestamp', '<', new Date(date.getTime() + 24 * 60 * 60 * 1000))
-      );
-      const vitalsSnapshot = await getDocs(vitalsQuery);
-      const vitals = vitalsSnapshot.docs.length > 0 ? transformVitalsRecord(vitalsSnapshot.docs[0].data()) : null;
-      setDailyData({
-        moodEntries,
-        medications: medicationsByTimeSlot,
-        vitals,
-      });
-    } catch (error) {
-      ;
-      setDailyData({
-        moodEntries: [],
-        medications: { morning: [], afternoon: [], evening: [] },
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+
+        setDailyData({
+          moodEntries,
+          medications: medicationsByTimeSlot,
+          vitals: result.vitals || null,
+        });
+      } catch (error) {
+        ;
+        setDailyData({
+          moodEntries: [],
+          medications: { morning: [], afternoon: [], evening: [] },
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadDailyData();
+  }, [dateStr, patientId, doctorId]);
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-[10vh]">

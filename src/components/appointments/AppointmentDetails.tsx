@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Appointment } from '../../types';
+import { Appointment, ConsultType } from '../../types';
 import { convertTimestamp } from '../../utils/dateFormatter';
 import { customColors } from '../../lib/customColors';
 import { updateAppointment, syncAppointmentStatus } from '../../services/appointmentService';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useAuth } from '../../hooks/AuthContext';
+import { validateSlot } from '../../services/schedulingService';
 
 interface AppointmentDetailsProps {
   appointment: Appointment;
@@ -74,6 +76,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   onReschedule,
 }) => {
   const { can } = usePermissions();
+  const { user, practiceSession } = useAuth();
   const canManage = can('manageAppointments');
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [rescheduleDate, setRescheduleDate] = useState(appointment.date.toISOString().split('T')[0]);
@@ -93,6 +96,13 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   const appointmentStatus = String(appointment.status || 'pending');
   const appointmentTime = typeof appointment.time === 'string' ? appointment.time : '10:00 AM';
   const appointmentNotes = String(appointment.notes || '');
+
+  const toConsultType = (): ConsultType => {
+    if (appointment.consultType) return appointment.consultType;
+    if (appointment.type === 'Virtual') return 'teleconsult';
+    if (appointment.type === 'Follow-up') return 'follow-up';
+    return 'initial';
+  };
 
   const handleAccept = async () => {
     if (!onStatusChange) return;
@@ -136,28 +146,62 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     setError(null);
     try {
       const newDate = new Date(rescheduleDate);
-      // Allow 24/7 scheduling - no conflict check
-      // const hasConflict = await checkAppointmentConflict(
-      //   appointment.doctorId,
-      //   newDate,
-      //   convertTo12Hour(rescheduleTime),
-      //   appointment.id
-      // );
+      const [hours, minutes] = rescheduleTime.split(':').map(Number);
+      const startAt = new Date(newDate);
+      startAt.setHours(hours, minutes, 0, 0);
+      const endAt = new Date(startAt.getTime() + 30 * 60_000);
 
-      // if (hasConflict) {
-      //   setError('This time slot is already booked. Please choose a different date or time.');
-      //   setIsProcessing(false);
-      //   return;
-      // }
+      const practiceId = practiceSession?.practice?.id;
+      let overrideApplied = false;
+      let conflictMeta: Appointment['conflictMeta'] = undefined;
+
+      if (practiceId && user?.id) {
+        const validation = await validateSlot(
+          practiceId,
+          user.id,
+          startAt,
+          endAt,
+          toConsultType(),
+          appointment.id
+        );
+
+        if (!validation.valid) {
+          if (validation.reason === 'soft_block_conflict' && can('overrideConflicts')) {
+            overrideApplied = true;
+            conflictMeta = {
+              softBlockId: validation.softBlock?.id,
+              reason: `Soft block override: ${validation.softBlock?.title ?? 'blocked time'}`,
+            };
+          } else {
+            const reasonMessage =
+              validation.reason === 'outside_bookable_block'
+                ? 'The selected time is outside configured bookable blocks.'
+                : validation.reason === 'consult_type_not_allowed'
+                ? 'This consult type is not allowed for that time block.'
+                : validation.reason === 'soft_block_conflict'
+                ? 'This time overlaps a soft block and you do not have override permission.'
+                : validation.reason === 'appointment_conflict'
+                ? 'This time conflicts with another appointment.'
+                : 'This time slot is not available.';
+            setError(reasonMessage);
+            setIsProcessing(false);
+            return;
+          }
+        }
+      }
 
       await updateAppointment(appointment.doctorId, appointment.id, {
-        date: newDate,
+        date: startAt,
         time: convertTo12Hour(rescheduleTime),
-        status: 'confirmed'
+        startAt,
+        endAt,
+        status: 'confirmed',
+        overrideApplied,
+        conflictMeta,
       });
       // Force sync to ensure mobile app sees the changes
       await syncAppointmentStatus(appointment.id);
-      onReschedule(appointment.id, newDate, convertTo12Hour(rescheduleTime));
+      onReschedule(appointment.id, startAt, convertTo12Hour(rescheduleTime));
       setShowRescheduleModal(false);
       onClose();
     } catch (err) {

@@ -6,12 +6,17 @@ import { Patient, PatientStatus } from '../types';
 import { getDoctorPatients } from '../services/patientManagementService';
 import { getDashboardStats } from '../services/doctorService';
 import { DashboardStats } from '../types';
+import {
+  getDoctorPatientsAdherenceSummary,
+  type PatientAdherenceListSummary,
+} from '../services/adherenceService';
 export const PatientList: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const filterParam = (searchParams.get('filter') || 'total') as PatientStatus | 'total' | 'all';
   const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
+  const [adherenceByPatient, setAdherenceByPatient] = useState<Map<string, PatientAdherenceListSummary>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -27,6 +32,13 @@ export const PatientList: React.FC = () => {
           getDoctorPatients(user.id),
           getDashboardStats(user.id),
         ]);
+
+        const adherenceSummary = await getDoctorPatientsAdherenceSummary(
+          user.id,
+          patientsData.map((patient) => patient.id)
+        );
+
+        setAdherenceByPatient(adherenceSummary);
         applyFilter(patientsData, filterParam, statsData);
       } catch (err) {
         ;
@@ -139,6 +151,14 @@ export const PatientList: React.FC = () => {
               key={patient.id}
               patient={patient}
               status={getPatientStatus(patient)}
+              adherenceRate={adherenceByPatient.get(patient.id)?.adherenceRate}
+              adherenceLabel={adherenceByPatient.get(patient.id)?.statusLabel}
+              onOpenAdherenceCalendar={() =>
+                navigate(`/patient-profile/${patient.id}/adherence-calendar`)
+              }
+              onOpenAdherenceLogs={() =>
+                navigate(`/patient-profile/${patient.id}/adherence-logs`)
+              }
               onClick={() => navigate(`/patient-profile/${patient.id}`)}
             />
           ))}

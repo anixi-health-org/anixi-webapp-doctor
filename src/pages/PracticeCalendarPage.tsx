@@ -61,7 +61,7 @@ const PracticeCalendarPage: React.FC = () => {
       alert('Schedule saved successfully!');
     } catch (error) {
       console.error('Error saving schedule:', error);
-      alert('Failed to save schedule. Please try again.');
+      // Removed error alert as requested
     } finally {
       setSaving(false);
     }

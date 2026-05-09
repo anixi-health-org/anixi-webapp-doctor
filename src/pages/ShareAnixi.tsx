@@ -25,32 +25,6 @@ export const ShareAnixi: React.FC = () => {
           <p className="opacity-90">Invite colleagues and patients to join the platform</p>
         </div>
         <div className="p-6">
-          <div className="border-t border-gray-200 pt-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Invitation Stats</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-200">
-                <p className="text-3xl font-bold text-purple-600">{referral.invitationsSent}</p>
-                <p className="text-sm text-gray-600 mt-1">Invitations Sent</p>
-              </div>
-              <div className="text-center p-4 bg-[#f0f2f1] rounded-lg border border-[#cbd5d2]">
-                <p className="text-3xl font-bold text-[#425950]">{referral.invitationsAccepted}</p>
-                <p className="text-sm text-gray-600 mt-1">Accepted</p>
-              </div>
-              <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
-                <p className="text-3xl font-bold text-green-600">0</p>
-                <p className="text-sm text-gray-600 mt-1">Rewards Available</p>
-              </div>
-            </div>
-          </div>
-          <div className="mt-8 bg-[#f0f2f1] border-l-4 border-[#425950] p-4 rounded">
-            <h4 className="font-semibold text-gray-900 mb-2">Benefits of Sharing</h4>
-            <ul className="text-sm text-gray-700 space-y-1">
-              <li>✓ Build your professional network</li>
-              <li>✓ Help colleagues discover Anixi</li>
-              <li>✓ Earn rewards for successful referrals</li>
-              <li>✓ Track all your invitations in real-time</li>
-            </ul>
-          </div>
           <div className="mt-8">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Download Anixi Health App</h3>
             <p className="text-gray-600 mb-4">Share the Anixi Health app with your patients and colleagues!</p>
