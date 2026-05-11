@@ -130,7 +130,10 @@ export const AppointmentsPage: React.FC = () => {
     filteredAppointments = appointments.filter((a) => a.status === filterStatus);
   }
   return (
-    <div className={`min-h-screen bg-[${customColors.backgroundLight}] p-6 max-w-7xl mx-auto`}>
+    <div
+      className="min-h-screen max-w-7xl mx-auto px-3 py-4 sm:px-4 sm:py-6 lg:px-6"
+      style={{ backgroundColor: customColors.backgroundLight }}
+    >
       {toast.visible && (
         <Toast
           message={toast.message}
@@ -139,19 +142,19 @@ export const AppointmentsPage: React.FC = () => {
         />
       )}
       {}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
+      <div className="mb-6 sm:mb-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900">Appointments</h1>
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">Appointments</h1>
             <p className="mt-2 text-gray-600">Manage and view all patient appointments</p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             {can('manageAppointments') && (
               <button
                 onClick={() => {
                   setShowCreateModal(true);
                 }}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                className="w-full sm:w-auto px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
               >
                 ➕ New Appointment
               </button>
@@ -173,7 +176,7 @@ export const AppointmentsPage: React.FC = () => {
       )}
       {}
       {!isLoading && !error && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
           {}
           <button
             onClick={() => handleCardClick('All')}

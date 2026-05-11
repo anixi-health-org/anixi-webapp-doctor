@@ -78,12 +78,12 @@ export const MedicationAdherenceCalendar: React.FC<MedicationAdherenceCalendarPr
       : 0;
 
   return (
-    <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
-      <div className="flex items-center justify-between mb-4">
+    <div className="bg-white rounded-xl shadow-md border border-gray-200 p-4 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
         <h3 className="text-lg font-bold text-gray-900">📅 Adherence Calendar</h3>
         <button
           onClick={onViewDetails}
-          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+          className="text-blue-600 hover:text-blue-800 text-sm font-medium self-start"
         >
           View Details →
         </button>
@@ -98,9 +98,9 @@ export const MedicationAdherenceCalendar: React.FC<MedicationAdherenceCalendarPr
       ) : (
         <>
           {}
-          <div className="mb-6 flex items-center gap-6">
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center gap-5 sm:gap-6">
             {}
-            <div className="relative w-32 h-32">
+            <div className="relative w-24 h-24 sm:w-32 sm:h-32 mx-auto sm:mx-0">
               <svg className="w-full h-full transform -rotate-90" viewBox="0 0 120 120">
                 {}
                 <circle cx="60" cy="60" r="54" fill="none" stroke="#e5e7eb" strokeWidth="8" />
@@ -122,14 +122,14 @@ export const MedicationAdherenceCalendar: React.FC<MedicationAdherenceCalendarPr
               {}
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-blue-600">{adherencePercentage}%</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-blue-600">{adherencePercentage}%</p>
                   <p className="text-xs text-gray-600">Adherence</p>
                 </div>
               </div>
             </div>
 
             {}
-            <div className="flex-1 space-y-3">
+            <div className="w-full flex-1 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-gray-700">Days Recorded:</span>
                 <span className="text-lg font-bold text-gray-900">{adherenceDates.length}</span>
@@ -148,19 +148,19 @@ export const MedicationAdherenceCalendar: React.FC<MedicationAdherenceCalendarPr
           {}
           <div>
             {}
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between gap-2 mb-4">
               <button
                 onClick={previousMonth}
-                className="text-gray-600 hover:text-gray-900 px-2 py-1"
+                className="text-gray-600 hover:text-gray-900 px-2 py-1 text-sm"
               >
                 ← Prev
               </button>
-              <p className="font-bold text-gray-900">
+              <p className="font-bold text-gray-900 text-sm sm:text-base text-center">
                 {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
               </p>
               <button
                 onClick={nextMonth}
-                className="text-gray-600 hover:text-gray-900 px-2 py-1"
+                className="text-gray-600 hover:text-gray-900 px-2 py-1 text-sm"
               >
                 Next →
               </button>
@@ -169,7 +169,7 @@ export const MedicationAdherenceCalendar: React.FC<MedicationAdherenceCalendarPr
             {}
             <div className="grid grid-cols-7 gap-1 mb-2">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                <div key={day} className="text-center text-xs font-bold text-gray-600 py-2">
+                <div key={day} className="text-center text-[10px] sm:text-xs font-bold text-gray-600 py-2">
                   {day}
                 </div>
               ))}
@@ -190,7 +190,7 @@ export const MedicationAdherenceCalendar: React.FC<MedicationAdherenceCalendarPr
                     onClick={() => dateStr && onSelectDate && onSelectDate(dateStr)}
                     disabled={day === null}
                     className={`
-                      aspect-square flex items-center justify-center rounded-lg text-sm font-medium
+                      aspect-square flex items-center justify-center rounded-lg text-xs sm:text-sm font-medium
                       transition-all duration-200 cursor-pointer relative
                       ${day === null ? 'bg-transparent cursor-default' : 'hover:shadow-md hover:scale-105'}
                       ${
@@ -206,8 +206,8 @@ export const MedicationAdherenceCalendar: React.FC<MedicationAdherenceCalendarPr
                     {day ? (
                       <>
                         <span>{day}</span>
-                        {adherenceStatus === 'taken' && <span className="absolute text-lg">✓</span>}
-                        {adherenceStatus === 'missed' && <span className="absolute text-lg">✗</span>}
+                        {adherenceStatus === 'taken' && <span className="absolute text-sm sm:text-lg">✓</span>}
+                        {adherenceStatus === 'missed' && <span className="absolute text-sm sm:text-lg">✗</span>}
                       </>
                     ) : null}
                   </button>
@@ -219,7 +219,7 @@ export const MedicationAdherenceCalendar: React.FC<MedicationAdherenceCalendarPr
           {}
           <div className="mt-6 pt-4 border-t border-gray-200">
             <p className="text-sm font-semibold text-gray-900 mb-3">Legend</p>
-            <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <div className="w-5 h-5 bg-green-100 border-2 border-green-400 rounded flex items-center justify-center text-green-800 font-bold">✓</div>
                 <span className="text-gray-700">Taken</span>

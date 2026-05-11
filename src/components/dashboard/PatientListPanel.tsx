@@ -81,7 +81,7 @@ export const PatientListPanel: React.FC<PatientListPanelProps> = ({
           placeholder="🔍 Search patients..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>
 
@@ -119,7 +119,7 @@ export const PatientListPanel: React.FC<PatientListPanelProps> = ({
                   }
                 `}
               >
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-1">
                       <div className="w-10 h-10 rounded-full bg-[#425950] flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
@@ -131,8 +131,8 @@ export const PatientListPanel: React.FC<PatientListPanelProps> = ({
                       </div>
                     </div>
                   </div>
-                  <div className="flex-shrink-0">
-                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium whitespace-nowrap ${getStatusColor(status)}`}>
+                  <div className="flex-shrink-0 self-start sm:self-auto">
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap ${getStatusColor(status)}`}>
                       {status}
                     </span>
                   </div>

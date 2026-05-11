@@ -58,7 +58,7 @@ export const BookingPoliciesForm: React.FC<Props> = ({
             onChange={(e) =>
               setForm({ ...form, patientCancellationWindowHours: Number(e.target.value) })
             }
-            className="w-full text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#516059] disabled:bg-gray-100"
+            className="w-full text-sm border border-gray-300 rounded px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#516059] disabled:bg-gray-100"
           />
           <p className="text-xs text-gray-500 mt-1">
             Patients must cancel at least this many hours before the appointment.
@@ -77,7 +77,7 @@ export const BookingPoliciesForm: React.FC<Props> = ({
             onChange={(e) =>
               setForm({ ...form, doctorCancellationWindowHours: Number(e.target.value) })
             }
-            className="w-full text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#516059] disabled:bg-gray-100"
+            className="w-full text-sm border border-gray-300 rounded px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#516059] disabled:bg-gray-100"
           />
         </div>
 
@@ -90,7 +90,7 @@ export const BookingPoliciesForm: React.FC<Props> = ({
             value={form.noShowPolicyText}
             disabled={readOnly}
             onChange={(e) => setForm({ ...form, noShowPolicyText: e.target.value })}
-            className="w-full text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#516059] disabled:bg-gray-100"
+            className="w-full text-sm border border-gray-300 rounded px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#516059] disabled:bg-gray-100"
             placeholder="Describe your no-show policy…"
           />
         </div>
@@ -99,7 +99,7 @@ export const BookingPoliciesForm: React.FC<Props> = ({
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Confirmation Mode
           </label>
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             {[
               { value: 'auto', label: 'Auto-confirm', desc: 'Appointments confirmed immediately' },
               {
@@ -145,7 +145,7 @@ export const BookingPoliciesForm: React.FC<Props> = ({
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-5 py-2 bg-[#516059] text-white text-sm rounded-lg hover:bg-[#45524D] disabled:opacity-50 transition-colors"
+          className="px-5 py-2.5 bg-[#516059] text-white text-sm rounded-lg hover:bg-[#45524D] disabled:opacity-50 transition-colors w-full sm:w-auto"
         >
           {saving ? 'Saving…' : 'Save Policies'}
         </button>
