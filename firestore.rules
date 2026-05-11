@@ -157,6 +157,13 @@ service cloud.firestore {
         allow write: if isSignedIn() &&
           hasPerm(practiceId, 'editBookingPolicies');
       }
+
+      // ─── Daily Schedule ────────────────────────────────────────────────────────
+
+      match /dailySchedule/{dateId} {
+        allow read: if isSignedIn() && isMember(practiceId);
+        allow write: if isSignedIn() && isMember(practiceId);
+      }
     }
   }
 }
