@@ -18,6 +18,8 @@ const PracticeCalendarPage: React.FC = () => {
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const practice = practiceSession?.practice;
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
@@ -58,10 +60,13 @@ const PracticeCalendarPage: React.FC = () => {
         closeTime: availability === 'closed' ? undefined : closeTime,
         note: note.trim() || undefined,
       });
-      alert('Schedule saved successfully!');
+      setSuccessMessage('Schedule saved successfully!');
+      setErrorMessage(null);
+      window.setTimeout(() => setSuccessMessage(null), 5000);
     } catch (error) {
       console.error('Error saving schedule:', error);
-      // Removed error alert as requested
+      const msg = (error as any)?.message || String(error);
+      setErrorMessage(msg || 'Error saving schedule. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -171,6 +176,18 @@ const PracticeCalendarPage: React.FC = () => {
 
           {/* Save Button */}
           <div className="flex justify-end">
+            <div className="flex-1 mr-4">
+              {successMessage && (
+                <div className="mb-2 text-sm text-green-800 bg-green-50 border border-green-100 rounded px-3 py-2">
+                  {successMessage}
+                </div>
+              )}
+              {errorMessage && (
+                <div className="mb-2 text-sm text-red-800 bg-red-50 border border-red-100 rounded px-3 py-2">
+                  {errorMessage}
+                </div>
+              )}
+            </div>
             <button
               onClick={handleSave}
               disabled={saving || loading}
