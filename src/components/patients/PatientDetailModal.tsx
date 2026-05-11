@@ -23,11 +23,11 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-[#425950] px-6 py-4 flex items-center justify-between">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4">
+      <div className="bg-white rounded-t-xl sm:rounded-xl shadow-2xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-[#425950] px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-bold text-white">{patient.displayName}</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-white break-words">{patient.displayName}</h2>
             <p className="text-gray-200 text-sm">Patient Profile</p>
           </div>
           <button
@@ -49,7 +49,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
             </svg>
           </button>
         </div>
-        <div className="p-6 space-y-6">
+        <div className="p-4 sm:p-6 space-y-6">
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <svg
@@ -67,10 +67,10 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
               </svg>
               Personal Information
             </h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-gray-50 rounded-lg p-4">
                 <p className="text-xs font-semibold text-gray-500 mb-1">EMAIL</p>
-                <p className="text-gray-900 font-medium">{patient.email}</p>
+                <p className="text-gray-900 font-medium break-all">{patient.email}</p>
               </div>
               {age !== undefined && (
                 <div className="bg-gray-50 rounded-lg p-4">
@@ -114,7 +114,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                 </div>
               )}
               {patient.address && (
-                <div className="bg-gray-50 rounded-lg p-4 col-span-2">
+                <div className="bg-gray-50 rounded-lg p-4 sm:col-span-2">
                   <p className="text-xs font-semibold text-gray-500 mb-1">ADDRESS</p>
                   <p className="text-gray-900 font-medium">{patient.address}</p>
                 </div>
@@ -214,7 +214,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
             </div>
           </div>
         </div>
-        <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end">
+        <div className="bg-gray-50 border-t border-gray-200 px-4 sm:px-6 py-3 sm:py-4 flex justify-end">
           <button
             onClick={onClose}
             className="px-6 py-2 bg-gray-200 text-gray-900 rounded-lg font-medium hover:bg-gray-300 transition-colors"

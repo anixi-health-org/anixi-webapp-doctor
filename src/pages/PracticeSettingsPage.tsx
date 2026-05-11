@@ -80,7 +80,7 @@ const PracticeSettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
+    <div className="min-h-screen bg-gray-50 px-3 py-4 sm:px-4 sm:py-6 lg:px-6 max-w-5xl mx-auto">
       {toast.visible && (
         <Toast
           message={toast.message}
@@ -91,8 +91,8 @@ const PracticeSettingsPage: React.FC = () => {
 
       {/* Header */}
       <div className="mb-6">
-        <div className="flex items-center gap-3 mb-1">
-          <h1 className="text-3xl font-bold text-gray-900">Practice Settings</h1>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Practice Settings</h1>
           <span
             className={`px-2.5 py-0.5 text-xs font-medium rounded-full ${
               isOwner
@@ -109,12 +109,12 @@ const PracticeSettingsPage: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-gray-200">
+      <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto pb-1">
         {TAB_CONFIG.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            className={`px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
               activeTab === tab.id
                 ? 'border-[#516059] text-[#45524D]'
                 : 'border-transparent text-gray-600 hover:text-gray-900'
@@ -136,7 +136,7 @@ const PracticeSettingsPage: React.FC = () => {
           <div className="animate-spin w-8 h-8 border-4 border-gray-200 border-t-[#516059] rounded-full" />
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           {/* Overview */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
@@ -145,7 +145,7 @@ const PracticeSettingsPage: React.FC = () => {
                   Practice Name
                 </label>
                 {editingName ? (
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       autoFocus
                       value={practiceNameDraft}
@@ -155,7 +155,7 @@ const PracticeSettingsPage: React.FC = () => {
                     <button
                       onClick={handleSaveName}
                       disabled={savingName}
-                      className="px-4 py-2 text-sm text-white rounded-lg disabled:opacity-50"
+                      className="px-4 py-2 text-sm text-white rounded-lg disabled:opacity-50 w-full sm:w-auto"
                       style={{ backgroundColor: PRACTICE_BRAND.primary }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.backgroundColor = PRACTICE_BRAND.primaryDark;
@@ -168,7 +168,7 @@ const PracticeSettingsPage: React.FC = () => {
                     </button>
                     <button
                       onClick={() => setEditingName(false)}
-                      className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
+                      className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 w-full sm:w-auto"
                     >
                       Cancel
                     </button>
@@ -202,7 +202,7 @@ const PracticeSettingsPage: React.FC = () => {
                 </label>
                 <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
                   <p className="text-sm font-semibold text-gray-900 capitalize mb-3">{role}</p>
-                  <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {[
                       { key: 'manageAppointments', label: 'Manage Appointments' },
                       { key: 'manageSoftBlocks', label: 'Manage Soft Blocks' },

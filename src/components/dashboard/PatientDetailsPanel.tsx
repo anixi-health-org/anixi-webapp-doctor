@@ -23,25 +23,25 @@ export const PatientDetailsPanel: React.FC<PatientDetailsPanelProps> = ({ patien
   return (
     <div className="bg-white h-full overflow-y-auto">
       {}
-      <div className="sticky top-0 bg-[#425950] text-white p-6 shadow-lg">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center text-2xl font-bold text-[#425950]">
+      <div className="sticky top-0 bg-[#425950] text-white p-4 sm:p-6 shadow-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-white flex items-center justify-center text-xl sm:text-2xl font-bold text-[#425950]">
             {(patient.displayName || patient.email)?.charAt(0).toUpperCase()}
           </div>
-          <div>
-            <h2 className="text-2xl font-bold">{patient.displayName || patient.email}</h2>
-            <p className="text-gray-200">{patient.email}</p>
+          <div className="min-w-0">
+            <h2 className="text-xl sm:text-2xl font-bold break-words">{patient.displayName || patient.email}</h2>
+            <p className="text-gray-200 break-all text-sm sm:text-base">{patient.email}</p>
           </div>
         </div>
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6">
         {}
         <div>
           <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
             <span>👤</span> Personal Information
           </h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {age !== undefined && (
               <div className="bg-gray-50 p-4 rounded-lg">
                 <p className="text-sm text-gray-600">Age</p>
@@ -67,7 +67,7 @@ export const PatientDetailsPanel: React.FC<PatientDetailsPanelProps> = ({ patien
             {patient.phoneNumber && (
               <div className="bg-gray-50 p-4 rounded-lg">
                 <p className="text-sm text-gray-600">Phone</p>
-                <p className="text-xl font-bold text-gray-900">{patient.phoneNumber}</p>
+                <p className="text-xl font-bold text-gray-900 break-all">{patient.phoneNumber}</p>
               </div>
             )}
           </div>

@@ -117,7 +117,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
         </p>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">Soft Blocks</h3>
           <p className="text-xs text-gray-500 mt-0.5">
@@ -126,7 +126,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
         </div>
         <button
           onClick={() => setShowForm((s) => !s)}
-          className="px-3 py-1.5 text-sm bg-[#516059] text-white rounded-lg hover:bg-[#45524D] transition-colors"
+          className="px-4 py-2.5 text-sm bg-[#516059] text-white rounded-lg hover:bg-[#45524D] transition-colors w-full sm:w-auto"
         >
           {showForm ? 'Cancel' : '+ Add Soft Block'}
         </button>
@@ -134,7 +134,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
 
       {showForm && (
         <div className="border border-[#C6CFCA] rounded-lg p-4 bg-[#EEF2F0] space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-gray-700 mb-1">Title</label>
               <input
@@ -142,7 +142,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 placeholder="e.g. Morning surgery"
-                className="w-full text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#516059]"
+                className="w-full text-sm border border-gray-300 rounded px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#516059]"
               />
             </div>
             <div className="col-span-2">
@@ -153,7 +153,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
                     key={c.value}
                     type="button"
                     onClick={() => setForm({ ...form, category: c.value })}
-                    className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                    className={`px-2.5 py-1.5 text-xs rounded-full border transition-colors ${
                       form.category === c.value
                         ? 'bg-[#B7A06A] text-white border-[#B7A06A]'
                         : 'bg-white text-gray-700 border-gray-300 hover:border-[#B7A06A]'
@@ -170,7 +170,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
                 type="datetime-local"
                 value={form.startAt}
                 onChange={(e) => setForm({ ...form, startAt: e.target.value })}
-                className="w-full text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#516059]"
+                className="w-full text-sm border border-gray-300 rounded px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#516059]"
               />
             </div>
             <div>
@@ -179,7 +179,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
                 type="datetime-local"
                 value={form.endAt}
                 onChange={(e) => setForm({ ...form, endAt: e.target.value })}
-                className="w-full text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#516059]"
+                className="w-full text-sm border border-gray-300 rounded px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#516059]"
               />
             </div>
           </div>
@@ -195,7 +195,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
           </label>
 
           {form.recurring && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Frequency</label>
                 <select
@@ -206,7 +206,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
                       recurrenceFrequency: e.target.value as 'daily' | 'weekly',
                     })
                   }
-                  className="w-full text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#516059]"
+                  className="w-full text-sm border border-gray-300 rounded px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#516059]"
                 >
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
@@ -220,7 +220,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
                   type="date"
                   value={form.recurrenceEndDate}
                   onChange={(e) => setForm({ ...form, recurrenceEndDate: e.target.value })}
-                  className="w-full text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#516059]"
+                  className="w-full text-sm border border-gray-300 rounded px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#516059]"
                 />
               </div>
             </div>
@@ -230,7 +230,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-2 text-sm bg-[#516059] text-white rounded-lg hover:bg-[#45524D] disabled:opacity-50 transition-colors"
+            className="px-4 py-2.5 text-sm bg-[#516059] text-white rounded-lg hover:bg-[#45524D] disabled:opacity-50 transition-colors w-full sm:w-auto"
           >
             {saving ? 'Saving…' : 'Save Soft Block'}
           </button>
@@ -248,7 +248,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
               return (
                 <div
                   key={sb.id}
-                  className="flex items-center justify-between border border-[#DDE4E0] rounded-lg px-4 py-3 bg-white"
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-[#DDE4E0] rounded-lg px-4 py-3 bg-white"
                 >
                   <div>
                     <p className="text-sm font-medium text-gray-900">
@@ -265,7 +265,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
                   </div>
                   <button
                     onClick={() => handleDelete(sb.id)}
-                    className="text-xs text-red-500 hover:text-red-700 transition-colors"
+                    className="text-sm text-red-500 hover:text-red-700 transition-colors self-start sm:self-auto px-2 py-1"
                   >
                     Delete
                   </button>
