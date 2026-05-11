@@ -116,7 +116,11 @@ export const PatientProfile: React.FC = () => {
           ← Back
         </button>
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 break-words">{formattedName || 'Patient Profile'}</h1>
+<<<<<<< samira
       <div className="p-6 bg-anixi-beige min-h-screen">
+=======
+    <div className="p-6 bg-anixi-beige min-h-screen">
+>>>>>>> main
       <button
         onClick={() => navigate(-1)}
         className="mb-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition-colors"
