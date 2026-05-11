@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   addDelegate,
   listPracticeMembers,
@@ -40,7 +40,7 @@ export const PracticePermissionsPanel: React.FC<Props> = ({ practiceId, isOwner 
     [members]
   );
 
-  const loadMembers = async () => {
+  const loadMembers = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -51,11 +51,11 @@ export const PracticePermissionsPanel: React.FC<Props> = ({ practiceId, isOwner 
     } finally {
       setLoading(false);
     }
-  };
+  }, [practiceId]);
 
   useEffect(() => {
     void loadMembers();
-  }, [practiceId]);
+  }, [loadMembers]);
 
   const onTogglePermission = (key: keyof PracticePermissions) => {
     setInviteForm((prev) => ({
@@ -114,21 +114,21 @@ export const PracticePermissionsPanel: React.FC<Props> = ({ practiceId, isOwner 
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-gray-200 p-5 bg-white">
-        <h3 className="text-2xl font-semibold text-gray-900">Practice Permissions</h3>
+      <div className="rounded-2xl border border-gray-200 p-4 sm:p-5 bg-white">
+        <h3 className="text-xl sm:text-2xl font-semibold text-gray-900">Practice Permissions</h3>
         <p className="mt-3 text-gray-600 max-w-2xl">
           Manage who can access and modify your practice settings. As the owner, you have full
           control over all features.
         </p>
       </div>
 
-      <div className="rounded-2xl border border-gray-200 p-5 bg-white">
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <h4 className="text-xl font-semibold text-gray-900">Delegates</h4>
+      <div className="rounded-2xl border border-gray-200 p-4 sm:p-5 bg-white">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <h4 className="text-lg sm:text-xl font-semibold text-gray-900">Delegates</h4>
           {isOwner && (
             <button
               onClick={() => setShowInvite((prev) => !prev)}
-              className="px-4 py-2 rounded-xl text-sm text-white transition-colors"
+              className="px-4 py-2.5 rounded-xl text-sm text-white transition-colors w-full sm:w-auto"
               style={{ backgroundColor: BUTTON_BRAND }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = BUTTON_BRAND_DARK;
@@ -147,12 +147,12 @@ export const PracticePermissionsPanel: React.FC<Props> = ({ practiceId, isOwner 
             <p className="text-xs text-gray-600">
               Invite by entering the delegate account UID and email.
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <input
                 value={inviteForm.uid}
                 onChange={(e) => setInviteForm((prev) => ({ ...prev, uid: e.target.value }))}
                 placeholder="Delegate UID"
-                className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#B7A06A]"
+                className="text-sm border border-gray-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#B7A06A]"
               />
               <input
                 value={inviteForm.displayName}
@@ -160,14 +160,14 @@ export const PracticePermissionsPanel: React.FC<Props> = ({ practiceId, isOwner 
                   setInviteForm((prev) => ({ ...prev, displayName: e.target.value }))
                 }
                 placeholder="Display name"
-                className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#B7A06A]"
+                className="text-sm border border-gray-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#B7A06A]"
               />
               <input
                 type="email"
                 value={inviteForm.email}
                 onChange={(e) => setInviteForm((prev) => ({ ...prev, email: e.target.value }))}
                 placeholder="Email"
-                className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#B7A06A]"
+                className="text-sm border border-gray-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#B7A06A]"
               />
             </div>
 
@@ -186,7 +186,7 @@ export const PracticePermissionsPanel: React.FC<Props> = ({ practiceId, isOwner 
                       key={p.key}
                       type="button"
                       onClick={() => onTogglePermission(p.key as keyof PracticePermissions)}
-                      className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                      className={`px-2.5 py-1.5 text-xs rounded-full border transition-colors ${
                         enabled
                           ? 'bg-[#B7A06A] text-white border-[#B7A06A]'
                           : 'bg-white text-gray-700 border-gray-300 hover:border-[#B7A06A]'
@@ -202,7 +202,7 @@ export const PracticePermissionsPanel: React.FC<Props> = ({ practiceId, isOwner 
             <button
               onClick={onInvite}
               disabled={inviteSaving}
-              className="px-4 py-2 text-sm rounded-lg text-white bg-[#516059] hover:bg-[#45524D] disabled:opacity-50"
+              className="px-4 py-2.5 text-sm rounded-lg text-white bg-[#516059] hover:bg-[#45524D] disabled:opacity-50 w-full sm:w-auto"
             >
               {inviteSaving ? 'Inviting…' : 'Save Delegate'}
             </button>
@@ -223,7 +223,7 @@ export const PracticePermissionsPanel: React.FC<Props> = ({ practiceId, isOwner 
               return (
                 <div
                   key={d.uid}
-                  className="rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-3"
+                  className="rounded-xl border border-gray-200 p-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -252,14 +252,14 @@ export const PracticePermissionsPanel: React.FC<Props> = ({ practiceId, isOwner 
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
                     <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-[#FBF8EF] text-[#7F6A3C] border border-[#E1D7BC]">
                       Active
                     </span>
                     {isOwner && (
                       <button
                         onClick={() => onRemove(d.uid)}
-                        className="text-xs text-red-500 hover:text-red-700"
+                        className="text-sm text-red-500 hover:text-red-700 px-2 py-1"
                       >
                         Remove
                       </button>
@@ -272,8 +272,8 @@ export const PracticePermissionsPanel: React.FC<Props> = ({ practiceId, isOwner 
         )}
       </div>
 
-      <div className="rounded-2xl border border-gray-200 p-5 bg-white">
-        <h4 className="text-xl font-semibold text-gray-900 mb-4">Permission Descriptions</h4>
+      <div className="rounded-2xl border border-gray-200 p-4 sm:p-5 bg-white">
+        <h4 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Permission Descriptions</h4>
         <div className="space-y-4">
           <div>
             <p className="text-lg font-medium text-gray-900">Manage Appointments</p>

@@ -18,6 +18,8 @@ const PracticeCalendarPage: React.FC = () => {
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const practice = practiceSession?.practice;
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
@@ -58,10 +60,13 @@ const PracticeCalendarPage: React.FC = () => {
         closeTime: availability === 'closed' ? undefined : closeTime,
         note: note.trim() || undefined,
       });
-      alert('Schedule saved successfully!');
+      setSuccessMessage('Schedule saved successfully!');
+      setErrorMessage(null);
+      window.setTimeout(() => setSuccessMessage(null), 5000);
     } catch (error) {
       console.error('Error saving schedule:', error);
-      // Removed error alert as requested
+      const msg = (error as any)?.message || String(error);
+      setErrorMessage(msg || 'Error saving schedule. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -76,16 +81,16 @@ const PracticeCalendarPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 max-w-2xl mx-auto">
+    <div className="min-h-screen bg-gray-50 px-3 py-4 sm:px-4 sm:py-6 max-w-2xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-1">Practice Calendar</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">Practice Calendar</h1>
         <p className="text-gray-600 text-sm">
           Set today's working hours and availability for your practice.
         </p>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
         <div className="space-y-6">
           {/* Today's Date */}
           <div>
@@ -98,7 +103,7 @@ const PracticeCalendarPage: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-3">
               Availability
             </label>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {[
                 { value: 'open' as const, label: 'Open', color: 'bg-green-100 text-green-800 border-green-200' },
                 { value: 'limited' as const, label: 'Limited', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
@@ -129,7 +134,7 @@ const PracticeCalendarPage: React.FC = () => {
 
           {/* Times */}
           {availability !== 'closed' && (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Open Time
@@ -171,10 +176,22 @@ const PracticeCalendarPage: React.FC = () => {
 
           {/* Save Button */}
           <div className="flex justify-end">
+            <div className="flex-1 mr-4">
+              {successMessage && (
+                <div className="mb-2 text-sm text-green-800 bg-green-50 border border-green-100 rounded px-3 py-2">
+                  {successMessage}
+                </div>
+              )}
+              {errorMessage && (
+                <div className="mb-2 text-sm text-red-800 bg-red-50 border border-red-100 rounded px-3 py-2">
+                  {errorMessage}
+                </div>
+              )}
+            </div>
             <button
               onClick={handleSave}
               disabled={saving || loading}
-              className="px-6 py-2 text-sm text-white rounded-lg disabled:opacity-50"
+              className="px-6 py-2 text-sm text-white rounded-lg disabled:opacity-50 w-full sm:w-auto"
               style={{ backgroundColor: PRACTICE_BRAND.primary }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = PRACTICE_BRAND.primaryDark;

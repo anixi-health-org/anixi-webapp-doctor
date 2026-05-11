@@ -57,7 +57,6 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
             inactiveSet.add(patient.id);
           }
         } catch (err) {
-          ;
           const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
           const lastUpdate = patient.updatedAt ? new Date(patient.updatedAt) : new Date(patient.createdAt);
           if (lastUpdate < fiveDaysAgo) {
@@ -109,82 +108,82 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
 
   return (
     <div className={`bg-[${customColors.backgroundMedium}] min-h-screen`}>
-      {}
       <div className={`sticky top-0 z-40 bg-[${customColors.backgroundLight}] border-b border-gray-200 shadow-sm`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 sm:mb-6">📊 Medical Dashboard</h1>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
-          <h1 className="text-3xl font-bold text-gray-900 mb-6">📊 Medical Dashboard</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-6">📊 Medical Dashboard</h1>
 
-          {}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <DashboardStatsCard
-              label="Total Patients"
-              value={totalPatients}
-              icon="👥"
-              color="blue"
-              onClick={() => {
-                setFilterCategory('all');
-                setShowPatientList(true);
-                setSelectedPatient(null);
-              }}
-              isActive={showPatientList && filterCategory === 'all'}
-              description="Click to view all"
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <DashboardStatsCard
+                label="Total Patients"
+                value={totalPatients}
+                icon="👥"
+                color="blue"
+                onClick={() => {
+                  setFilterCategory('all');
+                  setShowPatientList(true);
+                  setSelectedPatient(null);
+                }}
+                isActive={showPatientList && filterCategory === 'all'}
+                description="Click to view all"
+              />
 
-            <DashboardStatsCard
-              label="Action Required"
-              value={actionRequiredCount}
-              icon="⚠️"
-              color="orange"
-              onClick={() => {
-                setFilterCategory('action');
-                setShowPatientList(true);
-                setSelectedPatient(null);
-              }}
-              isActive={showPatientList && filterCategory === 'action'}
-              description="Need attention"
-            />
+              <DashboardStatsCard
+                label="Action Required"
+                value={actionRequiredCount}
+                icon="⚠️"
+                color="orange"
+                onClick={() => {
+                  setFilterCategory('action');
+                  setShowPatientList(true);
+                  setSelectedPatient(null);
+                }}
+                isActive={showPatientList && filterCategory === 'action'}
+                description="Need attention"
+              />
 
-            <DashboardStatsCard
-              label="Stable Status"
-              value={stableCount}
-              icon="✅"
-              color="green"
-              onClick={() => {
-                setFilterCategory('stable');
-                setShowPatientList(true);
-                setSelectedPatient(null);
-              }}
-              isActive={showPatientList && filterCategory === 'stable'}
-              description="All good"
-            />
+              <DashboardStatsCard
+                label="Stable Status"
+                value={stableCount}
+                icon="✅"
+                color="green"
+                onClick={() => {
+                  setFilterCategory('stable');
+                  setShowPatientList(true);
+                  setSelectedPatient(null);
+                }}
+                isActive={showPatientList && filterCategory === 'stable'}
+                description="All good"
+              />
 
-            <DashboardStatsCard
-              label="Inactive"
-              value={inactiveCount}
-              icon="🔔"
-              color="red"
-              onClick={() => {
-                setFilterCategory('inactive');
-                setShowPatientList(true);
-                setSelectedPatient(null);
-              }}
-              isActive={showPatientList && filterCategory === 'inactive'}
-              description="Not engaged"
-            />
+              <DashboardStatsCard
+                label="Inactive"
+                value={inactiveCount}
+                icon="🔔"
+                color="red"
+                onClick={() => {
+                  setFilterCategory('inactive');
+                  setShowPatientList(true);
+                  setSelectedPatient(null);
+                }}
+                isActive={showPatientList && filterCategory === 'inactive'}
+                description="Not engaged"
+              />
+            </div>
+            {selectedPatient && (
+              <button
+                onClick={() => setSelectedPatient(null)}
+                className="mt-6 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition-colors"
+              >
+                ← Back
+              </button>
+            )}
           </div>
-          {selectedPatient && (
-            <button
-              onClick={() => setSelectedPatient(null)}
-              className="mt-6 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition-colors"
-            >
-              ← Back
-            </button>
-          )}
         </div>
       </div>
 
-      {}
       {selectedPatient && selectedAdherenceDate && (
         <div className={`bg-[${customColors.backgroundLight}] border-t border-gray-200 py-6`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -194,37 +193,37 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
                 background: `linear-gradient(to right, ${colors.gradientStart}, ${colors.gradientEnd})`
               }}
             >
-              <div className="flex flex-col mb-2">
-                <h3 className="text-lg font-bold">{selectedPatient.displayName || selectedPatient.email}</h3>
-              </div>
-            </div>
-
-            {}
-            <div className="mb-6 pb-4 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Daily Adherence Details</h2>
-                  <p className="text-gray-600 mt-1">Detailed view for selected date</p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
+                <div className="flex flex-col mb-2">
+                  <h3 className="text-lg font-bold">{selectedPatient.displayName || selectedPatient.email}</h3>
                 </div>
-                <button
-                  onClick={() => setSelectedAdherenceDate(null)}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                >
-                  ✕ Close Details
-                </button>
               </div>
-            </div>
 
-            <MedicationAdherenceDailyDetails
-              patientId={selectedPatient.id}
-              selectedDate={selectedAdherenceDate}
-              onBack={() => setSelectedAdherenceDate(null)}
-            />
+              <div className="mb-6 pb-4 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Daily Adherence Details</h2>
+                    <p className="text-gray-600 mt-1">Detailed view for selected date</p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedAdherenceDate(null)}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    ✕ Close Details
+                  </button>
+                </div>
+              </div>
+
+              <MedicationAdherenceDailyDetails
+                patientId={selectedPatient.id}
+                selectedDate={selectedAdherenceDate}
+                onBack={() => setSelectedAdherenceDate(null)}
+              />
+            </div>
           </div>
         </div>
       )}
 
-      {}
       {showPatientList && !selectedPatient && (
         <div className={`bg-[${customColors.backgroundLight}] border-t border-gray-200 py-6`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -242,13 +241,10 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
         </div>
       )}
 
-      {}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {selectedPatient ? (
           <div className={`grid grid-cols-1 ${selectedAdherenceDate ? 'lg:grid-cols-1' : 'lg:grid-cols-3'} gap-6`}>
-            {}
             <div className={`${selectedAdherenceDate ? 'w-full' : 'space-y-6'}`}>
-              {}
               {!selectedAdherenceDate && (
                 <div
                   className="text-white p-4 rounded-lg"
@@ -256,19 +252,20 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
                     background: `linear-gradient(to right, ${colors.gradientStart}, ${colors.gradientEnd})`
                   }}
                 >
-                  <div className="flex flex-col mb-2">
-                    <h3 className="text-lg font-bold">{selectedPatient.displayName || selectedPatient.email}</h3>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
+                    <div className="flex flex-col mb-2">
+                      <h3 className="text-lg font-bold">{selectedPatient.displayName || selectedPatient.email}</h3>
+                    </div>
+                    <p
+                      className="text-sm"
+                      style={{ color: colors.secondaryLight }}
+                    >
+                      {getCategoryTitle()}
+                    </p>
                   </div>
-                  <p
-                    className="text-sm"
-                    style={{ color: colors.secondaryLight }}
-                  >
-                    {getCategoryTitle()}
-                  </p>
                 </div>
               )}
 
-              {}
               {!selectedAdherenceDate && (
                 <MedicationAdherenceCalendar
                   patientId={selectedPatient.id}
@@ -277,7 +274,6 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
                 />
               )}
 
-              {}
               {!selectedAdherenceDate && (
                 <MedicationAdherenceLogs
                   patientId={selectedPatient.id}
@@ -286,7 +282,6 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
               )}
             </div>
 
-            {}
             {!selectedAdherenceDate && (
               <div className="lg:col-span-2">
                 <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">

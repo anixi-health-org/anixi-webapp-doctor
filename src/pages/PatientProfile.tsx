@@ -81,7 +81,7 @@ export const PatientProfile: React.FC = () => {
   }
   if (error || !patient) {
     return (
-      <div className="p-6 bg-anixi-beige min-h-screen">
+      <div className="px-3 py-4 sm:px-4 sm:py-6 bg-anixi-beige min-h-screen">
         <button
           onClick={() => navigate(-1)}
           className="mb-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition-colors"
@@ -107,7 +107,16 @@ export const PatientProfile: React.FC = () => {
   const formattedAddress = formatAddress(patient.address);
   const formattedEmail = formatEmail(patient.email);
   return (
-    <div className="p-6 bg-anixi-beige min-h-screen">
+    <div className="px-3 py-4 sm:px-4 sm:py-6 lg:px-6 bg-anixi-beige min-h-screen">
+      <div className="mb-6 sm:mb-8">
+        <button
+          onClick={() => navigate(-1)}
+          className="mb-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition-colors"
+        >
+          ← Back
+        </button>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 break-words">{formattedName || 'Patient Profile'}</h1>
+      <div className="p-6 bg-anixi-beige min-h-screen">
       <button
         onClick={() => navigate(-1)}
         className="mb-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition-colors"
@@ -232,7 +241,7 @@ export const PatientProfile: React.FC = () => {
         <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
           <button
             onClick={() => navigate(`/patient-profile/${patient.id}/mood-checker`)}
-            className="p-6 bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-lg hover:shadow-lg transition-all text-left group"
+            className="p-4 sm:p-6 bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-lg hover:shadow-lg transition-all text-left group"
           >
             <p className="text-3xl mb-2">🎭</p>
             <h3 className="text-lg font-semibold text-gray-900 group-hover:text-purple-700">Mood Checker</h3>
@@ -241,7 +250,7 @@ export const PatientProfile: React.FC = () => {
           </button>
           <button
             onClick={() => navigate(`/patient-profile/${patient.id}/adherence-calendar`)}
-            className="p-6 bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-lg hover:shadow-lg transition-all text-left group"
+            className="p-4 sm:p-6 bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-lg hover:shadow-lg transition-all text-left group"
           >
             <p className="text-3xl mb-2">📅</p>
             <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-700">Adherence Calendar</h3>
@@ -249,7 +258,7 @@ export const PatientProfile: React.FC = () => {
           </button>
           <button
             onClick={() => navigate(`/patient-profile/${patient.id}/adherence-logs`)}
-            className="p-6 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg hover:shadow-lg transition-all text-left group"
+            className="p-4 sm:p-6 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg hover:shadow-lg transition-all text-left group"
           >
             <p className="text-3xl mb-2">📋</p>
             <h3 className="text-lg font-semibold text-gray-900 group-hover:text-green-700">Adherence Logs</h3>
@@ -258,7 +267,7 @@ export const PatientProfile: React.FC = () => {
           </button>
           <button
             onClick={() => navigate(`/patient-profile/${patient.id}/vitals-history`)}
-            className="p-6 bg-gradient-to-br from-red-50 to-orange-50 border border-red-200 rounded-lg hover:shadow-lg transition-all text-left group"
+            className="p-4 sm:p-6 bg-gradient-to-br from-red-50 to-orange-50 border border-red-200 rounded-lg hover:shadow-lg transition-all text-left group"
           >
             <p className="text-3xl mb-2">❤️</p>
             <h3 className="text-lg font-semibold text-gray-900 group-hover:text-red-700">Vitals History</h3>
@@ -268,5 +277,7 @@ export const PatientProfile: React.FC = () => {
         </div>
       </div>
     </div>
+  </div>
+</div>
   );
 };

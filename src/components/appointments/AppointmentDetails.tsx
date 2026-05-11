@@ -212,12 +212,12 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     }
   };
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center p-3 sm:p-4 z-50">
+      <div className="bg-white rounded-t-xl sm:rounded-lg shadow-2xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
         {}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 sticky top-0 bg-white">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Appointment Details</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Appointment Details</h1>
             <p className="text-sm text-gray-600 mt-1">
               <span
                 className={`inline-block px-3 py-1 rounded-full text-xs font-medium border mt-2 ${getStatusColor(
@@ -236,7 +236,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
           </button>
         </div>
         {}
-        <div className="p-6 space-y-6">
+        <div className="p-4 sm:p-6 space-y-6">
           {}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -303,14 +303,14 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
           )}
         </div>
         {}
-        <div className="flex gap-3 p-6 border-t border-gray-200 bg-gray-50 sticky bottom-0">
+        <div className="flex flex-col gap-3 sm:flex-row p-4 sm:p-6 border-t border-gray-200 bg-gray-50 sticky bottom-0">
           {error && (
-            <div className="flex-1 bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+            <div className="w-full sm:flex-1 bg-red-50 border border-red-200 rounded-lg p-3">
               <p className="text-red-700 text-sm">{error}</p>
             </div>
           )}
 
-          <div className="flex gap-2 flex-1">
+          <div className="flex flex-col gap-2 flex-1 sm:flex-row">
             {!canManage && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex-1">
                 🔒 You have read-only access to appointments.
@@ -347,7 +347,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
             )}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             {onEdit && (
               <button
                 onClick={() => onEdit(appointment)}
@@ -415,7 +415,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               )}
             </div>
 
-            <div className="flex gap-3 p-6 border-t border-gray-200 bg-gray-50">
+            <div className="flex flex-col sm:flex-row gap-3 p-4 sm:p-6 border-t border-gray-200 bg-gray-50">
               <button
                 onClick={handleReschedule}
                 disabled={isProcessing}
