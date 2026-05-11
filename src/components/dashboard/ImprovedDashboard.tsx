@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Patient } from '../../types';
 import { DashboardStatsCard } from './DashboardStatsCard';
@@ -30,14 +30,12 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
   const navigate = useNavigate();
   const colors = {
     primary: '#425950',
-    primaryLight: '#5a6f6a',
-    primaryDark: '#2a3d38',
     primaryHover: '#344842',
-    secondary: '#6b7d78',
     secondaryLight: '#8a9c97',
     gradientStart: '#425950',
     gradientEnd: '#2a3d38',
   };
+
   const [showPatientList, setShowPatientList] = useState<boolean>(true);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [filterCategory, setFilterCategory] = useState<'all' | 'action' | 'stable' | 'inactive'>('all');
@@ -56,8 +54,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
           if (isInactive) {
             inactiveSet.add(patient.id);
           }
-        } catch (err) {
-          ;
+        } catch {
           const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
           const lastUpdate = patient.updatedAt ? new Date(patient.updatedAt) : new Date(patient.createdAt);
           if (lastUpdate < fiveDaysAgo) {
@@ -77,14 +74,13 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
   const getFilteredPatients = () => {
     switch (filterCategory) {
       case 'action':
-        return patients.filter(p => p.chronicDiseases && p.chronicDiseases.length > 0);
+        return patients.filter((p) => p.chronicDiseases && p.chronicDiseases.length > 0);
       case 'stable':
-        return patients.filter(p =>
-          (!p.chronicDiseases || p.chronicDiseases.length === 0) &&
-          !inactivePatients.has(p.id)
+        return patients.filter(
+          (p) => (!p.chronicDiseases || p.chronicDiseases.length === 0) && !inactivePatients.has(p.id)
         );
       case 'inactive':
-        return patients.filter(p => inactivePatients.has(p.id));
+        return patients.filter((p) => inactivePatients.has(p.id));
       case 'all':
       default:
         return patients;
@@ -109,15 +105,10 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
 
   return (
     <div className={`bg-[${customColors.backgroundMedium}] min-h-screen`}>
-      {}
       <div className={`sticky top-0 z-40 bg-[${customColors.backgroundLight}] border-b border-gray-200 shadow-sm`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 sm:mb-6">📊 Medical Dashboard</h1>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
-          <h1 className="text-3xl font-bold text-gray-900 mb-6">📊 Medical Dashboard</h1>
-
-          {}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <DashboardStatsCard
               label="Total Patients"
@@ -175,6 +166,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
               description="Not engaged"
             />
           </div>
+
           {selectedPatient && (
             <button
               onClick={() => setSelectedPatient(null)}
@@ -186,23 +178,23 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
         </div>
       </div>
 
-      {}
       {selectedPatient && selectedAdherenceDate && (
         <div className={`bg-[${customColors.backgroundLight}] border-t border-gray-200 py-6`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div
               className="text-white p-4 rounded-lg mb-6"
               style={{
-                background: `linear-gradient(to right, ${colors.gradientStart}, ${colors.gradientEnd})`
+                background: `linear-gradient(to right, ${colors.gradientStart}, ${colors.gradientEnd})`,
               }}
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
-              <div className="flex flex-col mb-2">
                 <h3 className="text-lg font-bold">{selectedPatient.displayName || selectedPatient.email}</h3>
               </div>
+              <p className="text-sm" style={{ color: colors.secondaryLight }}>
+                {getCategoryTitle()}
+              </p>
             </div>
 
-            {}
             <div className="mb-6 pb-4 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
@@ -227,7 +219,6 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
         </div>
       )}
 
-      {}
       {showPatientList && !selectedPatient && (
         <div className={`bg-[${customColors.backgroundLight}] border-t border-gray-200 py-6`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -245,34 +236,26 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
         </div>
       )}
 
-      {}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {selectedPatient ? (
           <div className={`grid grid-cols-1 ${selectedAdherenceDate ? 'lg:grid-cols-1' : 'lg:grid-cols-3'} gap-6`}>
-            {}
-            <div className={`${selectedAdherenceDate ? 'w-full' : 'space-y-6'}`}>
-              {}
+            <div className={selectedAdherenceDate ? 'w-full' : 'space-y-6'}>
               {!selectedAdherenceDate && (
                 <div
                   className="text-white p-4 rounded-lg"
                   style={{
-                    background: `linear-gradient(to right, ${colors.gradientStart}, ${colors.gradientEnd})`
+                    background: `linear-gradient(to right, ${colors.gradientStart}, ${colors.gradientEnd})`,
                   }}
                 >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
-                  <div className="flex flex-col mb-2">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
                     <h3 className="text-lg font-bold">{selectedPatient.displayName || selectedPatient.email}</h3>
                   </div>
-                  <p
-                    className="text-sm"
-                    style={{ color: colors.secondaryLight }}
-                  >
+                  <p className="text-sm" style={{ color: colors.secondaryLight }}>
                     {getCategoryTitle()}
                   </p>
                 </div>
               )}
 
-              {}
               {!selectedAdherenceDate && (
                 <MedicationAdherenceCalendar
                   patientId={selectedPatient.id}
@@ -281,7 +264,6 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
                 />
               )}
 
-              {}
               {!selectedAdherenceDate && (
                 <MedicationAdherenceLogs
                   patientId={selectedPatient.id}
@@ -290,7 +272,6 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
               )}
             </div>
 
-            {}
             {!selectedAdherenceDate && (
               <div className="lg:col-span-2">
                 <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
@@ -302,9 +283,9 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
         ) : (
           <div className="text-center py-12">
             <p className="text-gray-500 text-lg mb-4">
-              {patients.length === 0 
-                ? '👥 No patients yet' 
-                : showPatientList 
+              {patients.length === 0
+                ? '👥 No patients yet'
+                : showPatientList
                 ? '👆 Select a patient to view details'
                 : '👆 Click a card above to view patients'}
             </p>
@@ -317,7 +298,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
                 className="font-medium py-2 px-6 rounded-lg transition-colors"
                 style={{
                   backgroundColor: colors.primary,
-                  color: 'white'
+                  color: 'white',
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = colors.primaryHover;
@@ -333,7 +314,12 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
               <div className="text-center py-8">
                 <div className="text-gray-400 mb-4">
                   <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1}
+                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                    />
                   </svg>
                 </div>
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No patients yet</h3>
