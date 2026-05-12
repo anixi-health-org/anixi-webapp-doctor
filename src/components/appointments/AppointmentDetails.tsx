@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Appointment, ConsultType } from '../../types';
 import { convertTimestamp } from '../../utils/dateFormatter';
 import { customColors } from '../../lib/customColors';
@@ -6,6 +7,7 @@ import { updateAppointment, syncAppointmentStatus } from '../../services/appoint
 import { usePermissions } from '../../hooks/usePermissions';
 import { useAuth } from '../../hooks/AuthContext';
 import { validateSlot } from '../../services/schedulingService';
+import { CreateAppointmentModal } from './CreateAppointmentModal';
 
 interface AppointmentDetailsProps {
   appointment: Appointment;
@@ -77,9 +79,12 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
 }) => {
   const { can } = usePermissions();
   const { user, practiceSession } = useAuth();
+  const navigate = useNavigate();
   const canManage = can('manageAppointments');
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
-  const [rescheduleDate, setRescheduleDate] = useState(appointment.date.toISOString().split('T')[0]);
+  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const safeDate = convertTimestamp(appointment.date) ?? new Date();
+  const [rescheduleDate, setRescheduleDate] = useState(safeDate.toISOString().split('T')[0]);
   const [rescheduleTime, setRescheduleTime] = useState(convertTo24Hour(appointment.time));
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,6 +140,38 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     } catch (err) {
       ;
       setError('Failed to cancel appointment');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleComplete = async () => {
+    if (!onStatusChange) return;
+    setIsProcessing(true);
+    setError(null);
+    try {
+      await updateAppointment(appointment.doctorId, appointment.id, { status: 'completed' });
+      await syncAppointmentStatus(appointment.id);
+      onStatusChange(appointment.id, 'completed');
+      onClose();
+    } catch (err) {
+      setError('Failed to mark as completed');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleNoShow = async () => {
+    if (!onStatusChange) return;
+    setIsProcessing(true);
+    setError(null);
+    try {
+      await updateAppointment(appointment.doctorId, appointment.id, { status: 'no_show' });
+      await syncAppointmentStatus(appointment.id);
+      onStatusChange(appointment.id, 'no_show');
+      onClose();
+    } catch (err) {
+      setError('Failed to mark as no-show');
     } finally {
       setIsProcessing(false);
     }
@@ -330,7 +367,14 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               <button
                 onClick={() => setShowRescheduleModal(true)}
                 disabled={isProcessing}
-                className="flex-1 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex-1 px-4 py-2.5 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                style={{ backgroundColor: customColors.primary }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primaryDark;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primary;
+                }}
               >
                 📅 Reschedule
               </button>
@@ -340,14 +384,49 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               <button
                 onClick={handleCancel}
                 disabled={isProcessing}
-                className="flex-1 px-4 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex-1 px-4 py-2.5 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                style={{ backgroundColor: customColors.primary }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primaryDark;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primary;
+                }}
               >
                 ❌ Cancel
+              </button>
+            )}
+
+            {canManage && appointment.status !== 'cancelled' && appointment.status !== 'completed' && appointment.status !== 'no_show' && (
+              <button
+                onClick={handleComplete}
+                disabled={isProcessing}
+                className="flex-1 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                ✔ Completed
+              </button>
+            )}
+
+            {canManage && appointment.status !== 'cancelled' && appointment.status !== 'completed' && appointment.status !== 'no_show' && (
+              <button
+                onClick={handleNoShow}
+                disabled={isProcessing}
+                className="flex-1 px-4 py-2.5 bg-orange-500 text-white font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                🚫 No-Show
               </button>
             )}
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row">
+            {/* Follow-up shortcut */}
+            <button
+              onClick={() => setShowFollowUpModal(true)}
+              disabled={isProcessing}
+              className="px-4 py-2.5 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              🔄 Follow-Up
+            </button>
             {onEdit && (
               <button
                 onClick={() => onEdit(appointment)}
@@ -367,6 +446,22 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Follow-up modal */}
+      {showFollowUpModal && (
+        <CreateAppointmentModal
+          isOpen={showFollowUpModal}
+          onClose={() => setShowFollowUpModal(false)}
+          onAppointmentCreated={() => {
+            setShowFollowUpModal(false);
+          }}
+          prefillPatientId={appointment.isManual ? undefined : appointment.patientId}
+          prefillPatientName={appointment.patientName}
+          prefillPatientEmail={appointment.patientEmail}
+          prefillIsManual={appointment.isManual}
+          consultTypeDefault="follow-up"
+        />
+      )}
 
       {}
       {showRescheduleModal && (
@@ -419,14 +514,28 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               <button
                 onClick={handleReschedule}
                 disabled={isProcessing}
-                className="flex-1 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex-1 px-4 py-2.5 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                style={{ backgroundColor: customColors.primary }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primaryDark;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primary;
+                }}
               >
                 {isProcessing ? 'Rescheduling...' : '📅 Confirm Reschedule'}
               </button>
               <button
                 onClick={() => setShowRescheduleModal(false)}
                 disabled={isProcessing}
-                className="flex-1 px-4 py-2.5 bg-gray-200 text-gray-800 font-medium rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex-1 px-4 py-2.5 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                style={{ backgroundColor: customColors.primary }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primaryDark;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primary;
+                }}
               >
                 Cancel
               </button>

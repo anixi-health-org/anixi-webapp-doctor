@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { USERS_COLLECTION } from '../../shared/constants';
+import { convertTimestamp } from '../../utils/dateFormatter';
 
 interface MoodEntry {
   date: string;
@@ -29,8 +30,11 @@ export const MoodCheckerWidget: React.FC<MoodCheckerWidgetProps> = ({ patientId,
 
         if (!snapshot.empty) {
           const data = snapshot.docs[0].data();
+          const dateObj = convertTimestamp(data.date);
           setLatestMood({
-            date: data.date,
+            date: dateObj
+              ? dateObj.toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+              : typeof data.date === 'string' ? data.date : '',
             mood: data.mood,
             notes: data.notes,
           });

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { SharingRequest } from '../../types';
 import { calculateAge } from '../../services/patientManagementService';
+import { convertTimestamp } from '../../utils/dateFormatter';
 
 interface SharingRequestsListProps {
   requests: SharingRequest[];
@@ -138,7 +139,7 @@ export const SharingRequestsList: React.FC<SharingRequestsListProps> = ({
                   )}
                   
                   <p className="text-sm text-gray-600">
-                    📅 Request: {(request.createdAt instanceof Date ? request.createdAt : new Date(request.createdAt)).toLocaleDateString()}
+                    📅 Request: {convertTimestamp(request.createdAt)?.toLocaleDateString() || 'N/A'}
                   </p>
                   {request.reason && (
                     <p className="text-sm text-gray-600">

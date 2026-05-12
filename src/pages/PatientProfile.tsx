@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { useAuth } from '../hooks/useAuth';
 import { getDoctorPatients } from '../services/doctorService';
 import { Patient } from '../types';
+import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import {
   calculateAge,
   formatDate,
@@ -23,6 +24,7 @@ export const PatientProfile: React.FC = () => {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
 
   useEffect(() => {
     const fetchPatient = async () => {
@@ -301,8 +303,31 @@ export const PatientProfile: React.FC = () => {
             <p className="text-sm text-gray-600 mt-1">View vital signs and measurements</p>
             <p className="text-xs text-red-600 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">View Details →</p>
           </button>
+
+          <button
+            onClick={() => setShowFollowUpModal(true)}
+            className="p-4 sm:p-6 bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg hover:shadow-lg transition-all text-left group"
+          >
+            <p className="text-3xl mb-2">🔄</p>
+            <h3 className="text-lg font-semibold text-gray-900 group-hover:text-indigo-700">Schedule Follow-Up</h3>
+            <p className="text-sm text-gray-600 mt-1">Book a follow-up appointment</p>
+            <p className="text-xs text-indigo-600 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Book Now →</p>
+          </button>
         </div>
       </div>
+
+      {showFollowUpModal && (
+        <CreateAppointmentModal
+          isOpen={showFollowUpModal}
+          onClose={() => setShowFollowUpModal(false)}
+          onAppointmentCreated={() => setShowFollowUpModal(false)}
+          prefillPatientId={patient.id}
+          prefillPatientName={patient.displayName}
+          prefillPatientEmail={patient.email}
+          prefillIsManual={false}
+          consultTypeDefault="follow-up"
+        />
+      )}
     </div>
   );
 };

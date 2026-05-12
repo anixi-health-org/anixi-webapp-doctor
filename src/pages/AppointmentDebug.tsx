@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db } from '../lib/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
+import { convertTimestamp } from '../utils/dateFormatter';
 export const AppointmentDebug: React.FC = () => {
   const { user } = useAuth();
   const [debugInfo, setDebugInfo] = useState<any>(null);
@@ -17,19 +18,31 @@ export const AppointmentDebug: React.FC = () => {
         };
         const appointmentsRef = collection(db, 'appointments');
         const allAppointmentsSnapshot = await getDocs(appointmentsRef);
-        const allAppointments = allAppointmentsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+        const allAppointments = allAppointmentsSnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            date: convertTimestamp(data.date),
+            createdAt: convertTimestamp(data.createdAt),
+            updatedAt: convertTimestamp(data.updatedAt),
+          };
+        });
         const q = query(
           appointmentsRef,
           where('doctorId', '==', user.id)
         );
         const doctorAppointmentsSnapshot = await getDocs(q);
-        const doctorAppointments = doctorAppointmentsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+        const doctorAppointments = doctorAppointmentsSnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            date: convertTimestamp(data.date),
+            createdAt: convertTimestamp(data.createdAt),
+            updatedAt: convertTimestamp(data.updatedAt),
+          };
+        });
         setDebugInfo({
           userInfo,
           allAppointmentsCount: allAppointmentsSnapshot.size,
@@ -89,7 +102,7 @@ export const AppointmentDebug: React.FC = () => {
           <div className="space-y-2 max-h-40 overflow-y-auto">
             {debugInfo.doctorAppointments.map((apt: any, idx: number) => (
               <div key={idx} className="bg-gray-50 p-2 rounded text-sm">
-                <strong>Patient:</strong> {apt.patientName || apt.patientId} | <strong>Date:</strong> {apt.date?.toDate?.().toLocaleDateString() || 'N/A'}
+                <strong>Patient:</strong> {apt.patientName || apt.patientId} | <strong>Date:</strong> {apt.date instanceof Date ? apt.date.toLocaleDateString() : 'N/A'}
               </div>
             ))}
           </div>

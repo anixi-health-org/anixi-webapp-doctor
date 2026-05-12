@@ -14,6 +14,7 @@ import {
 import React from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { NotificationBell } from './notifications/NotificationBell';
 export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -115,6 +116,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
                 <span className="hidden sm:block text-sm text-anixi-green font-medium truncate max-w-[220px]">
                   Welcome back, Dr. {user?.displayName || 'Doctor'}
                 </span>
+                <NotificationBell />
                 <div className="h-8 w-8 rounded-full bg-anixi-green flex items-center justify-center">
                   <span className="text-anixi-beige text-sm font-medium">
                     {user?.displayName?.charAt(0) || 'D'}

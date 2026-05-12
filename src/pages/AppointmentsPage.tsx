@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { usePermissions } from '../hooks/usePermissions';
 import { getDoctorAppointments } from '../services/appointmentService';
@@ -13,6 +14,7 @@ type FilterType = Appointment['status'] | 'All' | 'Today';
 export const AppointmentsPage: React.FC = () => {
   const { user } = useAuth();
   const { can } = usePermissions();
+  const navigate = useNavigate();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +83,16 @@ export const AppointmentsPage: React.FC = () => {
     // Reload appointments to ensure data is synced with database
     await fetchAppointments();
     setToast({ visible: true, message: 'Appointment rescheduled successfully.', type: 'success' });
+  };
+
+  /** Spec §10: Anixi appointment → Patient Profile; Manual → AppointmentDetails */
+  const handleAppointmentClick = (apt: Appointment) => {
+    const isAnixiPatient = !apt.isManual && apt.patientId && apt.patientId !== 'unknown';
+    if (isAnixiPatient) {
+      navigate(`/patient-profile/${apt.patientId}`);
+    } else {
+      setSelectedAppointment(apt);
+    }
   };
 
   const stats = {
@@ -154,7 +166,16 @@ export const AppointmentsPage: React.FC = () => {
                 onClick={() => {
                   setShowCreateModal(true);
                 }}
-                className="w-full sm:w-auto px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                className="w-full sm:w-auto px-4 py-2 rounded-lg text-white transition-colors flex items-center justify-center gap-2 shadow-sm"
+                style={{
+                  backgroundColor: customColors.primary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primaryDark;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primary;
+                }}
               >
                 ➕ New Appointment
               </button>
@@ -366,7 +387,7 @@ export const AppointmentsPage: React.FC = () => {
           <div className="animate-fade-in">
             <AppointmentList
               appointments={filteredAppointments}
-              onSelectAppointment={setSelectedAppointment}
+              onSelectAppointment={handleAppointmentClick}
               isLoading={isLoading}
             />
           </div>

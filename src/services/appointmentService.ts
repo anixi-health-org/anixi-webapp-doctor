@@ -16,6 +16,33 @@ import { db } from '../lib/firebase';
 import { USERS_COLLECTION, APPOINTMENTS_COLLECTION } from '../shared/constants';
 import { Appointment } from '../types';
 import { convertTimestamp } from '../utils/dateFormatter';
+
+const normalizeAppointmentTime = (timeValue: any, fallbackTimestamp?: any): string => {
+  if (typeof timeValue === 'string' && timeValue.trim().length > 0) {
+    return timeValue;
+  }
+
+  const convertedTime = convertTimestamp(timeValue);
+  if (convertedTime) {
+    return convertedTime.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  }
+
+  const fallbackTime = convertTimestamp(fallbackTimestamp);
+  if (fallbackTime) {
+    return fallbackTime.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  }
+
+  return '10:00 AM';
+};
+
 // Migration function to sync appointments from subcollections to global collection
 export const migrateDoctorAppointmentsToGlobal = async (doctorId: string): Promise<number> => {
   try {
@@ -72,7 +99,7 @@ export const migrateDoctorAppointmentsToGlobal = async (doctorId: string): Promi
           type: normalizeTypeLocal(data.type),
           status: normalizeStatusLocal(data.status),
           date: data.date,
-          time: data.time || '10:00 AM',
+          time: normalizeAppointmentTime(data.time, data.startAt || data.date),
           notes: data.notes || '',
           createdAt: data.createdAt || serverTimestamp(),
           updatedAt: data.updatedAt || serverTimestamp(),
@@ -136,8 +163,11 @@ export const getDoctorAppointments = async (doctorId: string): Promise<Appointme
             type: normalizeType(data.type),
             status: normalizeStatus(data.status),
             date: convertTimestamp(data.date) || new Date(),
-            time: data.time || '10:00 AM',
+            time: normalizeAppointmentTime(data.time, data.startAt || data.date),
             notes: data.notes || '',
+            isManual: data.isManual ?? false,
+            startAt: convertTimestamp(data.startAt) || undefined,
+            endAt: convertTimestamp(data.endAt) || undefined,
             createdAt: convertTimestamp(data.createdAt) || convertTimestamp(data.date) || new Date(),
             updatedAt: convertTimestamp(data.updatedAt) || convertTimestamp(data.date) || new Date(),
           });
@@ -169,8 +199,11 @@ export const getDoctorAppointments = async (doctorId: string): Promise<Appointme
               type: normalizeType(data.type),
               status: normalizeStatus(data.status),
               date: convertTimestamp(data.date) || new Date(),
-              time: data.time || '10:00 AM',
+              time: normalizeAppointmentTime(data.time, data.startAt || data.date),
               notes: data.notes || '',
+              isManual: data.isManual ?? false,
+              startAt: convertTimestamp(data.startAt) || undefined,
+              endAt: convertTimestamp(data.endAt) || undefined,
               createdAt: convertTimestamp(data.createdAt) || convertTimestamp(data.date) || new Date(),
               updatedAt: convertTimestamp(data.updatedAt) || convertTimestamp(data.date) || new Date(),
             });
@@ -211,7 +244,7 @@ export const getAppointmentById = async (
       type: normalizeType(data.type),
       status: normalizeStatus(data.status),
       date: convertTimestamp(data.date) || new Date(),
-      time: data.time || '10:00 AM',
+      time: normalizeAppointmentTime(data.time, data.startAt || data.date),
       notes: data.notes || '',
       createdAt: convertTimestamp(data.createdAt) || convertTimestamp(data.date) || new Date(),
       updatedAt: convertTimestamp(data.updatedAt) || convertTimestamp(data.date) || new Date(),
@@ -240,6 +273,7 @@ export const createAppointment = async (data: Omit<Appointment, 'id' | 'createdA
       date: Timestamp.fromDate(data.date),
       time: data.time,
       notes: data.notes || '',
+      isManual: data.isManual ?? false,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -255,12 +289,13 @@ export const createAppointment = async (data: Omit<Appointment, 'id' | 'createdA
       date: Timestamp.fromDate(data.date),
       time: data.time,
       notes: data.notes || '',
+      isManual: data.isManual ?? false,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
     
-    // Create in patient's subcollection
-    if (data.patientId) {
+    // Create in patient's subcollection (only for Anixi patients)
+    if (data.patientId && !data.isManual) {
       const patientAppointmentRef = doc(db, USERS_COLLECTION, data.patientId, 'appointments', globalDocRef.id);
       await setDoc(patientAppointmentRef, {
         doctorId: data.doctorId,
@@ -272,6 +307,7 @@ export const createAppointment = async (data: Omit<Appointment, 'id' | 'createdA
         date: Timestamp.fromDate(data.date),
         time: data.time,
         notes: data.notes || '',
+        isManual: false,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });

@@ -221,6 +221,8 @@ export interface Appointment {
     date: Date;
     time: string;
     notes?: string;
+    /** true = manually booked (free-text name, no Anixi account) */
+    isManual?: boolean;
     // Practice scheduling extensions
     practiceId?: string;
     locationId?: string;

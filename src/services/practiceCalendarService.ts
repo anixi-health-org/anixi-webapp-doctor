@@ -55,10 +55,19 @@ export const setPracticeDailySchedule = async (
     PRACTICE_DAILY_SCHEDULE_SUBCOLLECTION,
     schedule.date
   );
-  await setDoc(ref, {
-    ...schedule,
+  // Firestore does not accept `undefined` field values. Build the document
+  // payload and only include fields that are defined.
+  const data: any = {
+    practiceId: schedule.practiceId,
+    date: schedule.date,
+    availability: schedule.availability,
     updatedAt: serverTimestamp(),
-  });
+  };
+  if (schedule.openTime !== undefined) data.openTime = schedule.openTime;
+  if (schedule.closeTime !== undefined) data.closeTime = schedule.closeTime;
+  if (schedule.note !== undefined) data.note = schedule.note;
+
+  await setDoc(ref, data);
 };
 
 export const deletePracticeDailySchedule = async (
