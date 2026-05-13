@@ -1,6 +1,6 @@
 import React from 'react';
 import { Patient } from '../../types';
-import { calculateAge, getPatientStatus } from '../../services/patientManagementService';
+import { getPatientStatus } from '../../services/patientManagementService';
 interface PatientListProps {
   patients: Patient[];
   loading: boolean;
@@ -14,7 +14,7 @@ export const PatientList: React.FC<PatientListProps> = ({
   if (loading) {
     return (
       <div className="flex justify-center items-center h-96">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#425950]"></div>
       </div>
     );
   }
@@ -40,68 +40,52 @@ export const PatientList: React.FC<PatientListProps> = ({
     );
   }
   return (
-    <div className="grid gap-4">
+    <div className="divide-y divide-[#E9EEF4]">
       {patients.map((patient) => {
-        const age = calculateAge(patient.dateOfBirth);
         const status = getPatientStatus(patient);
         const statusColor =
           status === 'stable'
-            ? 'bg-green-100 text-green-800'
+            ? 'bg-[#DDF6E9] text-[#0E9F6E]'
             : status === 'warning'
-              ? 'bg-yellow-100 text-yellow-800'
-              : 'bg-gray-100 text-gray-800';
+              ? 'bg-[#FFEAD1] text-[#D9480F]'
+              : 'bg-[#EEF2F7] text-[#5C6775]';
         return (
           <div
             key={patient.id}
             onClick={() => onPatientClick(patient)}
-            className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md cursor-pointer transition-all hover:border-blue-300"
+            className="cursor-pointer px-5 py-5 transition-colors hover:bg-[#FBFCFD]"
           >
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="text-lg font-semibold text-gray-900">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-4 min-w-0">
+                <div className={`h-12 w-12 rounded-2xl ${status === 'warning' ? 'bg-[#FF7A00]' : status === 'inactive' ? 'bg-[#94A3B8]' : 'bg-[#10B981]'} text-white font-bold flex items-center justify-center shadow-sm flex-shrink-0`}>
+                  {(patient.displayName || patient.email || 'P').charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-lg sm:text-xl font-semibold text-[#0E2340] truncate">
                     {patient.displayName}
                   </h3>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor}`}>
+                  <p className="text-sm text-[#8A99AF] truncate">{patient.email}</p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 lg:pr-2">
+                <div className="text-left sm:text-right">
+                  <p className="text-[11px] font-semibold tracking-[0.12em] uppercase text-[#C0CAD8]">Last Seen</p>
+                  <p className="text-sm font-semibold text-[#0E2340]">No visits</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold tracking-[0.08em] uppercase ${statusColor}`}>
                     {status.charAt(0).toUpperCase() + status.slice(1)}
                   </span>
+                  <button
+                    type="button"
+                    className="text-[#CBD5E1] hover:text-[#8FA0B6] text-2xl leading-none px-2"
+                    onClick={(event) => event.stopPropagation()}
+                    aria-label="More actions"
+                  >
+                    ⋮
+                  </button>
                 </div>
-                <div className="flex gap-6 text-sm text-gray-600 mb-2">
-                  {age !== null && age !== undefined && (
-                    <div>
-                      <span className="text-gray-500">Age:</span>
-                      <span className="ml-2 font-medium">{age} years</span>
-                    </div>
-                  )}
-                  {patient.gender && (
-                    <div>
-                      <span className="text-gray-500">Gender:</span>
-                      <span className="ml-2 font-medium">
-                        {patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                {patient.email && (
-                  <div className="text-sm text-gray-600">
-                    <span className="text-gray-500">Email:</span>
-                    <span className="ml-2 font-medium">{patient.email}</span>
-                  </div>
-                )}
               </div>
-              <svg
-                className="w-5 h-5 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5l7 7-7 7"
-                />
-              </svg>
             </div>
           </div>
         );

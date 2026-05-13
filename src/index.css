@@ -14,3 +14,37 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+:root {
+  --anixi-button-bg: #425950;
+  --anixi-button-hover: #344842;
+  --anixi-button-text: #ffffff;
+  --anixi-button-disabled: #8fa19c;
+}
+
+/* Global button color theme requested by design */
+button,
+input[type='button'],
+input[type='submit'],
+input[type='reset'] {
+  background-color: var(--anixi-button-bg) !important;
+  border-color: var(--anixi-button-bg) !important;
+  color: var(--anixi-button-text) !important;
+}
+
+button:hover:not(:disabled),
+input[type='button']:hover:not(:disabled),
+input[type='submit']:hover:not(:disabled),
+input[type='reset']:hover:not(:disabled) {
+  background-color: var(--anixi-button-hover) !important;
+  border-color: var(--anixi-button-hover) !important;
+}
+
+button:disabled,
+input[type='button']:disabled,
+input[type='submit']:disabled,
+input[type='reset']:disabled {
+  background-color: var(--anixi-button-disabled) !important;
+  border-color: var(--anixi-button-disabled) !important;
+  color: #eef2f1 !important;
+}

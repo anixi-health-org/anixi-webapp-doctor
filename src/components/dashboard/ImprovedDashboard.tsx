@@ -9,6 +9,7 @@ import { MedicationAdherenceDailyDetails } from './MedicationAdherenceDailyDetai
 import { MedicationAdherenceLogs } from './MedicationAdherenceLogs';
 import { isPatientInactive } from '../../utils/patientStatusUtils';
 import { customColors } from '../../lib/customColors';
+import { RecentPatientsList } from '../patients/RecentPatientsList';
 
 interface ImprovedDashboardProps {
   patients: Patient[];
@@ -128,12 +129,21 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
     <div className={`bg-[${customColors.backgroundMedium}] min-h-screen`}>
       {/* Header */}
       <div
-        className={`sticky top-0 z-40 bg-[${customColors.backgroundLight}] border-b border-gray-200 shadow-sm`}
+        className={`bg-[${customColors.backgroundLight}] border-b border-gray-200 shadow-sm`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-6">
-            📊 Medical Dashboard
-          </h1>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+            <h1 className="text-4xl font-bold text-[#0E2340] tracking-tight">
+              Medical Dashboard
+            </h1>
+            <button
+              onClick={() => navigate('/patients')}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#06A66A] hover:bg-[#099760] text-white font-semibold text-xl px-7 py-4 shadow-lg shadow-[#06A66A]/30 transition-colors"
+            >
+              <span className="text-3xl leading-none">+</span>
+              <span>Add Patient</span>
+            </button>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <DashboardStatsCard
@@ -261,16 +271,30 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
           className={`bg-[${customColors.backgroundLight}] border-t border-gray-200 py-6`}
         >
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <PatientListPanel
-              patients={filteredPatients}
-              loading={patientsLoading}
-              error={patientsError}
-              selectedPatientId={undefined}
-              onSelectPatient={(patient) => {
-                setSelectedPatient(patient);
-              }}
-              isVisible={showPatientList}
-            />
+            <div className="rounded-[30px] border border-[#D8DEE5] bg-white shadow-sm overflow-hidden">
+              <PatientListPanel
+                patients={filteredPatients}
+                loading={patientsLoading}
+                error={patientsError}
+                selectedPatientId={undefined}
+                onSelectPatient={(patient) => {
+                  setSelectedPatient(patient);
+                }}
+                isVisible={showPatientList}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recent Patients */}
+      {!selectedPatient && (
+        <div className={`bg-[${customColors.backgroundLight}] border-t border-gray-200 py-6`}>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="rounded-[30px] border border-[#D8DEE5] bg-white shadow-sm p-5">
+              <h2 className="text-base font-semibold text-gray-700 mb-3">Recently Viewed Patients</h2>
+              <RecentPatientsList limit={5} />
+            </div>
           </div>
         </div>
       )}

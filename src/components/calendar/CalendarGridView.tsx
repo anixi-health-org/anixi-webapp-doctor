@@ -7,7 +7,6 @@ import { getDoctorAppointments } from '../../services/appointmentService';
 import { getSoftBlocks, createBookableBlock, deleteSoftBlock } from '../../services/practiceSettingsService';
 import { AppointmentDetails } from '../appointments/AppointmentDetails';
 import { CreateAppointmentModal } from '../appointments/CreateAppointmentModal';
-import { customColors } from '../../lib/customColors';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -60,9 +59,15 @@ const SOFT_BLOCK_COLORS: Record<string, string> = {
 
 interface CalendarGridViewProps {
   onStatusChange?: (appointmentId: string, newStatus: Appointment['status']) => void;
+  showCreateButton?: boolean;
+  showLegend?: boolean;
 }
 
-export const CalendarGridView: React.FC<CalendarGridViewProps> = ({ onStatusChange }) => {
+export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
+  onStatusChange,
+  showCreateButton = true,
+  showLegend = true,
+}) => {
   const { user, practiceSession } = useAuth();
   const { can } = usePermissions();
   const navigate = useNavigate();
@@ -152,7 +157,15 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({ onStatusChan
   const handleAppointmentClick = (apt: Appointment) => {
     const isAnixiPatient = !apt.isManual && apt.patientId && apt.patientId !== 'unknown';
     if (isAnixiPatient) {
-      navigate(`/patient-profile/${apt.patientId}`);
+      navigate(`/patient-profile/${apt.patientId}`, {
+        state: {
+          appointmentId: apt.id,
+          appointmentTime: apt.time,
+          appointmentDate: apt.date ? new Date(apt.date).toLocaleDateString() : undefined,
+          consultType: apt.consultType,
+          status: apt.status,
+        },
+      });
     } else {
       setSelectedAppointment(apt);
     }
@@ -175,62 +188,62 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({ onStatusChan
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <button
             onClick={() => setWeekStart((w) => addDays(w, -7))}
-            className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-100 text-sm font-medium"
+            className="px-4 py-2 rounded-2xl border border-[#E4EAF2] bg-white hover:bg-[#FBFCFD] text-sm font-semibold text-[#0E2340]"
           >
             ← Prev
           </button>
           <button
             onClick={() => setWeekStart(startOfWeek(new Date()))}
-            className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-100 text-sm font-medium"
+            className="px-4 py-2 rounded-2xl border border-[#E4EAF2] bg-white hover:bg-[#FBFCFD] text-sm font-semibold text-[#0E2340]"
           >
             Today
           </button>
           <button
             onClick={() => setWeekStart((w) => addDays(w, 7))}
-            className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-100 text-sm font-medium"
+            className="px-4 py-2 rounded-2xl border border-[#E4EAF2] bg-white hover:bg-[#FBFCFD] text-sm font-semibold text-[#0E2340]"
           >
             Next →
           </button>
-          <span className="text-sm font-semibold text-gray-700 ml-2">
+          <span className="text-sm font-semibold text-[#6F7F95] ml-2">
             {weekStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })}
           </span>
         </div>
 
-        {can('manageAppointments') && (
+        {can('manageAppointments') && showCreateButton && (
           <button
             onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 rounded-lg text-white text-sm font-medium shadow-sm transition-colors"
-            style={{ backgroundColor: customColors.primary }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = customColors.primaryDark)}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = customColors.primary)}
+            className="px-5 py-3 rounded-2xl text-white text-sm font-semibold shadow-lg shadow-[#1F2C45]/20 transition-colors"
+            style={{ backgroundColor: '#1F2C45' }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#172238')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#1F2C45')}
           >
-            ➕ New Appointment
+            + Add Schedule Entry
           </button>
         )}
       </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center h-64">
-          <p className="text-gray-500 text-sm">Loading calendar…</p>
+          <p className="text-[#8FA0B6] text-sm">Loading calendar…</p>
         </div>
       ) : (
-        <div className="overflow-auto rounded-xl border border-gray-200 bg-white">
+        <div className="overflow-auto rounded-[30px] border border-[#E2E8F0] bg-white shadow-sm">
           {/* Day headers */}
-          <div className="grid sticky top-0 z-10 bg-white border-b border-gray-200" style={{ gridTemplateColumns: '56px repeat(7, 1fr)' }}>
-            <div className="text-xs text-gray-400 p-2" />
+          <div className="grid sticky top-0 z-10 bg-white border-b border-[#E9EEF4]" style={{ gridTemplateColumns: '56px repeat(7, 1fr)' }}>
+            <div className="text-xs text-[#C0CAD8] p-2" />
             {days.map((day) => {
               const isToday = day.toDateString() === todayStr;
               return (
                 <div
                   key={day.toISOString()}
-                  className={`text-center py-2 text-xs font-semibold border-l border-gray-100 ${isToday ? 'text-blue-600' : 'text-gray-600'}`}
+                  className={`text-center py-3 text-xs font-semibold border-l border-[#F1F4F8] ${isToday ? 'text-[#425950]' : 'text-[#6F7F95]'}`}
                 >
                   <div>{day.toLocaleDateString('en-ZA', { weekday: 'short' })}</div>
-                  <div className={`mx-auto w-7 h-7 flex items-center justify-center rounded-full mt-0.5 ${isToday ? 'bg-blue-600 text-white' : ''}`}>
+                  <div className={`mx-auto w-8 h-8 flex items-center justify-center rounded-full mt-1 ${isToday ? 'bg-[#0FA968] text-white' : ''}`}>
                     {day.getDate()}
                   </div>
                 </div>
@@ -264,14 +277,14 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({ onStatusChan
               return (
                 <div
                   key={day.toISOString()}
-                  className="relative border-l border-gray-100"
+                  className="relative border-l border-[#F1F4F8]"
                   style={{ height: `${VISIBLE_HOURS * ROW_HEIGHT}px` }}
                 >
                   {/* Hour grid lines */}
                   {hours.map((h) => (
                     <div
                       key={h}
-                      className="absolute w-full border-t border-gray-100"
+                      className="absolute w-full border-t border-[#F1F4F8]"
                       style={{ top: (h - DAY_START_HOUR) * ROW_HEIGHT }}
                     />
                   ))}
@@ -331,21 +344,22 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({ onStatusChan
             })}
           </div>
 
-          {/* Legend */}
-          <div className="flex flex-wrap gap-3 px-4 py-3 border-t border-gray-100 text-xs text-gray-600">
-            <span className="font-semibold">Status:</span>
-            {Object.entries(STATUS_COLORS).map(([s, c]) => (
-              <span key={s} className={`px-2 py-0.5 rounded border ${c.bg} ${c.border} ${c.text}`}>
-                {s.replace('_', '-')}
-              </span>
-            ))}
-            <span className="font-semibold ml-4">Blocks:</span>
-            {Object.entries(SOFT_BLOCK_COLORS).map(([cat, cls]) => (
-              <span key={cat} className={`px-2 py-0.5 rounded border ${cls}`}>
-                {cat.replace('_', ' ')}
-              </span>
-            ))}
-          </div>
+          {showLegend && (
+            <div className="flex flex-wrap gap-3 px-4 py-4 border-t border-[#E9EEF4] text-xs text-[#6F7F95]">
+              <span className="font-semibold">Status:</span>
+              {Object.entries(STATUS_COLORS).map(([s, c]) => (
+                <span key={s} className={`px-2 py-0.5 rounded border ${c.bg} ${c.border} ${c.text}`}>
+                  {s.replace('_', '-')}
+                </span>
+              ))}
+              <span className="font-semibold ml-4">Blocks:</span>
+              {Object.entries(SOFT_BLOCK_COLORS).map(([cat, cls]) => (
+                <span key={cat} className={`px-2 py-0.5 rounded border ${cls}`}>
+                  {cat.replace('_', ' ')}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

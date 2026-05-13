@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { AppointmentContextBanner } from '../components/patients/AppointmentContextBanner';
+import { recordPatientVisit } from '../services/recentPatientsService';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { useAuth } from '../hooks/useAuth';
 import { getDoctorPatients } from '../services/doctorService';
@@ -43,6 +45,11 @@ export const PatientProfile: React.FC = () => {
           return;
         }
         setPatient(foundPatient);
+        recordPatientVisit(
+          foundPatient.id,
+          foundPatient.displayName || foundPatient.email || foundPatient.id,
+          foundPatient.email
+        );
       } catch {
         setError('Failed to load patient profile');
       } finally {
@@ -135,6 +142,7 @@ export const PatientProfile: React.FC = () => {
 
   return (
     <div className="px-3 py-4 sm:px-4 sm:py-6 lg:px-6 bg-anixi-beige min-h-screen">
+      <AppointmentContextBanner />
       <div className="mb-6 sm:mb-8">
         <button
           onClick={() => navigate(-1)}

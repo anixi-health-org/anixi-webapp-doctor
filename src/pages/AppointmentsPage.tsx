@@ -89,7 +89,15 @@ export const AppointmentsPage: React.FC = () => {
   const handleAppointmentClick = (apt: Appointment) => {
     const isAnixiPatient = !apt.isManual && apt.patientId && apt.patientId !== 'unknown';
     if (isAnixiPatient) {
-      navigate(`/patient-profile/${apt.patientId}`);
+      navigate(`/patient-profile/${apt.patientId}`, {
+        state: {
+          appointmentId: apt.id,
+          appointmentTime: apt.time,
+          appointmentDate: apt.date ? new Date(apt.date).toLocaleDateString() : undefined,
+          consultType: apt.consultType,
+          status: apt.status,
+        },
+      });
     } else {
       setSelectedAppointment(apt);
     }

@@ -15,6 +15,7 @@ import React from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { NotificationBell } from './notifications/NotificationBell';
+import { GlobalPatientSearch } from './ui/GlobalPatientSearch';
 export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -37,15 +38,16 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
     { name: 'Appointments', href: '/appointments', icon: CalendarIcon },
     { name: 'My Patients', href: '/patients', icon: UserGroupIcon },
     { name: 'Practice Calendar', href: '/practice-calendar', icon: CalendarIcon },
+    { name: 'Practice Settings', href: '/practice-settings', icon: BuildingOffice2Icon },
     { name: 'Professional Profile', href: '/professional-profile', icon: Cog6ToothIcon },
     { name: 'Share Anixi', href: '/share-anixi', icon: ShareIcon },
     { name: 'Support', href: '/support', icon: QuestionMarkCircleIcon },
     { name: 'Delete Account', href: '/delete-account', icon: TrashIcon },
   ];
   return (
-    <div className="min-h-screen bg-anixi-beige flex">
-      <div className="hidden md:flex md:flex-shrink-0">
-        <div className="flex flex-col w-64">
+    <div className="h-screen bg-anixi-beige flex overflow-hidden">
+      <div className="hidden md:block">
+        <div className="fixed inset-y-0 left-0 z-30 flex w-64 flex-col overflow-y-auto">
           <div className="flex items-center h-16 px-4 bg-anixi-green">
             <h1 className="text-xl font-semibold text-white">Anixi Health</h1>
           </div>
@@ -94,8 +96,8 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
           </div>
         </div>
       </div>
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="bg-white shadow-sm border-b border-anixi-beige">
+      <div className="flex flex-1 flex-col overflow-hidden md:pl-64 h-screen">
+        <header className="fixed top-0 inset-x-0 z-20 bg-white shadow-sm border-b border-anixi-beige md:sticky md:inset-x-auto">
           <div className="px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
@@ -113,6 +115,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
                 </h1>
               </div>
               <div className="flex items-center gap-2 sm:gap-4">
+                <GlobalPatientSearch />
                 <span className="hidden sm:block text-sm text-anixi-green font-medium truncate max-w-[220px]">
                   Welcome back, Dr. {user?.displayName || 'Doctor'}
                 </span>
@@ -193,7 +196,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto pt-[73px] md:pt-0">
           {children || <Outlet />}
         </main>
       </div>
