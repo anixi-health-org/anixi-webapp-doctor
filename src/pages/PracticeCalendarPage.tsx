@@ -81,7 +81,7 @@ const PracticeCalendarPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 px-3 py-4 sm:px-4 sm:py-6 max-w-2xl mx-auto">
+    <div className="min-h-screen bg-anixi-beige px-3 py-4 sm:px-4 sm:py-6 max-w-2xl mx-auto">
       {}
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">Practice Calendar</h1>
@@ -90,7 +90,7 @@ const PracticeCalendarPage: React.FC = () => {
         </p>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+      <div className="bg-anixi-card rounded-xl border border-gray-200 p-4 sm:p-6">
         <div className="space-y-6">
           {}
           <div>
@@ -177,16 +177,16 @@ const PracticeCalendarPage: React.FC = () => {
           {}
           <div className="flex justify-end">
             <div className="flex-1 mr-4">
-              {successMessage && (
-                <div className="mb-2 text-sm text-green-800 bg-green-50 border border-green-100 rounded px-3 py-2">
-                  {successMessage}
-                </div>
-              )}
-              {errorMessage && (
-                <div className="mb-2 text-sm text-red-800 bg-red-50 border border-red-100 rounded px-3 py-2">
-                  {errorMessage}
-                </div>
-              )}
+                  {successMessage && (
+                    <div className="mb-2 text-sm text-green-800 bg-anixi-card border border-green-100 rounded px-3 py-2">
+                      {successMessage}
+                    </div>
+                  )}
+                  {errorMessage && (
+                    <div className="mb-2 text-sm text-red-800 bg-anixi-card border border-red-100 rounded px-3 py-2">
+                      {errorMessage}
+                    </div>
+                  )}
             </div>
             <button
               onClick={handleSave}

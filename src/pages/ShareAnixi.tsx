@@ -18,17 +18,15 @@ export const ShareAnixi: React.FC = () => {
   if (loading) return <div className="p-8">Loading referral link...</div>;
 
   return (
-    <div className="max-w-4xl mx-auto p-8 bg-gray-50 min-h-screen">
-      <div className="bg-white rounded-lg shadow">
-        <div className="bg-[#425950] px-6 py-8 text-white">
-          <h1 className="text-3xl font-bold mb-2">Share Anixi</h1>
-          <p className="opacity-90">Invite colleagues and patients to join the platform</p>
-        </div>
-        <div className="p-6">
-          <div className="mt-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Download Anixi Health App</h3>
-            <p className="text-gray-600 mb-4">Share the Anixi Health app with your patients and colleagues!</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="max-w-4xl mx-auto p-8 bg-anixi-beige min-h-screen">
+      <h1 className="text-3xl font-bold mb-2">Share Anixi</h1>
+      <p className="opacity-90 mb-6">Invite colleagues and patients to join the platform</p>
+
+      <div className="bg-anixi-card border border-gray-200 rounded-lg p-6 shadow-sm">
+        <div className="mt-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Download Anixi Health App</h3>
+          <p className="text-gray-600 mb-4">Share the Anixi Health app with your patients and colleagues!</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <a
                 href="https://apps.apple.com/app/anixi-health"
                 target="_blank"
@@ -61,7 +59,6 @@ export const ShareAnixi: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
   );
 };
 

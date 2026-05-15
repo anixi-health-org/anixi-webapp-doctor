@@ -25,13 +25,13 @@ const getStatusColor = (status: string): string => {
   
   switch (status) {
     case 'taken':
-      return 'bg-anixi-card border-green-300 text-green-800';
+      return 'bg-gray-50 border-green-300 text-green-800';
     case 'missed':
-      return 'bg-anixi-card border-red-300 text-red-800';
+      return 'bg-gray-50 border-red-300 text-red-800';
     case 'pending':
-      return 'bg-anixi-card border-yellow-300 text-yellow-800';
+      return 'bg-gray-50 border-yellow-300 text-yellow-800';
     default:
-      return 'bg-anixi-card border-gray-300 text-gray-800';
+      return 'bg-gray-50 border-gray-300 text-gray-800';
   }
 };
 
@@ -168,7 +168,7 @@ export const MedicationAdherenceDetailsPanel: React.FC<MedicationAdherenceDetail
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4">
-      <div className="bg-anixi-card w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl">
+      <div className="bg-gray-50 w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl">
         {}
         <div className="sticky top-0 bg-gradient-to-r from-orange-500 to-orange-600 px-6 py-4 flex items-center justify-between">
           <div>
@@ -200,19 +200,19 @@ export const MedicationAdherenceDetailsPanel: React.FC<MedicationAdherenceDetail
           {}
           {stats.total > 0 && (
             <div className="grid grid-cols-4 gap-3">
-              <div className={`rounded-lg p-3 border border-blue-200 bg-anixi-card`}>
+              <div className={`rounded-lg p-3 border border-blue-200 bg-gray-50`}>
                 <p className="text-xs font-semibold text-blue-600 mb-1">TOTAL</p>
                 <p className="text-2xl font-bold text-blue-900">{stats.total}</p>
               </div>
-              <div className={`rounded-lg p-3 border border-green-200 bg-anixi-card`}>
+              <div className={`rounded-lg p-3 border border-green-200 bg-gray-50`}>
                 <p className="text-xs font-semibold text-green-600 mb-1">TAKEN</p>
                 <p className="text-2xl font-bold text-green-900">{stats.taken}</p>
               </div>
-              <div className={`rounded-lg p-3 border border-red-200 bg-anixi-card`}>
+              <div className={`rounded-lg p-3 border border-red-200 bg-gray-50`}>
                 <p className="text-xs font-semibold text-red-600 mb-1">MISSED</p>
                 <p className="text-2xl font-bold text-red-900">{stats.missed}</p>
               </div>
-              <div className={`rounded-lg p-3 border border-yellow-200 bg-anixi-card`}>
+              <div className={`rounded-lg p-3 border border-yellow-200 bg-gray-50`}>
                 <p className="text-xs font-semibold text-yellow-600 mb-1">PENDING</p>
                 <p className="text-2xl font-bold text-yellow-900">{stats.pending}</p>
               </div>

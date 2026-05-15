@@ -6,9 +6,9 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'anixi-beige': '#F6FAEB',
+        'anixi-beige': '#F3F6EA', 
         'anixi-green': '#425950',
-        'anixi-card': '#FFFFFF',
+        'anixi-card': '#F5F5F5', 
       }
     },
   },

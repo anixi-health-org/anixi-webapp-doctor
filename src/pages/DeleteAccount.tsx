@@ -61,25 +61,27 @@ const DeleteAccount: React.FC = () => {
 
   return (
     <div className="max-w-3xl mx-auto p-6">
-      <h2 className="text-2xl font-bold mb-4">Delete Account</h2>
-      <p className="text-gray-600 mb-6">
-        Clicking the button below will permanently delete your account and all associated data.
-      </p>
-      {error && <div className="text-red-600 mb-4">{error}</div>}
-      <div className="flex gap-3">
-        <button
-          onClick={handleDelete}
-          disabled={loading}
-          className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-60"
-        >
-          {loading ? 'Deleting…' : 'Delete Account'}
-        </button>
-        <button
-          onClick={() => navigate(-1)}
-          className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200"
-        >
-          Cancel
-        </button>
+      <div className="bg-anixi-card border border-gray-200 rounded-lg p-6 shadow-sm">
+        <h2 className="text-2xl font-bold mb-4">Delete Account</h2>
+        <p className="text-gray-600 mb-6">
+          Clicking the button below will permanently delete your account and all associated data.
+        </p>
+        {error && <div className="text-red-600 mb-4">{error}</div>}
+        <div className="flex gap-3">
+          <button
+            onClick={handleDelete}
+            disabled={loading}
+            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-60"
+          >
+            {loading ? 'Deleting…' : 'Delete Account'}
+          </button>
+          <button
+            onClick={() => navigate(-1)}
+            className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );

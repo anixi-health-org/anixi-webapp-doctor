@@ -3,6 +3,7 @@ import {
   Bars3Icon,
   CalendarIcon,
   Cog6ToothIcon,
+  LockClosedIcon,
   HomeIcon,
   QuestionMarkCircleIcon,
   XMarkIcon,
@@ -45,6 +46,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
     { name: 'Professional Profile', href: '/professional-profile', icon: Cog6ToothIcon },
     { name: 'Share Anixi', href: '/share-anixi', icon: ShareIcon },
     { name: 'Support', href: '/support', icon: QuestionMarkCircleIcon },
+    { name: 'Change Password', href: '/change-password', icon: LockClosedIcon },
     { name: 'Delete Account', href: '/delete-account', icon: TrashIcon },
   ];
 
@@ -95,7 +97,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
               <div className="flex items-center gap-2 sm:gap-4">
                 <button
                   onClick={handleLogout}
-                  className="ml-4 text-sm text-anixi-green font-medium hover:underline"
+                  className="ml-4 px-3 py-1 bg-anixi-green text-white rounded-md hover:bg-anixi-green/90 text-sm font-medium"
                 >
                   Logout
                 </button>
@@ -153,7 +155,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
                   <Cog6ToothIcon className="mr-3 h-5 w-5" />
                   Settings
                 </Link>
-                <button onClick={handleLogout} className="group flex w-full items-center px-3 py-2.5 text-sm font-medium rounded-md text-anixi-beige hover:bg-anixi-beige hover:text-anixi-green transition-colors">
+                <button onClick={handleLogout} className="group flex w-full items-center px-3 py-2.5 text-sm font-medium rounded-md bg-anixi-green text-white hover:bg-anixi-green/90 transition-colors">
                   <ArrowRightOnRectangleIcon className="mr-3 h-5 w-5" />
                   Logout
                 </button>

@@ -20,7 +20,7 @@ export const AdherenceDailyPage: React.FC = () => {
   if (!patientId || !selectedDate) {
     return (
       <div className="p-6 bg-anixi-beige min-h-screen">
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+        <div className="p-4 bg-gray-50 border border-red-200 rounded-lg">
           <p className="text-red-700">Invalid patient or date</p>
         </div>
       </div>
