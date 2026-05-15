@@ -7,11 +7,7 @@ interface PatientDetailsPanelProps {
 
 export const PatientDetailsPanel: React.FC<PatientDetailsPanelProps> = ({ patient }) => {
   if (!patient) {
-    return (
-      <div className="flex items-center justify-center h-full text-gray-500">
-        <p>Select a patient to view details</p>
-      </div>
-    );
+    return null;
   }
 
   const today = new Date();
@@ -21,7 +17,7 @@ export const PatientDetailsPanel: React.FC<PatientDetailsPanelProps> = ({ patien
     : undefined;
 
   return (
-    <div className="bg-white h-full overflow-y-auto">
+    <div className="bg-anixi-card h-full overflow-y-auto">
       {}
       <div className="sticky top-0 bg-[#425950] text-white p-4 sm:p-6 shadow-lg">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">

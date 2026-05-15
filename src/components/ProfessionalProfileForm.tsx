@@ -543,7 +543,7 @@ const ProfessionalProfileForm: React.FC = () => {
 
               {message && (
                 <div className={`mt-6 p-4 rounded-lg ${
-                  message.includes('✅') ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                  message.includes('✅') ? 'bg-gray-50 text-green-800' : 'bg-gray-50 text-red-800'
                 }`}>
                   {message}
                 </div>

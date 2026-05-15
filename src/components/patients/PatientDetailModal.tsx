@@ -34,36 +34,18 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
             onClick={onClose}
             className="text-white hover:bg-[#344842] rounded-xl p-2.5 transition-colors"
           >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
+
         <div className="p-4 sm:p-6 space-y-6 bg-[#FAFBFC]">
+          {/* Personal Information */}
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <svg
-                className="w-5 h-5 text-blue-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               Personal Information
             </h3>
@@ -96,8 +78,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                 <div className="bg-white rounded-2xl p-4 border border-[#E7EDF4] shadow-sm">
                   <p className="text-xs font-semibold text-gray-500 mb-1">MARITAL STATUS</p>
                   <p className="text-gray-900 font-medium">
-                    {patient.maritalStatus.charAt(0).toUpperCase() +
-                      patient.maritalStatus.slice(1)}
+                    {patient.maritalStatus.charAt(0).toUpperCase() + patient.maritalStatus.slice(1)}
                   </p>
                 </div>
               )}
@@ -114,27 +95,19 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                 </div>
               )}
               {patient.address && (
-                <div className="bg-gray-50 rounded-lg p-4 sm:col-span-2">
+                <div className="bg-white rounded-2xl p-4 border border-[#E7EDF4] shadow-sm sm:col-span-2">
                   <p className="text-xs font-semibold text-gray-500 mb-1">ADDRESS</p>
                   <p className="text-gray-900 font-medium">{patient.address}</p>
                 </div>
               )}
             </div>
           </div>
+
+          {/* Medical Information */}
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <svg
-                className="w-5 h-5 text-red-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
+              <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               Medical Information
             </h3>
@@ -162,14 +135,12 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                   <div className="bg-[#FFF8E7] rounded-2xl p-4 border border-[#F3D9A5] shadow-sm">
                     <ul className="space-y-1">
                       {patient.chronicDiseases.map((disease, idx) => (
-                        <li key={idx} className="text-gray-900 font-medium">
-                          • {disease}
-                        </li>
+                        <li key={idx} className="text-gray-900 font-medium">• {disease}</li>
                       ))}
                     </ul>
                   </div>
                 ) : (
-                  <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="bg-white rounded-2xl p-4 border border-[#E7EDF4] shadow-sm">
                     <p className="text-gray-600">No medical history available</p>
                   </div>
                 )}
@@ -180,9 +151,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                   <div className="bg-[#FFF5F5] rounded-2xl p-4 border border-[#F1C9CE] shadow-sm">
                     <ul className="space-y-1">
                       {patient.allergies.map((allergy, idx) => (
-                        <li key={idx} className="text-gray-900 font-medium">
-                          ⚠️ {allergy}
-                        </li>
+                        <li key={idx} className="text-gray-900 font-medium">⚠️ {allergy}</li>
                       ))}
                     </ul>
                   </div>
@@ -195,12 +164,8 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                     {patient.currentTreatments.map((treatment, idx) => (
                       <div key={idx} className="text-gray-900">
                         <p className="font-medium">💊 {treatment.name}</p>
-                        <p className="text-sm text-gray-600">
-                          Dosage: {treatment.dosage}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Frequency: {treatment.frequency}
-                        </p>
+                        <p className="text-sm text-gray-600">Dosage: {treatment.dosage}</p>
+                        <p className="text-sm text-gray-600">Frequency: {treatment.frequency}</p>
                         {treatment.startDate && (
                           <p className="text-xs text-gray-500">
                             Started: {(treatment.startDate instanceof Date ? treatment.startDate : new Date(treatment.startDate)).toLocaleDateString()}
@@ -214,6 +179,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
             </div>
           </div>
         </div>
+
         <div className="bg-white border-t border-[#E4EAF2] px-4 sm:px-6 py-3 sm:py-4 flex justify-end">
           <button
             onClick={onClose}

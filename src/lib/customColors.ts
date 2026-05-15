@@ -3,8 +3,9 @@ export const customColors = {
   primaryDark: '#344842',
   primaryLight: '#5a6f6a',
 
-  backgroundLight: '#f8faf9',
-  backgroundMedium: '#f0f2f1',
+  
+  backgroundLight: '#F3F6EA',
+  backgroundMedium: '#F5F5F5',
 
   textPrimary: '#425950',
   textSecondary: '#6b7d78',

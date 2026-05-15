@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { customColors } from '../../lib/customColors';
 import { PatientRequest } from '../../services/patientManagementService';
 import { calculateAge } from '../../services/patientManagementService';
 import { formatFirestoreDate } from '../../utils/dateFormatter';
@@ -51,7 +52,7 @@ export const PatientRequestList: React.FC<PatientRequestListProps> = ({
   return (
     <div className="grid gap-4">
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+        <div className="bg-gray-50 border border-red-200 rounded-lg p-4 text-red-700">
           {error}
         </div>
       )}
@@ -63,7 +64,7 @@ export const PatientRequestList: React.FC<PatientRequestListProps> = ({
         return (
           <div
             key={request.id}
-            className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all"
+            className={`bg-gray-50 border-[${customColors.borderMedium}] rounded-lg p-4 hover:shadow-md transition-all`}
           >
             <div className="flex items-start justify-between">
               <div className="flex-1">

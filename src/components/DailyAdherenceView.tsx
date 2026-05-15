@@ -111,13 +111,13 @@ export const DailyAdherenceView: React.FC<DailyAdherenceViewProps> = ({
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'taken':
-        return 'bg-green-100 text-green-800 border-green-300';
+        return 'bg-gray-50 text-green-800 border-green-300';
       case 'missed':
-        return 'bg-red-100 text-red-800 border-red-300';
+        return 'bg-gray-50 text-red-800 border-red-300';
       case 'pending':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+        return 'bg-gray-50 text-yellow-800 border-yellow-300';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-300';
+        return 'bg-gray-50 text-gray-800 border-gray-300';
     }
   };
   const timeSlots: Array<'morning' | 'afternoon' | 'evening'> = ['morning', 'afternoon', 'evening'];
@@ -128,7 +128,7 @@ export const DailyAdherenceView: React.FC<DailyAdherenceViewProps> = ({
   };
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
+      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-blue-200">
         <button
           onClick={onPreviousDay}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -146,11 +146,11 @@ export const DailyAdherenceView: React.FC<DailyAdherenceViewProps> = ({
         </button>
       </div>
       {dailyData?.moodEntries && dailyData.moodEntries.length > 0 && (
-        <div className="p-4 bg-purple-50 border-2 border-purple-200 rounded-lg">
+        <div className="p-4 bg-gray-50 border-2 border-purple-200 rounded-lg">
           <h3 className="font-semibold text-gray-900 mb-3">😊 Mood Entries</h3>
           <div className="space-y-2">
             {dailyData.moodEntries.map((mood, idx) => (
-              <div key={idx} className="flex items-center gap-3 p-2 bg-white rounded border border-purple-100">
+              <div key={idx} className="flex items-center gap-3 p-2 bg-gray-50 rounded border border-purple-100">
                 <span className="text-2xl">{getMoodEmoji(mood.mood)}</span>
                 <div className="flex-1">
                   <p className="font-medium text-gray-900 capitalize">{mood.mood}</p>
@@ -164,9 +164,9 @@ export const DailyAdherenceView: React.FC<DailyAdherenceViewProps> = ({
           </div>
         </div>
       )}
-      <div className="space-y-4">
+          <div className="space-y-4">
         {timeSlots.map((timeSlot) => (
-          <div key={timeSlot} className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+          <div key={timeSlot} className="p-4 bg-gray-50 border-2 border-blue-200 rounded-lg">
             <h3 className="font-semibold text-gray-900 mb-3">{timeSlotLabels[timeSlot]}</h3>
             {dailyData?.medications[timeSlot] && dailyData.medications[timeSlot].length > 0 ? (
               <div className="space-y-2">
@@ -212,17 +212,17 @@ export const DailyAdherenceView: React.FC<DailyAdherenceViewProps> = ({
         ))}
       </div>
       {dailyData?.vitals && (
-        <div className="p-4 bg-red-50 border-2 border-red-200 rounded-lg">
+        <div className="p-4 bg-gray-50 border-2 border-red-200 rounded-lg">
           <h3 className="font-semibold text-gray-900 mb-3">🏥 Vitals</h3>
           <div className="grid grid-cols-2 gap-3">
             {dailyData.vitals.heartRate && (
-              <div className="p-3 bg-white rounded border border-red-100">
+              <div className="p-3 bg-gray-50 rounded border border-red-100">
                 <p className="text-xs text-gray-600">Heart Rate</p>
                 <p className="text-lg font-bold text-gray-900">{dailyData.vitals.heartRate} BPM</p>
               </div>
             )}
             {dailyData.vitals.bloodPressure && (
-              <div className="p-3 bg-white rounded border border-red-100">
+              <div className="p-3 bg-gray-50 rounded border border-red-100">
                 <p className="text-xs text-gray-600">Blood Pressure</p>
                 <p className="text-lg font-bold text-gray-900">
                   {dailyData.vitals.bloodPressure.systolic}/{dailyData.vitals.bloodPressure.diastolic}
@@ -230,13 +230,13 @@ export const DailyAdherenceView: React.FC<DailyAdherenceViewProps> = ({
               </div>
             )}
             {dailyData.vitals.temperature && (
-              <div className="p-3 bg-white rounded border border-red-100">
+              <div className="p-3 bg-gray-50 rounded border border-red-100">
                 <p className="text-xs text-gray-600">Temperature</p>
                 <p className="text-lg font-bold text-gray-900">{dailyData.vitals.temperature}°C</p>
               </div>
             )}
             {dailyData.vitals.bloodSugar && (
-              <div className="p-3 bg-white rounded border border-red-100">
+              <div className="p-3 bg-gray-50 rounded border border-red-100">
                 <p className="text-xs text-gray-600">Blood Sugar</p>
                 <p className="text-lg font-bold text-gray-900">{dailyData.vitals.bloodSugar} mg/dL</p>
               </div>

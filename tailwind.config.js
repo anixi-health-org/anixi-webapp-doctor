@@ -6,8 +6,9 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'anixi-beige': '#F6FAEB',
+        'anixi-beige': '#F3F6EA', 
         'anixi-green': '#425950',
+        'anixi-card': '#F5F5F5',
         border: 'hsl(var(--border) / <alpha-value>)',
         background: 'hsl(var(--background) / <alpha-value>)',
         foreground: 'hsl(var(--foreground) / <alpha-value>)',

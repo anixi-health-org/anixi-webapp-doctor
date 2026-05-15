@@ -16,9 +16,9 @@ interface PatientCardProps {
 const getStatusColor = (status: PatientStatus) => {
   switch (status) {
     case 'stable':
-      return 'bg-green-50 border-green-200 hover:border-green-400';
+      return 'bg-gray-50 border-green-200 hover:border-green-400';
     case 'warning':
-      return 'bg-yellow-50 border-yellow-200 hover:border-yellow-400';
+      return 'bg-gray-50 border-yellow-200 hover:border-yellow-400';
     case 'inactive':
       return 'bg-gray-50 border-gray-200 hover:border-gray-400';
     default:

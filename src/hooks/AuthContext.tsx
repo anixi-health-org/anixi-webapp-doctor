@@ -26,7 +26,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const loadPracticeSession = async (uid: string): Promise<PracticeSession | null> => {
   try {
     let practice = await getPracticeForUser(uid);
-    // Auto-provision a practice for a new doctor owner so they don't hit a blank state
+    
     if (!practice) {
       const practiceId = await createPractice(uid, {
         name: 'My Practice',
@@ -42,7 +42,7 @@ const loadPracticeSession = async (uid: string): Promise<PracticeSession | null>
     if (!member) return null;
     let bookingPolicy = existingPolicy;
     if (!bookingPolicy) {
-      // Repair missing policy (e.g. from a previously broken provisioning run)
+      
       await updateBookingPolicy(practice.id, {
         patientCancellationWindowHours: 24,
         doctorCancellationWindowHours: 1,

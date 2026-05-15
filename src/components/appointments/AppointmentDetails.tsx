@@ -72,7 +72,7 @@ const convertTo24Hour = (timeStr: string): string => {
     const hour24 = period === 'PM' && hour !== 12 ? hour + 12 : period === 'AM' && hour === 12 ? 0 : hour;
     return `${hour24.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
   } else {
-    // Assume it's already 24-hour
+    
     return timeStr;
   }
 };
@@ -164,7 +164,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     setError(null);
     try {
       await updateAppointment(appointment.doctorId, appointment.id, { status: 'confirmed' });
-      // Force sync to ensure mobile app sees the changes
+      
       await syncAppointmentStatus(appointment.id);
       onStatusChange(appointment.id, 'confirmed');
       onClose();
@@ -182,7 +182,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     setError(null);
     try {
       await updateAppointment(appointment.doctorId, appointment.id, { status: 'cancelled' });
-      // Force sync to ensure mobile app sees the changes
+      
       await syncAppointmentStatus(appointment.id);
       onStatusChange(appointment.id, 'cancelled');
       onClose();
@@ -285,7 +285,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
         overrideApplied,
         conflictMeta,
       });
-      // Force sync to ensure mobile app sees the changes
+      
       await syncAppointmentStatus(appointment.id);
       onReschedule(appointment.id, startAt, convertTo12Hour(rescheduleTime));
       setShowRescheduleModal(false);

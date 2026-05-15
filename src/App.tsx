@@ -18,6 +18,7 @@ import ProfessionalProfile from './pages/Profile';
 import PracticeSettingsPage from './pages/PracticeSettingsPage';
 import PracticeCalendarPage from './pages/PracticeCalendarPage';
 import ShareAnixi from './pages/ShareAnixi';
+import ChangePassword from './pages/ChangePassword';
 import Support from './pages/Support';
 import DeleteAccount from './pages/DeleteAccount';
 import MoodCheckerPage from './pages/MoodCheckerPage';
@@ -167,6 +168,7 @@ function App() {
                     <Route path="/practice-settings" element={<PracticeSettingsPage />} />
                     <Route path="/practice-calendar" element={<PracticeCalendarPage />} />
                     <Route path="/share-anixi" element={<ShareAnixi />} />
+                    <Route path="/change-password" element={<ChangePassword />} />
                     <Route path="/support" element={<Support />} />
                     <Route path="/delete-account" element={<DeleteAccount />} />
                   </Routes>

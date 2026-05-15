@@ -13,12 +13,12 @@ import {
 } from '../shared/constants';
 import type { PracticeDailySchedule } from '../types';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 
 const toDate = (v: any): Date =>
   v instanceof Timestamp ? v.toDate() : v instanceof Date ? v : new Date(v);
 
-// ─── Practice Daily Schedule ───────────────────────────────────────────────────
+
 
 export const getPracticeDailySchedule = async (
   practiceId: string,
@@ -55,8 +55,8 @@ export const setPracticeDailySchedule = async (
     PRACTICE_DAILY_SCHEDULE_SUBCOLLECTION,
     schedule.date
   );
-  // Firestore does not accept `undefined` field values. Build the document
-  // payload and only include fields that are defined.
+  
+  
   const data: any = {
     practiceId: schedule.practiceId,
     date: schedule.date,
