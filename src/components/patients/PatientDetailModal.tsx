@@ -1,4 +1,5 @@
 import React from 'react';
+import { customColors } from '../../lib/customColors';
 import { Patient } from '../../types';
 import { calculateAge } from '../../services/patientManagementService';
 import { formatTimestamp } from '../../utils/dateFormatter';
@@ -68,24 +69,24 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
               Personal Information
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-gray-50 rounded-lg p-4">
+              <div className="bg-anixi-card rounded-lg p-4 border-[${customColors.borderMedium}]">
                 <p className="text-xs font-semibold text-gray-500 mb-1">EMAIL</p>
                 <p className="text-gray-900 font-medium break-all">{patient.email}</p>
               </div>
               {age !== undefined && (
-                <div className="bg-gray-50 rounded-lg p-4">
+                 <div className="bg-anixi-card rounded-lg p-4 border-[${customColors.borderMedium}]">
                   <p className="text-xs font-semibold text-gray-500 mb-1">AGE</p>
                   <p className="text-gray-900 font-medium">{age} years</p>
                 </div>
               )}
               {patient.dateOfBirth && (
-                <div className="bg-gray-50 rounded-lg p-4">
+                 <div className="bg-anixi-card rounded-lg p-4 border-[${customColors.borderMedium}]">
                   <p className="text-xs font-semibold text-gray-500 mb-1">DATE OF BIRTH</p>
                   <p className="text-gray-900 font-medium">{formatDate(patient.dateOfBirth)}</p>
                 </div>
               )}
               {patient.gender && (
-                <div className="bg-gray-50 rounded-lg p-4">
+                 <div className="bg-anixi-card rounded-lg p-4 border-[${customColors.borderMedium}]">
                   <p className="text-xs font-semibold text-gray-500 mb-1">GENDER</p>
                   <p className="text-gray-900 font-medium">
                     {patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)}
@@ -93,7 +94,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                 </div>
               )}
               {patient.maritalStatus && (
-                <div className="bg-gray-50 rounded-lg p-4">
+                 <div className="bg-anixi-card rounded-lg p-4 border-[${customColors.borderMedium}]">
                   <p className="text-xs font-semibold text-gray-500 mb-1">MARITAL STATUS</p>
                   <p className="text-gray-900 font-medium">
                     {patient.maritalStatus.charAt(0).toUpperCase() +
@@ -102,19 +103,19 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                 </div>
               )}
               {patient.language && (
-                <div className="bg-gray-50 rounded-lg p-4">
+                 <div className="bg-anixi-card rounded-lg p-4 border-[${customColors.borderMedium}]">
                   <p className="text-xs font-semibold text-gray-500 mb-1">LANGUAGE</p>
                   <p className="text-gray-900 font-medium">{patient.language}</p>
                 </div>
               )}
               {patient.phoneNumber && (
-                <div className="bg-gray-50 rounded-lg p-4">
+                 <div className="bg-anixi-card rounded-lg p-4 border-[${customColors.borderMedium}]">
                   <p className="text-xs font-semibold text-gray-500 mb-1">PHONE NUMBER</p>
                   <p className="text-gray-900 font-medium">{patient.phoneNumber}</p>
                 </div>
               )}
               {patient.address && (
-                <div className="bg-gray-50 rounded-lg p-4 sm:col-span-2">
+                 <div className="bg-anixi-card rounded-lg p-4 sm:col-span-2 border-[${customColors.borderMedium}]">
                   <p className="text-xs font-semibold text-gray-500 mb-1">ADDRESS</p>
                   <p className="text-gray-900 font-medium">{patient.address}</p>
                 </div>
@@ -140,7 +141,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
             </h3>
             <div className="space-y-4">
               {patient.medicalAid ? (
-                <div className="bg-[#f0f2f1] rounded-lg p-4 border border-[#cbd5d2]">
+                 <div className="bg-anixi-card rounded-lg p-4 border-[${customColors.borderMedium}]">
                   <p className="text-xs font-semibold text-[#425950] mb-2">MEDICAL AID</p>
                   <div className="space-y-1 text-gray-900">
                     <p className="font-medium">Provider: {patient.medicalAid.provider}</p>
@@ -151,7 +152,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="bg-gray-50 rounded-lg p-4">
+                 <div className="bg-anixi-card rounded-lg p-4 border-[${customColors.borderMedium}]">
                   <p className="text-xs font-semibold text-gray-500 mb-1">MEDICAL AID</p>
                   <p className="text-gray-600">No medical aid information available</p>
                 </div>
@@ -159,7 +160,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
               <div>
                 <p className="text-xs font-semibold text-gray-500 mb-2">MEDICAL HISTORY</p>
                 {patient.chronicDiseases && patient.chronicDiseases.length > 0 ? (
-                  <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                  <div className="bg-anixi-card rounded-lg p-4 border border-yellow-200">
                     <ul className="space-y-1">
                       {patient.chronicDiseases.map((disease, idx) => (
                         <li key={idx} className="text-gray-900 font-medium">
@@ -169,7 +170,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                     </ul>
                   </div>
                 ) : (
-                  <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="bg-anixi-card rounded-lg p-4 border-[${customColors.borderMedium}]">
                     <p className="text-gray-600">No medical history available</p>
                   </div>
                 )}
@@ -177,7 +178,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
               {patient.allergies && patient.allergies.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-gray-500 mb-2">ALLERGIES</p>
-                  <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+                    <div className="bg-anixi-card rounded-lg p-4 border border-red-200">
                     <ul className="space-y-1">
                       {patient.allergies.map((allergy, idx) => (
                         <li key={idx} className="text-gray-900 font-medium">

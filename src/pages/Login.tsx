@@ -40,7 +40,7 @@ export const Login: React.FC = () => {
   };
   return (
     <div className="min-h-screen flex items-center justify-center bg-anixi-beige py-12 px-4 sm:px-6 lg:px-8">
-      {/* Access-denied toast */}
+      {}
       {toast.visible && (
         <Toast
           message={toast.message}

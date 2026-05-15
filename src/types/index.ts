@@ -1,4 +1,4 @@
-// ─── Practice Roles & Permissions ────────────────────────────────────────────
+
 
 export type PracticeRole = 'owner' | 'delegate';
 
@@ -21,7 +21,7 @@ export interface PracticeMember {
     updatedAt: Date;
 }
 
-// ─── Practice Context ─────────────────────────────────────────────────────────
+
 
 export interface PracticeLocation {
     id: string;
@@ -49,9 +49,8 @@ export interface Practice {
     updatedAt: Date;
 }
 
-// ─── Bookable Blocks ──────────────────────────────────────────────────────────
 
-/** 0 = Sunday, 1 = Monday … 6 = Saturday */
+
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface BookableBlock {
@@ -59,10 +58,8 @@ export interface BookableBlock {
     practiceId: string;
     doctorId: string;
     dayOfWeek: DayOfWeek;
-    /** 24-h "HH:mm" */
-    startTime: string;
-    /** 24-h "HH:mm" */
-    endTime: string;
+        startTime: string;
+        endTime: string;
     locationId: string;
     allowedConsultTypes: ConsultType[];
     slotDurationMinutes: number;
@@ -73,7 +70,7 @@ export interface BookableBlock {
     updatedAt: Date;
 }
 
-// ─── Soft Blocks ──────────────────────────────────────────────────────────────
+
 
 export type SoftBlockCategory =
     | 'surgery'
@@ -87,9 +84,9 @@ export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly';
 
 export interface SoftBlockRecurrence {
     frequency: RecurrenceFrequency;
-    interval: number;          // e.g. every 2 weeks → frequency=weekly, interval=2
+    interval: number;          
     endDate?: Date;
-    daysOfWeek?: DayOfWeek[];  // for weekly recurrence
+    daysOfWeek?: DayOfWeek[];  
 }
 
 export interface SoftBlock {
@@ -101,26 +98,26 @@ export interface SoftBlock {
     startAt: Date;
     endAt: Date;
     recurrence?: SoftBlockRecurrence;
-    createdBy: string;         // uid
-    updatedBy: string;         // uid
+    createdBy: string;         
+    updatedBy: string;         
     createdAt: Date;
     updatedAt: Date;
 }
 
-// ─── Booking Policies ─────────────────────────────────────────────────────────
+
 
 export type ConfirmationMode = 'auto' | 'doctor_confirms';
 
 export interface BookingPolicy {
     practiceId: string;
-    patientCancellationWindowHours: number;   // default 24
-    doctorCancellationWindowHours: number;    // default 1
+    patientCancellationWindowHours: number;   
+    doctorCancellationWindowHours: number;    
     noShowPolicyText: string;
     confirmationMode: ConfirmationMode;
     updatedAt: Date;
 }
 
-// ─── Available Slot (patient-facing, derived) ─────────────────────────────────
+
 
 export interface AvailableSlot {
     startAt: Date;
@@ -130,7 +127,7 @@ export interface AvailableSlot {
     bookableBlockId: string;
 }
 
-// ─── Users ────────────────────────────────────────────────────────────────────
+
 
 export interface User {
     id: string;
@@ -221,7 +218,7 @@ export interface Appointment {
     date: Date;
     time: string;
     notes?: string;
-    // Practice scheduling extensions
+    
     practiceId?: string;
     locationId?: string;
     consultType?: ConsultType;
@@ -262,7 +259,7 @@ export interface DashboardStats {
     upcomingAppointments: number;
 }
 
-// ─── Practice Session (loaded at login alongside Doctor profile) ───────────────
+
 
 export interface PracticeSession {
     practice: Practice;
@@ -270,16 +267,16 @@ export interface PracticeSession {
     bookingPolicy: BookingPolicy;
 }
 
-// ─── Practice Daily Schedule ───────────────────────────────────────────────────
+
 
 export type AvailabilityStatus = 'open' | 'limited' | 'closed';
 
 export interface PracticeDailySchedule {
     practiceId: string;
-    date: string; // YYYY-MM-DD
+    date: string; 
     availability: AvailabilityStatus;
-    openTime?: string; // HH:mm
-    closeTime?: string; // HH:mm
+    openTime?: string; 
+    closeTime?: string; 
     note?: string;
     updatedAt: Date;
 }

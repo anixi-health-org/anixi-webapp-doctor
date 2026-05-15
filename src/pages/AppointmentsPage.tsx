@@ -78,7 +78,7 @@ export const AppointmentsPage: React.FC = () => {
           : apt
       )
     );
-    // Reload appointments to ensure data is synced with database
+    
     await fetchAppointments();
     setToast({ visible: true, message: 'Appointment rescheduled successfully.', type: 'success' });
   };

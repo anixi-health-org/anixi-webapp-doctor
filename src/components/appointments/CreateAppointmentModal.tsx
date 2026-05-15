@@ -43,7 +43,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
     type: 'success',
   });
 
-  // Slot-picker state
+  
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedConsultType, setSelectedConsultType] = useState<ConsultType>('initial');
   const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
@@ -124,7 +124,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
       return;
     }
 
-    // Validate slot or override
+    
     if (!overrideMode && !selectedSlot) {
       setError('Please select an available time slot.');
       return;
@@ -157,7 +157,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
         endAt = selectedSlot!.endAt;
         appointmentDate = startAt;
 
-        // Validate selected slot is still free
+        
         if (practiceId) {
           const validation = await validateSlot(
             practiceId,
@@ -189,7 +189,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
 
       const timeStr = fmt12(startAt);
 
-      // Write using legacy service to maintain mobile compatibility
+      
       await createAppointment({
         doctorId: user.id,
         patientId: formData.patientId,
@@ -200,7 +200,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
         date: startAt,
         time: timeStr,
         notes: formData.notes,
-        // Extended fields
+        
         practiceId: practiceId ?? undefined,
         consultType: selectedConsultType,
         locationId: selectedSlot?.locationId,
@@ -211,7 +211,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
         conflictMeta,
       });
 
-      // Also write to practice-scoped collection if practice exists
+      
       if (practiceId) {
         await createScheduledAppointment({
           practiceId,
@@ -236,7 +236,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
           : 'Appointment created successfully.'
       );
       onClose();
-      // Reset form
+      
       setFormData({ patientId: '', patientName: '', patientEmail: '', notes: '' });
       setSelectedDate('');
       setSelectedSlot(null);
@@ -275,7 +275,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Patient */}
+              {}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Patient *</label>
                 {isLoading ? (
@@ -314,7 +314,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 </select>
               </div>
 
-              {/* Date */}
+              {}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
                 <input
@@ -327,7 +327,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 />
               </div>
 
-              {/* Slot Picker */}
+              {}
               {selectedDate && hasBookableBlocks && !overrideMode && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -369,7 +369,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 </div>
               )}
 
-              {/* Override mode (no bookable blocks or explicit override) */}
+              {}
               {selectedDate && (!hasBookableBlocks || overrideMode) && (
                 <div>
                   <div className="flex items-center justify-between mb-1">

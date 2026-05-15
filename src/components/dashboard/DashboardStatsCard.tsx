@@ -21,10 +21,11 @@ export const DashboardStatsCard: React.FC<DashboardStatsCardProps> = ({
   description,
 }) => {
   const colorClasses = {
-    blue: `bg-[${customColors.backgroundLight}] border-[${customColors.borderLight}] hover:bg-[${customColors.backgroundMedium}]`,
-    orange: 'bg-orange-50 border-orange-200 hover:bg-orange-100',
-    green: 'bg-green-50 border-green-200 hover:bg-green-100',
-    red: 'bg-red-50 border-red-200 hover:bg-red-100',
+    
+    blue: `bg-anixi-card border-[${customColors.borderMedium}] hover:bg-[${customColors.backgroundMedium}]`,
+    orange: `bg-anixi-card border-[${customColors.borderMedium}] hover:bg-[${customColors.backgroundMedium}]`,
+    green: `bg-anixi-card border-[${customColors.borderMedium}] hover:bg-[${customColors.backgroundMedium}]`,
+    red: `bg-anixi-card border-[${customColors.borderMedium}] hover:bg-[${customColors.backgroundMedium}]`,
   };
 
   const textColorClasses = {

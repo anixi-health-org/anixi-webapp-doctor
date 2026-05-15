@@ -111,13 +111,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
       <div className={`sticky top-0 z-40 bg-[${customColors.backgroundLight}] border-b border-gray-200 shadow-sm`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 sm:mb-6">📊 Medical Dashboard</h1>
-<<<<<<< samira
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-=======
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
->>>>>>> main
-
-            <h1 className="text-3xl font-bold text-gray-900 mb-6">📊 Medical Dashboard</h1>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <DashboardStatsCard
@@ -198,14 +192,9 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
               }}
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
-<<<<<<< samira
                 <div className="flex flex-col mb-2">
                   <h3 className="text-lg font-bold">{selectedPatient.displayName || selectedPatient.email}</h3>
                 </div>
-=======
-              <div className="flex flex-col mb-2">
-                <h3 className="text-lg font-bold">{selectedPatient.displayName || selectedPatient.email}</h3>
->>>>>>> main
               </div>
 
               <div className="mb-6 pb-4 border-b border-gray-200">
@@ -261,7 +250,6 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
                     background: `linear-gradient(to right, ${colors.gradientStart}, ${colors.gradientEnd})`
                   }}
                 >
-<<<<<<< samira
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
                     <div className="flex flex-col mb-2">
                       <h3 className="text-lg font-bold">{selectedPatient.displayName || selectedPatient.email}</h3>
@@ -272,11 +260,6 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
                     >
                       {getCategoryTitle()}
                     </p>
-=======
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
-                  <div className="flex flex-col mb-2">
-                    <h3 className="text-lg font-bold">{selectedPatient.displayName || selectedPatient.email}</h3>
->>>>>>> main
                   </div>
                 </div>
               )}
@@ -299,7 +282,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
 
             {!selectedAdherenceDate && (
               <div className="lg:col-span-2">
-                <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
+                <div className={`bg-anixi-card rounded-xl shadow-lg overflow-hidden border-[${customColors.borderMedium}]`}>
                   <PatientDetailsPanel patient={selectedPatient} />
                 </div>
               </div>
@@ -308,11 +291,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
         ) : (
           <div className="text-center py-12">
             <p className="text-gray-500 text-lg mb-4">
-              {patients.length === 0 
-                ? '👥 No patients yet' 
-                : showPatientList 
-                ? '👆 Select a patient to view details'
-                : '👆 Click a card above to view patients'}
+              {patients.length === 0 ? '👥 No patients yet' : (!showPatientList ? '👆 Click a card above to view patients' : '')}
             </p>
             {patients.length > 0 && !showPatientList && (
               <button

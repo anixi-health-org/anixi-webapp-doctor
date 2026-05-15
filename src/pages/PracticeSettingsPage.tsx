@@ -89,7 +89,7 @@ const PracticeSettingsPage: React.FC = () => {
         />
       )}
 
-      {/* Header */}
+      {}
       <div className="mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Practice Settings</h1>
@@ -108,7 +108,7 @@ const PracticeSettingsPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Tabs */}
+      {}
       <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto pb-1">
         {TAB_CONFIG.map((tab) => (
           <button
@@ -137,7 +137,7 @@ const PracticeSettingsPage: React.FC = () => {
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
-          {/* Overview */}
+          {}
           {activeTab === 'overview' && (
             <div className="space-y-6">
               <div>
@@ -245,7 +245,7 @@ const PracticeSettingsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Bookable Blocks */}
+          {}
           {activeTab === 'availability' && (
             can('manageAppointments') ? (
               <BookableBlocksEditor
@@ -259,7 +259,7 @@ const PracticeSettingsPage: React.FC = () => {
             )
           )}
 
-          {/* Soft Blocks */}
+          {}
           {activeTab === 'soft-blocks' && (
             can('manageSoftBlocks') ? (
               <SoftBlocksEditor
@@ -272,7 +272,7 @@ const PracticeSettingsPage: React.FC = () => {
             )
           )}
 
-          {/* Booking Policies */}
+          {}
           {activeTab === 'policies' && bookingPolicy && (
             <BookingPoliciesForm
               practiceId={practice.id}
@@ -282,7 +282,7 @@ const PracticeSettingsPage: React.FC = () => {
             />
           )}
 
-          {/* Practice Permissions */}
+          {}
           {activeTab === 'permissions' && (
             <PracticePermissionsPanel
               practiceId={practice.id}

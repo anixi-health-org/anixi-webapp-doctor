@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { SharingRequest } from '../../types';
+import { customColors } from '../../lib/customColors';
 import { calculateAge } from '../../services/patientManagementService';
 
 interface SharingRequestsListProps {
@@ -78,7 +79,7 @@ export const SharingRequestsList: React.FC<SharingRequestsListProps> = ({
   return (
     <div className="space-y-4">
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+        <div className="bg-anixi-card border border-red-200 rounded-lg p-4 text-red-700">
           {error}
         </div>
       )}
@@ -89,7 +90,7 @@ export const SharingRequestsList: React.FC<SharingRequestsListProps> = ({
         
         if (!patient) {
           return (
-            <div key={patientId} className="bg-white border border-gray-200 rounded-lg p-4">
+            <div key={patientId} className={`bg-anixi-card border-[${customColors.borderMedium}] rounded-lg p-4`}>
               <h4 className="font-semibold text-gray-900">Patient</h4>
               <p className="text-sm text-gray-600">Patient details not available</p>
             </div>
@@ -104,7 +105,7 @@ export const SharingRequestsList: React.FC<SharingRequestsListProps> = ({
               return (
               <div
                 key={request.id}
-                className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all flex items-center justify-between"
+                className={`bg-anixi-card border-[${customColors.borderMedium}] rounded-lg p-4 hover:shadow-md transition-all flex items-center justify-between`}
               >
                 <div className="flex-1">
                   <h4 className="font-semibold text-gray-900">

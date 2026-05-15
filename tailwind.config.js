@@ -8,6 +8,7 @@ module.exports = {
       colors: {
         'anixi-beige': '#F6FAEB',
         'anixi-green': '#425950',
+        'anixi-card': '#FFFFFF',
       }
     },
   },

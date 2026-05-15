@@ -22,7 +22,7 @@ const PracticeCalendarPage: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const practice = practiceSession?.practice;
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const today = new Date().toISOString().split('T')[0]; 
 
   useEffect(() => {
     if (!practice) return;
@@ -82,7 +82,7 @@ const PracticeCalendarPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 px-3 py-4 sm:px-4 sm:py-6 max-w-2xl mx-auto">
-      {/* Header */}
+      {}
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">Practice Calendar</h1>
         <p className="text-gray-600 text-sm">
@@ -92,13 +92,13 @@ const PracticeCalendarPage: React.FC = () => {
 
       <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
         <div className="space-y-6">
-          {/* Today's Date */}
+          {}
           <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-2">Today's Schedule</h2>
             <p className="text-sm text-gray-600">{new Date().toLocaleDateString()}</p>
           </div>
 
-          {/* Availability */}
+          {}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
               Availability
@@ -132,7 +132,7 @@ const PracticeCalendarPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Times */}
+          {}
           {availability !== 'closed' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -160,7 +160,7 @@ const PracticeCalendarPage: React.FC = () => {
             </div>
           )}
 
-          {/* Note */}
+          {}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Note (Optional)
@@ -174,7 +174,7 @@ const PracticeCalendarPage: React.FC = () => {
             />
           </div>
 
-          {/* Save Button */}
+          {}
           <div className="flex justify-end">
             <div className="flex-1 mr-4">
               {successMessage && (
