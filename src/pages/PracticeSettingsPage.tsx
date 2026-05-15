@@ -7,7 +7,9 @@ import { SoftBlocksEditor } from '../components/practice/SoftBlocksEditor';
 import { BookingPoliciesForm } from '../components/practice/BookingPoliciesForm';
 import { PracticePermissionsPanel } from '../components/practice/PracticePermissionsPanel';
 import { Toast } from '../components/ui';
+import { TabPill } from '../components/ui/TabPill';
 import { updatePractice } from '../services/practiceSettingsService';
+import type { ConsultType, PracticeLocation } from '../types';
 
 type Tab = 'overview' | 'availability' | 'soft-blocks' | 'policies' | 'permissions';
 
@@ -35,6 +37,22 @@ const PracticeSettingsPage: React.FC = () => {
   const [editingName, setEditingName] = useState(false);
   const [practiceNameDraft, setPracticeNameDraft] = useState('');
   const [savingName, setSavingName] = useState(false);
+
+  // Timezone editing
+  const [editingTimezone, setEditingTimezone] = useState(false);
+  const [timezoneDraft, setTimezoneDraft] = useState('');
+  const [savingTimezone, setSavingTimezone] = useState(false);
+
+  // Location management
+  const [newLocName, setNewLocName] = useState('');
+  const [newLocType, setNewLocType] = useState<PracticeLocation['type']>('clinic');
+  const [newLocAddress, setNewLocAddress] = useState('');
+  const [savingLoc, setSavingLoc] = useState(false);
+
+  // Consult types
+  const [consultTypesDraft, setConsultTypesDraft] = useState<ConsultType[]>([]);
+  const [savingConsultTypes, setSavingConsultTypes] = useState(false);
+
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
     visible: false,
     message: '',
@@ -51,6 +69,10 @@ const PracticeSettingsPage: React.FC = () => {
     }, 4500);
     return () => clearTimeout(timer);
   }, [toast.visible]);
+
+  useEffect(() => {
+    if (practice) setConsultTypesDraft(practice.consultTypes ?? []);
+  }, [practice]);
 
   if (!practice) {
     return (
@@ -79,6 +101,69 @@ const PracticeSettingsPage: React.FC = () => {
     }
   };
 
+  const handleSaveTimezone = async () => {
+    if (!timezoneDraft.trim()) return;
+    setSavingTimezone(true);
+    try {
+      await updatePractice(practice.id, { timezone: timezoneDraft.trim() });
+      await refreshPracticeSession();
+      setEditingTimezone(false);
+      setToast({ visible: true, message: 'Timezone updated.', type: 'success' });
+    } catch (e: any) {
+      setToast({ visible: true, message: e?.message ?? 'Failed to update timezone.', type: 'error' });
+    } finally {
+      setSavingTimezone(false);
+    }
+  };
+
+  const handleAddLocation = async () => {
+    if (!newLocName.trim()) return;
+    setSavingLoc(true);
+    try {
+      const newLoc: PracticeLocation = {
+        id: crypto.randomUUID(),
+        name: newLocName.trim(),
+        type: newLocType,
+        ...(newLocAddress.trim() ? { address: newLocAddress.trim() } : {}),
+      };
+      await updatePractice(practice.id, { locations: [...practice.locations, newLoc] });
+      await refreshPracticeSession();
+      setNewLocName('');
+      setNewLocType('clinic');
+      setNewLocAddress('');
+      setToast({ visible: true, message: 'Location added.', type: 'success' });
+    } catch (e: any) {
+      setToast({ visible: true, message: e?.message ?? 'Failed to add location.', type: 'error' });
+    } finally {
+      setSavingLoc(false);
+    }
+  };
+
+  const handleRemoveLocation = async (locId: string) => {
+    try {
+      await updatePractice(practice.id, {
+        locations: practice.locations.filter((l) => l.id !== locId),
+      });
+      await refreshPracticeSession();
+      setToast({ visible: true, message: 'Location removed.', type: 'success' });
+    } catch (e: any) {
+      setToast({ visible: true, message: e?.message ?? 'Failed to remove location.', type: 'error' });
+    }
+  };
+
+  const handleSaveConsultTypes = async () => {
+    setSavingConsultTypes(true);
+    try {
+      await updatePractice(practice.id, { consultTypes: consultTypesDraft });
+      await refreshPracticeSession();
+      setToast({ visible: true, message: 'Consult types updated.', type: 'success' });
+    } catch (e: any) {
+      setToast({ visible: true, message: e?.message ?? 'Failed to update consult types.', type: 'error' });
+    } finally {
+      setSavingConsultTypes(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 px-3 py-4 sm:px-4 sm:py-6 lg:px-6 max-w-5xl mx-auto">
       {toast.visible && (
@@ -89,7 +174,7 @@ const PracticeSettingsPage: React.FC = () => {
         />
       )}
 
-      {/* Header */}
+      {}
       <div className="mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Practice Settings</h1>
@@ -109,19 +194,15 @@ const PracticeSettingsPage: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto pb-1">
+      <div className="flex gap-3 mb-6 rounded-3xl border border-[#E4EAF2] bg-white p-2 shadow-sm overflow-x-auto">
         {TAB_CONFIG.map((tab) => (
-          <button
+          <TabPill
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
-              activeTab === tab.id
-                ? 'border-[#516059] text-[#45524D]'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
+            active={activeTab === tab.id}
           >
             {tab.icon} {tab.label}
-          </button>
+          </TabPill>
         ))}
       </div>
 
@@ -137,7 +218,7 @@ const PracticeSettingsPage: React.FC = () => {
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
-          {/* Overview */}
+          {}
           {activeTab === 'overview' && (
             <div className="space-y-6">
               <div>
@@ -193,7 +274,43 @@ const PracticeSettingsPage: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
-                <p className="text-gray-900">{practice.timezone}</p>
+                {editingTimezone ? (
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      autoFocus
+                      value={timezoneDraft}
+                      onChange={(e) => setTimezoneDraft(e.target.value)}
+                      placeholder="e.g. Africa/Johannesburg"
+                      className="flex-1 text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#516059]"
+                    />
+                    <button
+                      onClick={handleSaveTimezone}
+                      disabled={savingTimezone}
+                      className="px-4 py-2 text-sm text-white rounded-lg disabled:opacity-50"
+                      style={{ backgroundColor: PRACTICE_BRAND.primary }}
+                    >
+                      {savingTimezone ? 'Saving…' : 'Save'}
+                    </button>
+                    <button
+                      onClick={() => setEditingTimezone(false)}
+                      className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <p className="text-gray-900">{practice.timezone}</p>
+                    {isOwner && (
+                      <button
+                        onClick={() => { setTimezoneDraft(practice.timezone); setEditingTimezone(true); }}
+                        className="text-xs text-[#516059] hover:underline"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -224,28 +341,119 @@ const PracticeSettingsPage: React.FC = () => {
                 </div>
               </div>
 
-              {practice.locations.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Locations</label>
-                  <div className="space-y-1">
-                    {practice.locations.map((loc) => (
-                      <div
-                        key={loc.id}
-                        className="flex items-center gap-2 text-sm text-gray-700"
-                      >
-                        <span className="text-gray-400">📍</span> {loc.name}
-                        {loc.address && (
-                          <span className="text-gray-400 text-xs">· {loc.address}</span>
-                        )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Locations</label>
+                <div className="space-y-2">
+                  {practice.locations.map((loc) => (
+                    <div
+                      key={loc.id}
+                      className="flex items-center justify-between gap-2 p-2.5 border border-gray-200 rounded-lg"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-gray-400">📍</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{loc.name}</p>
+                          <p className="text-xs text-gray-500 capitalize">
+                            {loc.type}{loc.address ? ` · ${loc.address}` : ''}
+                          </p>
+                        </div>
                       </div>
-                    ))}
-                  </div>
+                      {isOwner && (
+                        <button
+                          onClick={() => handleRemoveLocation(loc.id)}
+                          className="text-xs text-red-500 hover:text-red-700 shrink-0"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {practice.locations.length === 0 && (
+                    <p className="text-sm text-gray-400 italic">No locations added yet.</p>
+                  )}
                 </div>
-              )}
+                {isOwner && (
+                  <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg space-y-2">
+                    <p className="text-xs font-medium text-gray-600">Add a location</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <input
+                        value={newLocName}
+                        onChange={(e) => setNewLocName(e.target.value)}
+                        placeholder="Location name"
+                        className="text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#516059]"
+                      />
+                      <select
+                        value={newLocType}
+                        onChange={(e) => setNewLocType(e.target.value as PracticeLocation['type'])}
+                        className="text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#516059]"
+                      >
+                        <option value="clinic">Clinic</option>
+                        <option value="hospital">Hospital</option>
+                        <option value="virtual">Virtual</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <input
+                        value={newLocAddress}
+                        onChange={(e) => setNewLocAddress(e.target.value)}
+                        placeholder="Address (optional)"
+                        className="text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#516059]"
+                      />
+                    </div>
+                    <button
+                      onClick={handleAddLocation}
+                      disabled={savingLoc || !newLocName.trim()}
+                      className="px-4 py-2 text-sm text-white rounded-lg disabled:opacity-50"
+                      style={{ backgroundColor: PRACTICE_BRAND.primary }}
+                    >
+                      {savingLoc ? 'Adding…' : 'Add Location'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">Consult Types</label>
+                  {isOwner && (
+                    <button
+                      onClick={handleSaveConsultTypes}
+                      disabled={savingConsultTypes}
+                      className="text-xs text-white px-3 py-1 rounded-lg disabled:opacity-50"
+                      style={{ backgroundColor: PRACTICE_BRAND.primary }}
+                    >
+                      {savingConsultTypes ? 'Saving…' : 'Save'}
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(['initial', 'follow-up', 'urgent', 'procedure', 'teleconsult', 'other'] as ConsultType[]).map((ct) => {
+                    const active = consultTypesDraft.includes(ct);
+                    return (
+                      <button
+                        key={ct}
+                        onClick={() => {
+                          if (!isOwner) return;
+                          setConsultTypesDraft((prev) =>
+                            active ? prev.filter((t) => t !== ct) : [...prev, ct]
+                          );
+                        }}
+                        className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                          active
+                            ? 'bg-[#516059] text-white border-[#516059]'
+                            : 'bg-white text-gray-600 border-gray-300 hover:border-[#516059]'
+                        } ${!isOwner ? 'cursor-default' : 'cursor-pointer'}`}
+                      >
+                        {ct}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Toggle which consult types this practice offers.</p>
+              </div>
             </div>
           )}
 
-          {/* Bookable Blocks */}
+          {}
           {activeTab === 'availability' && (
             can('manageAppointments') ? (
               <BookableBlocksEditor
@@ -259,7 +467,7 @@ const PracticeSettingsPage: React.FC = () => {
             )
           )}
 
-          {/* Soft Blocks */}
+          {}
           {activeTab === 'soft-blocks' && (
             can('manageSoftBlocks') ? (
               <SoftBlocksEditor
@@ -272,7 +480,7 @@ const PracticeSettingsPage: React.FC = () => {
             )
           )}
 
-          {/* Booking Policies */}
+          {}
           {activeTab === 'policies' && bookingPolicy && (
             <BookingPoliciesForm
               practiceId={practice.id}
@@ -282,7 +490,7 @@ const PracticeSettingsPage: React.FC = () => {
             />
           )}
 
-          {/* Practice Permissions */}
+          {}
           {activeTab === 'permissions' && (
             <PracticePermissionsPanel
               practiceId={practice.id}

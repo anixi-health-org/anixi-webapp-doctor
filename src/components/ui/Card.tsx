@@ -7,8 +7,8 @@ interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 export const Card: React.FC<CardProps> = ({ children, className, variant = 'default', ...props }) => {
   const variants = {
-    default: 'bg-white rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200',
-    elevated: 'bg-white rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow duration-200',
+    default: 'bg-anixi-card rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200',
+    elevated: 'bg-anixi-card rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow duration-200',
     alert: 'bg-red-50 rounded-lg border-l-4 border-red-500 shadow-sm',
     success: 'bg-green-50 rounded-lg border-l-4 border-green-500 shadow-sm',
   };

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { customColors } from '../../lib/customColors';
 import { PatientRequest } from '../../services/patientManagementService';
 import { calculateAge } from '../../services/patientManagementService';
+import { formatFirestoreDate } from '../../utils/dateFormatter';
 interface PatientRequestListProps {
   requests: PatientRequest[];
   loading: boolean;
@@ -50,7 +52,7 @@ export const PatientRequestList: React.FC<PatientRequestListProps> = ({
   return (
     <div className="grid gap-4">
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+        <div className="bg-gray-50 border border-red-200 rounded-lg p-4 text-red-700">
           {error}
         </div>
       )}
@@ -62,7 +64,7 @@ export const PatientRequestList: React.FC<PatientRequestListProps> = ({
         return (
           <div
             key={request.id}
-            className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all"
+            className={`bg-gray-50 border-[${customColors.borderMedium}] rounded-lg p-4 hover:shadow-md transition-all`}
           >
             <div className="flex items-start justify-between">
               <div className="flex-1">
@@ -87,12 +89,7 @@ export const PatientRequestList: React.FC<PatientRequestListProps> = ({
                 </div>
                 <div className="text-xs text-gray-500">
                   🕐 Requested{' '}
-                  {request.requestedAt.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                  {formatFirestoreDate(request.requestedAt, 'datetime') || 'N/A'}
                 </div>
               </div>
               <div className="flex gap-2 ml-4">

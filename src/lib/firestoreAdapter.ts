@@ -14,7 +14,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 
-// Re-export Firestore APIs through one adapter so data access stays web/native portable.
+
 export {
   addDoc,
   collection,

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { TabPill } from '../components/ui/TabPill';
 import { useAuth } from '../hooks/useAuth';
 import { updateDoctorProfile } from '../services/doctorService';
 import { Doctor } from '../types';
@@ -108,19 +109,15 @@ const ProfessionalProfileForm: React.FC = () => {
     ];
 
     return (
-      <div className="flex space-x-1 mb-8 bg-gray-100 p-1 rounded-lg">
+      <div className="flex gap-3 mb-8 rounded-3xl border border-[#E4EAF2] bg-white p-2 shadow-sm overflow-x-auto">
         {tabs.map((tab) => (
-          <button
+          <TabPill
             key={tab.id}
             onClick={() => setCurrentStep(tab.id)}
-            className={`flex-1 py-3 px-4 text-sm font-medium rounded-md transition-all duration-200 ${
-              currentStep === tab.id
-                ? 'bg-[#425950] text-white shadow-md'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
-            }`}
+            active={currentStep === tab.id}
           >
             {tab.name}
-          </button>
+          </TabPill>
         ))}
       </div>
     );
@@ -546,7 +543,7 @@ const ProfessionalProfileForm: React.FC = () => {
 
               {message && (
                 <div className={`mt-6 p-4 rounded-lg ${
-                  message.includes('✅') ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                  message.includes('✅') ? 'bg-gray-50 text-green-800' : 'bg-gray-50 text-red-800'
                 }`}>
                   {message}
                 </div>

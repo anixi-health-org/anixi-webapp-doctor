@@ -32,12 +32,12 @@ import type {
   SoftBlock,
 } from '../types';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 
 const toDate = (v: any): Date =>
   v instanceof Timestamp ? v.toDate() : v instanceof Date ? v : new Date(v);
 
-// ─── Practice ─────────────────────────────────────────────────────────────────
+
 
 export const getPractice = async (practiceId: string): Promise<Practice | null> => {
   const ref = doc(db, PRACTICES_COLLECTION, practiceId);
@@ -71,7 +71,7 @@ export const createPractice = async (
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-  // Add owner membership
+  
   await setDoc(
     doc(db, PRACTICES_COLLECTION, docRef.id, PRACTICE_MEMBERS_SUBCOLLECTION, ownerId),
     {
@@ -89,7 +89,7 @@ export const createPractice = async (
       updatedAt: serverTimestamp(),
     }
   );
-  // Default booking policy
+  
   await setDoc(
     doc(db, PRACTICES_COLLECTION, docRef.id, BOOKING_POLICIES_SUBCOLLECTION, BOOKING_POLICIES_DOC_ID),
     {
@@ -115,9 +115,8 @@ export const updatePractice = async (
   });
 };
 
-/** Find the practice where the given uid is an active member */
 export const getPracticeForUser = async (uid: string): Promise<Practice | null> => {
-  // Search across all practices for a member document with this uid
+  
   const practicesSnap = await getDocs(collection(db, PRACTICES_COLLECTION));
   for (const practiceDoc of practicesSnap.docs) {
     const memberRef = doc(
@@ -145,7 +144,7 @@ export const getPracticeForUser = async (uid: string): Promise<Practice | null> 
   return null;
 };
 
-// ─── Practice Members ─────────────────────────────────────────────────────────
+
 
 export const getPracticeMember = async (
   practiceId: string,
@@ -228,7 +227,7 @@ export const removeDelegate = async (practiceId: string, uid: string): Promise<v
   );
 };
 
-// ─── Bookable Blocks ──────────────────────────────────────────────────────────
+
 
 const blockFromDoc = (d: any, id: string, practiceId: string): BookableBlock => ({
   id,
@@ -287,7 +286,7 @@ export const deleteBookableBlock = async (
   );
 };
 
-// ─── Soft Blocks ──────────────────────────────────────────────────────────────
+
 
 const softBlockFromDoc = (d: any, id: string, practiceId: string): SoftBlock => ({
   id,
@@ -393,7 +392,7 @@ export const deleteSoftBlock = async (
   );
 };
 
-// ─── Booking Policy ───────────────────────────────────────────────────────────
+
 
 export const getBookingPolicy = async (practiceId: string): Promise<BookingPolicy | null> => {
   const ref = doc(db, PRACTICES_COLLECTION, practiceId, BOOKING_POLICIES_SUBCOLLECTION, BOOKING_POLICIES_DOC_ID);

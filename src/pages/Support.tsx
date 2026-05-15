@@ -56,13 +56,13 @@ export const Support: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 gap-4 mb-12">
-        <a href="mailto:support@anixi.health" className="p-6 bg-white rounded-lg shadow hover:shadow-lg transition-shadow border-l-4 border-purple-600">
+        <a href="mailto:support@anixi.health" className="p-6 bg-anixi-card rounded-lg shadow-sm hover:shadow transition-shadow border-l-4 border-purple-600">
           <h3 className="font-semibold text-gray-900 mb-1">Email Support</h3>
           <p className="text-sm text-gray-600">support@anixi.health</p>
         </a>
       </div>
 
-      <div className="bg-white rounded-lg shadow mb-12">
+      <div className="bg-anixi-card rounded-lg shadow-sm mb-12">
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-2xl font-bold text-gray-900">Frequently Asked Questions</h2>
         </div>
@@ -86,7 +86,7 @@ export const Support: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow">
+      <div className="bg-anixi-card rounded-lg shadow-sm">
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-2xl font-bold text-gray-900">Contact Support</h2>
           <p className="text-gray-600 text-sm mt-1">Can't find what you're looking for? Send us a message</p>
@@ -120,12 +120,12 @@ export const Support: React.FC = () => {
             </p>
           </div>
           {errorMessage && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="p-4 bg-anixi-card border border-red-200 rounded-lg">
               <p className="text-sm text-red-700">{errorMessage}</p>
             </div>
           )}
           {formStatus === 'success' && (
-            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="p-4 bg-anixi-card border border-green-200 rounded-lg">
               <p className="font-medium text-green-900">Message sent!</p>
               <p className="text-sm text-green-700 mt-1">We'll get back to you within 24 hours</p>
             </div>
@@ -140,7 +140,7 @@ export const Support: React.FC = () => {
                 ? 'bg-gray-400 cursor-not-allowed'
                 : formStatus === 'error'
                 ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-blue-600 hover:bg-blue-700'
+                : 'bg-anixi-green hover:bg-anixi-green/90'
             }`}
           >
             {formStatus === 'submitting'
@@ -153,7 +153,7 @@ export const Support: React.FC = () => {
           </button>
         </form>
       </div>
-      <div className="mt-8 bg-[#f0f2f1] border border-[#cbd5d2] rounded-lg p-6">
+      <div className="mt-8 bg-anixi-card border border-[#cbd5d2] rounded-lg p-6">
         <p className="text-[#425950]">
           <strong>Response Time:</strong> Our support team typically responds to messages within 24 hours during
           business days. For urgent issues, please call our emergency line.

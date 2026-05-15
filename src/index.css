@@ -14,3 +14,37 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --border: 0 0% 90%;
+  --primary: 150 29% 42%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 32 60% 58%;
+  --secondary-foreground: 0 0% 100%;
+  --destructive: 0 62% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 45%;
+  --anixi-button-bg: #425950;
+  --anixi-button-hover: #344842;
+  --anixi-button-text: #ffffff;
+  --anixi-button-disabled: #8fa19c;
+}
+
+.dark {
+  --background: 0 0% 4%;
+  --foreground: 0 0% 98%;
+  --card: 0 0% 4%;
+  --border: 0 0% 15%;
+  --primary: 150 29% 42%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 32 60% 58%;
+  --secondary-foreground: 0 0% 100%;
+  --destructive: 0 62% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --muted: 0 0% 12%;
+  --muted-foreground: 0 0% 63%;
+}

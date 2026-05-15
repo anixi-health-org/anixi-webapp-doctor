@@ -25,7 +25,7 @@ import type {
   Appointment,
 } from '../types';
 
-// ─── Conflict validation result ───────────────────────────────────────────────
+
 
 export interface SlotValidationResult {
   valid: boolean;
@@ -34,7 +34,7 @@ export interface SlotValidationResult {
   conflictingAppointmentId?: string;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 
 const toMinutes = (hhmm: string): number => {
   const [h, m] = hhmm.split(':').map(Number);
@@ -128,12 +128,8 @@ const getEffectiveSoftBlocksForDay = (
 ): SoftBlock[] =>
   allSoftBlocks.flatMap((block) => expandSoftBlockForDay(block, dayStart, dayEnd));
 
-// ─── Slot generation ──────────────────────────────────────────────────────────
 
-/**
- * Generate all available slot windows for a given date based on bookable blocks.
- * Does NOT filter out conflicts — call validateSlot separately.
- */
+
 export const generateRawSlots = (
   date: Date,
   blocks: BookableBlock[]
@@ -166,10 +162,6 @@ export const generateRawSlots = (
   return slots;
 };
 
-/**
- * Get available (conflict-free) slots for a given date.
- * Filters out any window that overlaps a soft block or existing appointment.
- */
 export const getAvailableSlots = async (
   practiceId: string,
   doctorId: string,
@@ -203,14 +195,14 @@ export const getAvailableSlots = async (
   });
 
   return raw.filter((slot) => {
-    // Consult type filter
+    
     if (consultType && !slot.consultTypes.includes(consultType)) return false;
-    // Soft block conflict
+    
     const hitsSoftBlock = softBlocks.some((sb) =>
       overlaps(slot.startAt, slot.endAt, sb.startAt, sb.endAt)
     );
     if (hitsSoftBlock) return false;
-    // Appointment conflict
+    
     const hitsAppointment = dayAppointments.some((a) => {
       const aptStart = a.startAt ?? a.date;
       const aptEnd = a.endAt ?? new Date(aptStart.getTime() + 30 * 60_000);
@@ -220,7 +212,7 @@ export const getAvailableSlots = async (
   });
 };
 
-// ─── Single slot validation ───────────────────────────────────────────────────
+
 
 export const validateSlot = async (
   practiceId: string,
@@ -249,7 +241,7 @@ export const validateSlot = async (
   const slotStartMin = startAt.getHours() * 60 + startAt.getMinutes();
   const slotEndMin = endAt.getHours() * 60 + endAt.getMinutes();
 
-  // 1. Must be inside a bookable block
+  
   const matchingBlock = doctorBlocks.find((b) => {
     if (b.dayOfWeek !== dow || !b.active) return false;
     const bStart = toMinutes(b.startTime);
@@ -261,12 +253,12 @@ export const validateSlot = async (
     return { valid: false, reason: 'outside_bookable_block' };
   }
 
-  // 2. Consult type allowed
+  
   if (!matchingBlock.allowedConsultTypes.includes(consultType)) {
     return { valid: false, reason: 'consult_type_not_allowed' };
   }
 
-  // 3. Soft block conflict
+  
   const hitSoftBlock = softBlocks.find((sb) =>
     overlaps(startAt, endAt, sb.startAt, sb.endAt)
   );
@@ -274,7 +266,7 @@ export const validateSlot = async (
     return { valid: false, reason: 'soft_block_conflict', softBlock: hitSoftBlock };
   }
 
-  // 4. Appointment conflict
+  
   const conflicting = appointments.find((a) => {
     if (a.id === excludeAppointmentId) return false;
     if (a.status === 'cancelled') return false;
@@ -289,7 +281,7 @@ export const validateSlot = async (
   return { valid: true };
 };
 
-// ─── Cancellation policy check ────────────────────────────────────────────────
+
 
 export interface CancellationCheck {
   allowed: boolean;
@@ -324,7 +316,7 @@ export const checkCancellationPolicy = (
   return { allowed: true };
 };
 
-// ─── Practice-scoped appointment creation ─────────────────────────────────────
+
 
 export interface ScheduledAppointmentData {
   practiceId: string;

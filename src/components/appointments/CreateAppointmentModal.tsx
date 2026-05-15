@@ -24,12 +24,23 @@ interface CreateAppointmentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAppointmentCreated: (message?: string) => void;
+  /** Pre-fill from a follow-up context */
+  prefillPatientId?: string;
+  prefillPatientName?: string;
+  prefillPatientEmail?: string;
+  prefillIsManual?: boolean;
+  consultTypeDefault?: import('../../types').ConsultType;
 }
 
 export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
   isOpen,
   onClose,
   onAppointmentCreated,
+  prefillPatientId,
+  prefillPatientName,
+  prefillPatientEmail,
+  prefillIsManual,
+  consultTypeDefault,
 }) => {
   const { user, practiceSession } = useAuth();
   const { can } = usePermissions();
@@ -43,9 +54,15 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
     type: 'success',
   });
 
+  /** Booking mode: Anixi patient from dropdown vs free-text manual */
+  const [bookingMode, setBookingMode] = useState<'anixi' | 'manual'>(prefillIsManual ? 'manual' : 'anixi');
+  const [manualName, setManualName] = useState(prefillIsManual ? (prefillPatientName ?? '') : '');
+  const [manualEmail, setManualEmail] = useState(prefillIsManual ? (prefillPatientEmail ?? '') : '');
+
   // Slot-picker state
+  
   const [selectedDate, setSelectedDate] = useState('');
-  const [selectedConsultType, setSelectedConsultType] = useState<ConsultType>('initial');
+  const [selectedConsultType, setSelectedConsultType] = useState<ConsultType>(consultTypeDefault ?? 'initial');
   const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<AvailableSlot | null>(null);
@@ -53,9 +70,9 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
   const [overrideTime, setOverrideTime] = useState('');
 
   const [formData, setFormData] = useState({
-    patientId: '',
-    patientName: '',
-    patientEmail: '',
+    patientId: prefillIsManual ? '' : (prefillPatientId ?? ''),
+    patientName: prefillIsManual ? '' : (prefillPatientName ?? ''),
+    patientEmail: prefillIsManual ? '' : (prefillPatientEmail ?? ''),
     notes: '',
   });
 
@@ -115,8 +132,18 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.id || !formData.patientId || !selectedDate) {
+
+    // Resolve patient info based on booking mode
+    const resolvedPatientId = bookingMode === 'anixi' ? formData.patientId : 'manual';
+    const resolvedPatientName = bookingMode === 'anixi' ? formData.patientName : manualName.trim();
+    const resolvedPatientEmail = bookingMode === 'anixi' ? formData.patientEmail : manualEmail.trim();
+
+    if (!user?.id || !resolvedPatientName || !selectedDate) {
       setError('Please fill in all required fields');
+      return;
+    }
+    if (bookingMode === 'anixi' && !formData.patientId) {
+      setError('Please select a patient');
       return;
     }
     if (!can('manageAppointments')) {
@@ -124,7 +151,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
       return;
     }
 
-    // Validate slot or override
+    
     if (!overrideMode && !selectedSlot) {
       setError('Please select an available time slot.');
       return;
@@ -157,7 +184,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
         endAt = selectedSlot!.endAt;
         appointmentDate = startAt;
 
-        // Validate selected slot is still free
+        
         if (practiceId) {
           const validation = await validateSlot(
             practiceId,
@@ -189,18 +216,23 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
 
       const timeStr = fmt12(startAt);
 
-      // Write using legacy service to maintain mobile compatibility
+      
       await createAppointment({
         doctorId: user.id,
-        patientId: formData.patientId,
-        patientName: formData.patientName,
-        patientEmail: formData.patientEmail,
+        patientId: resolvedPatientId,
+        patientName: resolvedPatientName,
+        patientEmail: resolvedPatientEmail,
         type: selectedConsultType === 'teleconsult' ? 'Virtual' : 'In-Person',
-        status: practiceSession?.bookingPolicy?.confirmationMode === 'auto' ? 'confirmed' : 'pending',
+        status:
+          bookingMode === 'manual' || practiceSession?.bookingPolicy?.confirmationMode === 'auto'
+            ? 'confirmed'
+            : 'pending',
         date: startAt,
         time: timeStr,
         notes: formData.notes,
+        isManual: bookingMode === 'manual',
         // Extended fields
+        
         practiceId: practiceId ?? undefined,
         consultType: selectedConsultType,
         locationId: selectedSlot?.locationId,
@@ -211,13 +243,13 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
         conflictMeta,
       });
 
-      // Also write to practice-scoped collection if practice exists
+      
       if (practiceId) {
         await createScheduledAppointment({
           practiceId,
           doctorId: user.id,
-          patientId: formData.patientId,
-          patientName: formData.patientName,
+          patientId: resolvedPatientId,
+          patientName: resolvedPatientName,
           patientEmail: formData.patientEmail,
           consultType: selectedConsultType,
           locationId: selectedSlot?.locationId ?? '',
@@ -236,12 +268,15 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
           : 'Appointment created successfully.'
       );
       onClose();
-      // Reset form
+      
       setFormData({ patientId: '', patientName: '', patientEmail: '', notes: '' });
       setSelectedDate('');
       setSelectedSlot(null);
       setOverrideMode(false);
       setOverrideTime('');
+      setManualName('');
+      setManualEmail('');
+      setBookingMode('anixi');
     } catch (err: any) {
       const msg = err?.message || 'Failed to create appointment';
       setError(msg);
@@ -275,27 +310,86 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Patient */}
+              {/* Booking Mode Toggle */}
+              {}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Patient *</label>
-                {isLoading ? (
-                  <p className="text-sm text-gray-500">Loading patients…</p>
-                ) : (
-                  <select
-                    value={formData.patientId}
-                    onChange={(e) => handlePatientChange(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
+                <label className="block text-sm font-medium text-gray-700 mb-2">Booking Type</label>
+                <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setBookingMode('anixi')}
+                    className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                      bookingMode === 'anixi'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
                   >
-                    <option value="">Select a patient</option>
-                    {patients.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.displayName || p.email}
-                      </option>
-                    ))}
-                  </select>
-                )}
+                    🔗 Anixi Patient
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBookingMode('manual')}
+                    className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                      bookingMode === 'manual'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    ✏️ Manual Booking
+                  </button>
+                </div>
               </div>
+
+              {/* Patient — Anixi mode */}
+              {bookingMode === 'anixi' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Patient *</label>
+                  {isLoading ? (
+                    <p className="text-sm text-gray-500">Loading patients…</p>
+                  ) : (
+                    <select
+                      value={formData.patientId}
+                      onChange={(e) => handlePatientChange(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required={bookingMode === 'anixi'}
+                    >
+                      <option value="">Select a patient</option>
+                      {patients.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.displayName || p.email}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {/* Patient — Manual mode */}
+              {bookingMode === 'manual' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Patient Name *</label>
+                    <input
+                      type="text"
+                      value={manualName}
+                      onChange={(e) => setManualName(e.target.value)}
+                      placeholder="Full name"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required={bookingMode === 'manual'}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Contact / Email</label>
+                    <input
+                      type="text"
+                      value={manualEmail}
+                      onChange={(e) => setManualEmail(e.target.value)}
+                      placeholder="Phone or email (optional)"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </>
+              )}
 
               {/* Consult Type */}
               <div>
@@ -314,7 +408,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 </select>
               </div>
 
-              {/* Date */}
+              {}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
                 <input
@@ -327,7 +421,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 />
               </div>
 
-              {/* Slot Picker */}
+              {}
               {selectedDate && hasBookableBlocks && !overrideMode && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -369,7 +463,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 </div>
               )}
 
-              {/* Override mode (no bookable blocks or explicit override) */}
+              {}
               {selectedDate && (!hasBookableBlocks || overrideMode) && (
                 <div>
                   <div className="flex items-center justify-between mb-1">

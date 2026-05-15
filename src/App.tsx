@@ -18,6 +18,7 @@ import ProfessionalProfile from './pages/Profile';
 import PracticeSettingsPage from './pages/PracticeSettingsPage';
 import PracticeCalendarPage from './pages/PracticeCalendarPage';
 import ShareAnixi from './pages/ShareAnixi';
+import ChangePassword from './pages/ChangePassword';
 import Support from './pages/Support';
 import DeleteAccount from './pages/DeleteAccount';
 import MoodCheckerPage from './pages/MoodCheckerPage';
@@ -25,6 +26,7 @@ import AdherenceCalendarPage from './pages/AdherenceCalendarPage';
 import AdherenceLogsPage from './pages/AdherenceLogsPage';
 import AdherenceDailyPage from './pages/AdherenceDailyPage';
 import VitalsHistoryPage from './pages/VitalsHistoryPage';
+import PostConsultPage from './pages/PostConsultPage';
 const queryClient = new QueryClient();
 
 const checkPatientFields = async () => {
@@ -159,12 +161,14 @@ function App() {
                     <Route path="/patients" element={<Patients />} />
                     <Route path="/find-doctor" element={<DoctorSearch />} />
                     <Route path="/appointments" element={<AppointmentsPage />} />
+                    <Route path="/appointments/:appointmentId/post-consult" element={<PostConsultPage />} />
                     <Route path="/debug/appointments" element={<AppointmentDebug />} />
                     <Route path="/debug/firestore" element={<FirestoreInspector />} />
                     <Route path="/professional-profile" element={<ProfessionalProfile />} />
                     <Route path="/practice-settings" element={<PracticeSettingsPage />} />
                     <Route path="/practice-calendar" element={<PracticeCalendarPage />} />
                     <Route path="/share-anixi" element={<ShareAnixi />} />
+                    <Route path="/change-password" element={<ChangePassword />} />
                     <Route path="/support" element={<Support />} />
                     <Route path="/delete-account" element={<DeleteAccount />} />
                   </Routes>

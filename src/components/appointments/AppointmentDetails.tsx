@@ -1,11 +1,17 @@
-import React, { useState } from 'react';
-import { Appointment, ConsultType } from '../../types';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Appointment, AppointmentDocument, ConsultType } from '../../types';
 import { convertTimestamp } from '../../utils/dateFormatter';
 import { customColors } from '../../lib/customColors';
-import { updateAppointment, syncAppointmentStatus } from '../../services/appointmentService';
+import {
+  addAppointmentDocument,
+  updateAppointment,
+  syncAppointmentStatus,
+} from '../../services/appointmentService';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useAuth } from '../../hooks/AuthContext';
 import { validateSlot } from '../../services/schedulingService';
+import { CreateAppointmentModal } from './CreateAppointmentModal';
 
 interface AppointmentDetailsProps {
   appointment: Appointment;
@@ -25,6 +31,8 @@ const getStatusColor = (status: Appointment['status']): string => {
       return 'bg-gray-100 text-gray-800 border-gray-300';
     case 'cancelled':
       return 'bg-red-100 text-red-800 border-red-300';
+    case 'no_show':
+      return 'bg-orange-100 text-orange-800 border-orange-300';
     default:
       return `bg-[${customColors.backgroundLight}] text-[${customColors.textPrimary}] border-[${customColors.borderLight}]`;
   }
@@ -64,7 +72,7 @@ const convertTo24Hour = (timeStr: string): string => {
     const hour24 = period === 'PM' && hour !== 12 ? hour + 12 : period === 'AM' && hour === 12 ? 0 : hour;
     return `${hour24.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
   } else {
-    // Assume it's already 24-hour
+    
     return timeStr;
   }
 };
@@ -77,11 +85,22 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
 }) => {
   const { can } = usePermissions();
   const { user, practiceSession } = useAuth();
+  const navigate = useNavigate();
   const canManage = can('manageAppointments');
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
-  const [rescheduleDate, setRescheduleDate] = useState(appointment.date.toISOString().split('T')[0]);
+  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const [showScanModal, setShowScanModal] = useState(false);
+  const [scanTitle, setScanTitle] = useState('');
+  const [scanFile, setScanFile] = useState<File | null>(null);
+  const [scanPreviewURL, setScanPreviewURL] = useState<string | null>(null);
+  const [isSavingScan, setIsSavingScan] = useState(false);
+  const [documents, setDocuments] = useState<AppointmentDocument[]>(appointment.documents ?? []);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const safeDate = convertTimestamp(appointment.date) ?? new Date();
+  const [rescheduleDate, setRescheduleDate] = useState(safeDate.toISOString().split('T')[0]);
   const [rescheduleTime, setRescheduleTime] = useState(convertTo24Hour(appointment.time));
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const appointmentDate = convertTimestamp(appointment.date) || new Date();
   const fullDateFormatted = appointmentDate.toLocaleDateString('en-US', {
@@ -97,6 +116,41 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   const appointmentTime = typeof appointment.time === 'string' ? appointment.time : '10:00 AM';
   const appointmentNotes = String(appointment.notes || '');
 
+  const appointmentDateTime = (() => {
+    const base = convertTimestamp(appointment.date) ?? new Date();
+    const time24 = convertTo24Hour(appointmentTime);
+    const [h, m] = time24.split(':').map(Number);
+    const dt = new Date(base);
+    dt.setHours(Number.isFinite(h) ? h : 10, Number.isFinite(m) ? m : 0, 0, 0);
+    return dt;
+  })();
+
+  const hoursUntilAppointment = (appointmentDateTime.getTime() - Date.now()) / (60 * 60 * 1000);
+  const isTerminal = appointment.status === 'cancelled' || appointment.status === 'completed';
+  const canAcceptAppointment = canManage && appointment.status === 'pending';
+  const canDeclineAppointment = canManage && appointment.status === 'pending';
+  const canRescheduleAppointment = canManage && !isTerminal && appointment.status !== 'no_show';
+  const canCancelAppointment = canManage && !isTerminal && appointment.status !== 'pending' && hoursUntilAppointment >= 1;
+  const canNoShowAppointment =
+    canManage &&
+    appointment.status !== 'cancelled' &&
+    appointment.status !== 'completed' &&
+    appointment.status !== 'no_show' &&
+    appointment.status !== 'pending';
+  const canGenerateInvoice = canManage;
+
+  useEffect(() => {
+    setDocuments(appointment.documents ?? []);
+  }, [appointment.id, appointment.documents]);
+
+  useEffect(() => {
+    return () => {
+      if (scanPreviewURL) {
+        URL.revokeObjectURL(scanPreviewURL);
+      }
+    };
+  }, [scanPreviewURL]);
+
   const toConsultType = (): ConsultType => {
     if (appointment.consultType) return appointment.consultType;
     if (appointment.type === 'Virtual') return 'teleconsult';
@@ -110,7 +164,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     setError(null);
     try {
       await updateAppointment(appointment.doctorId, appointment.id, { status: 'confirmed' });
-      // Force sync to ensure mobile app sees the changes
+      
       await syncAppointmentStatus(appointment.id);
       onStatusChange(appointment.id, 'confirmed');
       onClose();
@@ -128,13 +182,45 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     setError(null);
     try {
       await updateAppointment(appointment.doctorId, appointment.id, { status: 'cancelled' });
-      // Force sync to ensure mobile app sees the changes
+      
       await syncAppointmentStatus(appointment.id);
       onStatusChange(appointment.id, 'cancelled');
       onClose();
     } catch (err) {
       ;
       setError('Failed to cancel appointment');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleComplete = async () => {
+    if (!onStatusChange) return;
+    setIsProcessing(true);
+    setError(null);
+    try {
+      await updateAppointment(appointment.doctorId, appointment.id, { status: 'completed' });
+      await syncAppointmentStatus(appointment.id);
+      onStatusChange(appointment.id, 'completed');
+      onClose();
+    } catch (err) {
+      setError('Failed to mark as completed');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleNoShow = async () => {
+    if (!onStatusChange) return;
+    setIsProcessing(true);
+    setError(null);
+    try {
+      await updateAppointment(appointment.doctorId, appointment.id, { status: 'no_show' });
+      await syncAppointmentStatus(appointment.id);
+      onStatusChange(appointment.id, 'no_show');
+      onClose();
+    } catch (err) {
+      setError('Failed to mark as no-show');
     } finally {
       setIsProcessing(false);
     }
@@ -199,7 +285,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
         overrideApplied,
         conflictMeta,
       });
-      // Force sync to ensure mobile app sees the changes
+      
       await syncAppointmentStatus(appointment.id);
       onReschedule(appointment.id, startAt, convertTo12Hour(rescheduleTime));
       setShowRescheduleModal(false);
@@ -211,6 +297,187 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
       setIsProcessing(false);
     }
   };
+
+  const resetScanState = () => {
+    setScanTitle('');
+    setScanFile(null);
+    if (scanPreviewURL) {
+      URL.revokeObjectURL(scanPreviewURL);
+    }
+    setScanPreviewURL(null);
+  };
+
+  const handleScanFilePicked = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) return;
+
+    if (scanPreviewURL) {
+      URL.revokeObjectURL(scanPreviewURL);
+    }
+
+    setScanFile(file);
+    setScanPreviewURL(URL.createObjectURL(file));
+    setError(null);
+  };
+
+  const handleSaveScan = async () => {
+    if (!scanFile) return;
+    if (!user?.id) {
+      setError('You must be signed in to upload a scanned document.');
+      return;
+    }
+
+    try {
+      setIsSavingScan(true);
+      setError(null);
+      const saved = await addAppointmentDocument(
+        appointment.doctorId,
+        appointment.id,
+        scanFile,
+        user.id,
+        scanTitle
+      );
+      setDocuments((prev) => [saved, ...prev]);
+      setShowScanModal(false);
+      resetScanState();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save scanned document';
+      setError(message);
+    } finally {
+      setIsSavingScan(false);
+    }
+  };
+
+  const handleGenerateInvoice = async () => {
+    if (!canGenerateInvoice) return;
+
+    setIsGeneratingInvoice(true);
+    setError(null);
+
+    try {
+      const invoiceNumber = `INV-${appointment.id.slice(0, 8).toUpperCase()}`;
+      const issuedAt = new Date();
+      const issuedDate = issuedAt.toLocaleDateString('en-US');
+      const issuedTime = issuedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+      const safePatientName = patientName.replace(/[&<>"']/g, (char) => {
+        const entities: Record<string, string> = {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        };
+        return entities[char] || char;
+      });
+
+      const safePatientEmail = patientEmail.replace(/[&<>"']/g, (char) => {
+        const entities: Record<string, string> = {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        };
+        return entities[char] || char;
+      });
+
+      const doctorName = (user as any)?.displayName || 'Doctor';
+      const doctorEmail = (user as any)?.email || '';
+
+      const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+      if (!printWindow) {
+        throw new Error('Popup blocked. Please allow popups to print invoices.');
+      }
+
+      printWindow.document.write(`
+        <!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>${invoiceNumber}</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
+              .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+              .title { font-size: 28px; font-weight: 700; margin: 0; }
+              .meta { font-size: 13px; color: #4b5563; line-height: 1.6; }
+              .card { border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+              .section-title { font-size: 14px; font-weight: 700; color: #374151; margin: 0 0 8px 0; text-transform: uppercase; }
+              .table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+              .table th, .table td { border-bottom: 1px solid #e5e7eb; text-align: left; padding: 10px 8px; font-size: 14px; }
+              .table th { color: #4b5563; font-weight: 600; }
+              .footer { margin-top: 20px; font-size: 12px; color: #6b7280; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <div>
+                <h1 class="title">Invoice</h1>
+                <div class="meta">
+                  <div><strong>No:</strong> ${invoiceNumber}</div>
+                  <div><strong>Issued:</strong> ${issuedDate} ${issuedTime}</div>
+                </div>
+              </div>
+              <div class="meta" style="text-align: right;">
+                <div><strong>Doctor:</strong> ${doctorName}</div>
+                <div>${doctorEmail}</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <p class="section-title">Patient</p>
+              <div class="meta">
+                <div><strong>Name:</strong> ${safePatientName}</div>
+                <div><strong>Email:</strong> ${safePatientEmail}</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <p class="section-title">Appointment</p>
+              <div class="meta">
+                <div><strong>Date:</strong> ${fullDateFormatted}</div>
+                <div><strong>Time:</strong> ${appointmentTime}</div>
+                <div><strong>Type:</strong> ${appointmentType}</div>
+                <div><strong>Status:</strong> ${appointmentStatus}</div>
+                <div><strong>Reference:</strong> ${appointment.id}</div>
+              </div>
+            </div>
+
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Qty</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Consultation</td>
+                  <td>1</td>
+                  <td>To be completed</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <p class="footer">Generated from appointment record.</p>
+            <script>
+              window.onload = function() {
+                window.print();
+              };
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to generate invoice';
+      setError(message);
+    } finally {
+      setIsGeneratingInvoice(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center p-3 sm:p-4 z-50">
       <div className="bg-white rounded-t-xl sm:rounded-lg shadow-2xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
@@ -301,72 +568,133 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               <p className="text-gray-900 leading-relaxed">{String(appointmentNotes)}</p>
             </div>
           )}
+
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">📄 Documents</h2>
+              {canManage && (
+                <button
+                  onClick={() => setShowScanModal(true)}
+                  disabled={isProcessing || isSavingScan}
+                  className="px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Scan document
+                </button>
+              )}
+            </div>
+
+            {documents.length === 0 ? (
+              <p className="text-sm text-gray-500">No scanned documents saved yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {documents.map((item) => (
+                  <a
+                    key={item.id}
+                    href={item.downloadURL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors"
+                  >
+                    <p className="text-sm font-semibold text-gray-900">{item.title || item.fileName}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {item.fileName} • {new Date(item.createdAt).toLocaleString()}
+                    </p>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         {}
-        <div className="flex flex-col gap-3 sm:flex-row p-4 sm:p-6 border-t border-gray-200 bg-gray-50 sticky bottom-0">
-          {error && (
-            <div className="w-full sm:flex-1 bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-red-700 text-sm">{error}</p>
-            </div>
-          )}
+        {/* Modal-style action sheet for appointment management */}
+        <div className="w-full flex flex-col items-center justify-center px-2 py-4 border-t border-gray-200 bg-gray-50 sticky bottom-0 z-10">
+          <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-lg p-5 flex flex-col items-center">
+            <h2 className="text-2xl font-semibold text-gray-800 mb-1">Manage appointment</h2>
+            <p className="text-base text-gray-600 mb-5">Choose an action for this appointment.</p>
 
-          <div className="flex flex-col gap-2 flex-1 sm:flex-row">
             {!canManage && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex-1">
-                🔒 You have read-only access to appointments.
+              <p className="w-full mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                You have read-only access to appointments.
               </p>
             )}
-            {canManage && appointment.status === 'pending' && (
+
+            {canAcceptAppointment && (
               <button
                 onClick={handleAccept}
                 disabled={isProcessing}
-                className="flex-1 px-4 py-2.5 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-4 mb-3 text-lg font-semibold bg-[#3F544D] text-white shadow-sm hover:bg-[#2d3c36] transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isProcessing ? 'Processing...' : '✅ Accept'}
+                <span className="text-xl">✔️</span> Accept appointment
               </button>
             )}
-
-            {canManage && appointment.status !== 'cancelled' && appointment.status !== 'completed' && (
-              <button
-                onClick={() => setShowRescheduleModal(true)}
-                disabled={isProcessing}
-                className="flex-1 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                📅 Reschedule
-              </button>
-            )}
-
-            {canManage && appointment.status !== 'cancelled' && appointment.status !== 'completed' && (
+            {canDeclineAppointment && (
               <button
                 onClick={handleCancel}
                 disabled={isProcessing}
-                className="flex-1 px-4 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-4 mb-3 text-lg font-semibold bg-red-500 text-white shadow-sm hover:bg-red-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                ❌ Cancel
+                <span className="text-xl">✖️</span> Decline appointment
               </button>
             )}
-          </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
-            {onEdit && (
+            <div className="w-full flex flex-col gap-2 mt-2">
               <button
-                onClick={() => onEdit(appointment)}
-                disabled={isProcessing}
-                className="px-4 py-2.5 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                onClick={() => setShowRescheduleModal(true)}
+                disabled={!canRescheduleAppointment || isProcessing}
+                className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 border border-gray-300 bg-white text-[#3F544D] font-medium text-base hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                ✏️ Edit
+                <span className="text-lg">📅</span> Move / reschedule
               </button>
+              <button
+                onClick={handleCancel}
+                disabled={!canCancelAppointment || isProcessing}
+                className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 border border-gray-300 bg-white text-[#3F544D] font-medium text-base hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="text-lg">✖️</span> Cancel
+              </button>
+              <button
+                onClick={handleNoShow}
+                disabled={!canNoShowAppointment || isProcessing}
+                className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 border border-gray-300 bg-white text-[#3F544D] font-medium text-base hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="text-lg">👤✖️</span> No-show
+              </button>
+              <button
+                onClick={handleGenerateInvoice}
+                disabled={!canGenerateInvoice || isGeneratingInvoice || isProcessing}
+                className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 border border-gray-300 bg-white text-[#3F544D] font-medium text-base hover:bg-gray-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <span className="text-lg">🧾</span> {isGeneratingInvoice ? 'Generating invoice...' : 'Invoice'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-5">Cancellations require at least 1 hour before the visit.</p>
+            {canManage && !canCancelAppointment && appointment.status !== 'pending' && !isTerminal && (
+              <p className="text-xs text-amber-700 mt-1">Cancellation is disabled because less than 1 hour remains.</p>
             )}
-            <button
-              onClick={onClose}
-              disabled={isProcessing}
-              className="px-4 py-2.5 bg-gray-200 text-gray-800 font-medium rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Close
-            </button>
+            {error && (
+              <p className="mt-3 w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {error}
+              </p>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Follow-up modal */}
+      {showFollowUpModal && (
+        <CreateAppointmentModal
+          isOpen={showFollowUpModal}
+          onClose={() => setShowFollowUpModal(false)}
+          onAppointmentCreated={() => {
+            setShowFollowUpModal(false);
+          }}
+          prefillPatientId={appointment.isManual ? undefined : appointment.patientId}
+          prefillPatientName={appointment.patientName}
+          prefillPatientEmail={appointment.patientEmail}
+          prefillIsManual={appointment.isManual}
+          consultTypeDefault="follow-up"
+        />
+      )}
 
       {}
       {showRescheduleModal && (
@@ -419,16 +747,102 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               <button
                 onClick={handleReschedule}
                 disabled={isProcessing}
-                className="flex-1 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex-1 px-4 py-2.5 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                style={{ backgroundColor: customColors.primary }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primaryDark;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primary;
+                }}
               >
                 {isProcessing ? 'Rescheduling...' : '📅 Confirm Reschedule'}
               </button>
               <button
                 onClick={() => setShowRescheduleModal(false)}
                 disabled={isProcessing}
-                className="flex-1 px-4 py-2.5 bg-gray-200 text-gray-800 font-medium rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex-1 px-4 py-2.5 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                style={{ backgroundColor: customColors.primary }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primaryDark;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primary;
+                }}
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showScanModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-60">
+          <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-2xl font-semibold text-gray-900">Scan document</h2>
+              <button
+                onClick={() => {
+                  setShowScanModal(false);
+                  resetScanState();
+                }}
+                className="text-gray-500 hover:text-gray-700 text-2xl font-bold leading-none w-8 h-8 flex items-center justify-center"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="border border-gray-200 rounded-2xl p-5">
+                <h3 className="text-3xl sm:text-2xl font-semibold text-gray-800">Scan document</h3>
+                <p className="text-gray-600 mt-2 text-base">Uses the camera and saves to the patient record.</p>
+              </div>
+
+              <div>
+                <label className="block text-2xl sm:text-lg font-medium text-gray-800 mb-2">Title (optional)</label>
+                <input
+                  type="text"
+                  value={scanTitle}
+                  onChange={(e) => setScanTitle(e.target.value)}
+                  placeholder="e.g. Referral"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl text-lg sm:text-base focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-2xl sm:text-lg font-medium text-gray-800 mb-2">Camera *</label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleScanFilePicked}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full border border-gray-300 rounded-xl py-4 text-gray-700 text-2xl sm:text-xl font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Open camera
+                </button>
+              </div>
+
+              {scanPreviewURL && (
+                <div className="rounded-xl overflow-hidden border border-gray-200">
+                  <img src={scanPreviewURL} alt="Document preview" className="w-full max-h-56 object-cover" />
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-gray-200 bg-gray-50">
+              <button
+                onClick={handleSaveScan}
+                disabled={!scanFile || isSavingScan}
+                className="w-full py-4 rounded-xl text-2xl sm:text-xl font-semibold text-white disabled:opacity-55 disabled:cursor-not-allowed transition-colors"
+                style={{ backgroundColor: customColors.primary }}
+              >
+                {isSavingScan ? 'Saving to record...' : 'Save to record'}
               </button>
             </div>
           </div>

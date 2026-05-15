@@ -3,7 +3,7 @@ export const JOURNALS_COLLECTION = 'journals';
 export const DOCTORS_COLLECTION = 'doctors';
 export const APPOINTMENTS_COLLECTION = 'appointments';
 
-// Practice scheduling collections
+
 export const PRACTICES_COLLECTION = 'practices';
 export const PRACTICE_MEMBERS_SUBCOLLECTION = 'members';
 export const BOOKABLE_BLOCKS_SUBCOLLECTION = 'bookableBlocks';

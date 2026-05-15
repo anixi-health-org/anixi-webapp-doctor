@@ -25,9 +25,9 @@ export const getPatientsByDoctorId = async (
   try {
     const patients: Patient[] = [];
 
-    // APPROCHE CORRECTE: Utiliser la même logique que listenToDoctorPatients
-    // 1. Chercher les patients approuvés dans Users/{doctorId}/approved_patients
-    // 2. Récupérer les détails depuis la collection patients
+    
+    
+    
     log('🔍 Searching approved patients for doctor:', doctorId);
 
     const approvedPatientsRef = collection(db, 'Users', doctorId, 'approved_patients');
@@ -40,7 +40,7 @@ export const getPatientsByDoctorId = async (
       return patients;
     }
 
-    // Pour chaque patient approuvé, récupérer les détails depuis la collection patients
+    
     for (const approvedDoc of approvedSnapshot.docs) {
       const approvedData = approvedDoc.data();
       const patientId = approvedData.patientId || approvedDoc.id;
@@ -48,7 +48,7 @@ export const getPatientsByDoctorId = async (
       log(`🔍 Processing approved patient ${patientId}`);
 
       try {
-        // Récupérer les détails depuis la collection patients
+        
         const patientRef = doc(db, 'patients', patientId);
         const patientSnap = await getDoc(patientRef);
 
