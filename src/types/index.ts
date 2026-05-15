@@ -207,6 +207,38 @@ export interface DailyLog {
     vitals?: VitalsLog;
 }
 export type PatientStatus = 'stable' | 'warning' | 'inactive';
+
+export interface AppointmentDocument {
+    id: string;
+    title?: string;
+    fileName: string;
+    fileType: string;
+    fileSize: number;
+    downloadURL: string;
+    storagePath: string;
+    createdAt: Date;
+    createdBy: string;
+}
+
+export type PostConsultActionType =
+    | 'prescription_draft'
+    | 'doctor_letter_draft'
+    | 'medical_document'
+    | 'session_recording'
+    | 'post_consult_note';
+
+export interface PostConsultAction {
+    id: string;
+    type: PostConsultActionType;
+    title?: string;
+    content: string;
+    status: 'draft' | 'finalized';
+    metadata?: Record<string, string | number | boolean | null>;
+    createdBy: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
 export interface Appointment {
     id: string;
     doctorId: string;
@@ -218,7 +250,11 @@ export interface Appointment {
     date: Date;
     time: string;
     notes?: string;
-    
+    documents?: AppointmentDocument[];
+    postConsultActions?: PostConsultAction[];
+    /** true = manually booked (free-text name, no Anixi account) */
+    isManual?: boolean;
+    // Practice scheduling extensions
     practiceId?: string;
     locationId?: string;
     consultType?: ConsultType;

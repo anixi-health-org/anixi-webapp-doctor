@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { usePermissions } from '../hooks/usePermissions';
 import { getDoctorAppointments } from '../services/appointmentService';
@@ -13,6 +14,7 @@ type FilterType = Appointment['status'] | 'All' | 'Today';
 export const AppointmentsPage: React.FC = () => {
   const { user } = useAuth();
   const { can } = usePermissions();
+  const navigate = useNavigate();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +68,8 @@ export const AppointmentsPage: React.FC = () => {
         ? 'Appointment accepted successfully.'
         : newStatus === 'cancelled'
         ? 'Appointment cancelled successfully.'
+        : newStatus === 'no_show'
+        ? 'Appointment marked as no-show.'
         : `Appointment updated to ${newStatus}.`;
     setToast({ visible: true, message: msg, type: 'success' });
   };
@@ -83,12 +87,31 @@ export const AppointmentsPage: React.FC = () => {
     setToast({ visible: true, message: 'Appointment rescheduled successfully.', type: 'success' });
   };
 
+  /** Spec §10: Anixi appointment → Patient Profile; Manual → AppointmentDetails */
+  const handleAppointmentClick = (apt: Appointment) => {
+    const isAnixiPatient = !apt.isManual && apt.patientId && apt.patientId !== 'unknown';
+    if (isAnixiPatient) {
+      navigate(`/patient-profile/${apt.patientId}`, {
+        state: {
+          appointmentId: apt.id,
+          appointmentTime: apt.time,
+          appointmentDate: apt.date ? new Date(apt.date).toLocaleDateString() : undefined,
+          consultType: apt.consultType,
+          status: apt.status,
+        },
+      });
+    } else {
+      setSelectedAppointment(apt);
+    }
+  };
+
   const stats = {
     total: appointments.length,
     confirmed: appointments.filter((a) => a.status === 'confirmed').length,
     pending: appointments.filter((a) => a.status === 'pending').length,
     completed: appointments.filter((a) => a.status === 'completed').length,
     cancelled: appointments.filter((a) => a.status === 'cancelled').length,
+    noShow: appointments.filter((a) => a.status === 'no_show').length,
     today: appointments.filter((a) => {
       const today = new Date();
       const appointmentDate = new Date(a.date);
@@ -154,7 +177,16 @@ export const AppointmentsPage: React.FC = () => {
                 onClick={() => {
                   setShowCreateModal(true);
                 }}
-                className="w-full sm:w-auto px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                className="w-full sm:w-auto px-4 py-2 rounded-lg text-white transition-colors flex items-center justify-center gap-2 shadow-sm"
+                style={{
+                  backgroundColor: customColors.primary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primaryDark;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = customColors.primary;
+                }}
               >
                 ➕ New Appointment
               </button>
@@ -176,7 +208,7 @@ export const AppointmentsPage: React.FC = () => {
       )}
       {}
       {!isLoading && !error && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-3 mb-6">
           {}
           <button
             onClick={() => handleCardClick('All')}
@@ -345,6 +377,33 @@ export const AppointmentsPage: React.FC = () => {
               </CardContent>
             </Card>
           </button>
+          <button
+            onClick={() => handleCardClick('no_show')}
+            className={`transition-all duration-300 transform hover:scale-105 ${
+              selectedCard === 'no_show' ? 'ring-2 ring-orange-500 ring-offset-2' : ''
+            }`}
+          >
+            <Card
+              className={`cursor-pointer transition-all duration-300 ${
+                selectedCard === 'no_show'
+                  ? 'bg-orange-50 border-orange-300'
+                  : 'hover:shadow-lg hover:border-gray-300'
+              }`}
+            >
+              <CardContent className="pt-6">
+                <p className={`text-xs font-medium ${
+                  selectedCard === 'no_show' ? 'text-orange-700' : 'text-gray-600'
+                }`}>
+                  No-Show
+                </p>
+                <p className={`text-2xl font-bold mt-1 ${
+                  selectedCard === 'no_show' ? 'text-orange-700' : 'text-orange-600'
+                }`}>
+                  {stats.noShow}
+                </p>
+              </CardContent>
+            </Card>
+          </button>
         </div>
       )}
       {}
@@ -357,6 +416,7 @@ export const AppointmentsPage: React.FC = () => {
               {selectedCard === 'pending' && '⏳ Pending Appointments'}
               {selectedCard === 'completed' && '✓ Completed Appointments'}
               {selectedCard === 'cancelled' && '✗ Cancelled Appointments'}
+              {selectedCard === 'no_show' && '🚫 No-Show Appointments'}
               {selectedCard === 'All' && 'All Appointments'}
             </CardTitle>
           </CardHeader>
@@ -366,7 +426,7 @@ export const AppointmentsPage: React.FC = () => {
           <div className="animate-fade-in">
             <AppointmentList
               appointments={filteredAppointments}
-              onSelectAppointment={setSelectedAppointment}
+              onSelectAppointment={handleAppointmentClick}
               isLoading={isLoading}
             />
           </div>
@@ -377,8 +437,6 @@ export const AppointmentsPage: React.FC = () => {
         <AppointmentDetails
           appointment={selectedAppointment}
           onClose={() => setSelectedAppointment(null)}
-          onEdit={() => {
-          }}
           onStatusChange={handleStatusChange}
           onReschedule={handleReschedule}
         />

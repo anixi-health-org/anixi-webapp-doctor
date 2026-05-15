@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { formatFirestoreDate } from '../utils/dateFormatter';
 export const FirestoreInspector: React.FC = () => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -17,7 +18,7 @@ export const FirestoreInspector: React.FC = () => {
             doctorIdType: typeof d.doctorId,
             patientName: d.patientName || 'N/A',
             status: d.status,
-            date: d.date?.toDate?.()?.toLocaleDateString() || d.date,
+            date: formatFirestoreDate(d.date, 'short') || 'N/A',
           };
         });
         const byDoctor: { [key: string]: any[] } = {};

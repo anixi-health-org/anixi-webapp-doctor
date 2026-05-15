@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { customColors } from '../../lib/customColors';
 import { PatientRequest } from '../../services/patientManagementService';
 import { calculateAge } from '../../services/patientManagementService';
+import { formatFirestoreDate } from '../../utils/dateFormatter';
 interface PatientRequestListProps {
   requests: PatientRequest[];
   loading: boolean;
@@ -88,12 +89,7 @@ export const PatientRequestList: React.FC<PatientRequestListProps> = ({
                 </div>
                 <div className="text-xs text-gray-500">
                   🕐 Requested{' '}
-                  {request.requestedAt.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                  {formatFirestoreDate(request.requestedAt, 'datetime') || 'N/A'}
                 </div>
               </div>
               <div className="flex gap-2 ml-4">

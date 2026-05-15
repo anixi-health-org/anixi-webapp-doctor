@@ -281,6 +281,7 @@ export const getDailyAdherence = async (
     snapshot.docs.forEach((doc) => {
       const data = doc.data();
       const scheduledTime = convertTimestamp(data.scheduledTime) || new Date(date + 'T00:00:00');
+      const takenTime = convertTimestamp(data.takenTime);
 
       const hour = scheduledTime.getHours();
       let timeSlot: 'morning' | 'afternoon' | 'evening' = 'morning';
@@ -291,9 +292,9 @@ export const getDailyAdherence = async (
         date: date,
         medicationName: data.medicationName || 'Unknown',
         dosage: data.dosage,
-        scheduledTime: data.scheduledTime,
+        scheduledTime: scheduledTime,
         status: data.status || 'pending',
-        takenTime: data.takenTime,
+        takenTime: takenTime || undefined,
         notes: data.notes,
         timeSlot: timeSlot,
       };

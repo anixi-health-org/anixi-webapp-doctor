@@ -26,6 +26,7 @@ import AdherenceCalendarPage from './pages/AdherenceCalendarPage';
 import AdherenceLogsPage from './pages/AdherenceLogsPage';
 import AdherenceDailyPage from './pages/AdherenceDailyPage';
 import VitalsHistoryPage from './pages/VitalsHistoryPage';
+import PostConsultPage from './pages/PostConsultPage';
 const queryClient = new QueryClient();
 
 const checkPatientFields = async () => {
@@ -160,6 +161,7 @@ function App() {
                     <Route path="/patients" element={<Patients />} />
                     <Route path="/find-doctor" element={<DoctorSearch />} />
                     <Route path="/appointments" element={<AppointmentsPage />} />
+                    <Route path="/appointments/:appointmentId/post-consult" element={<PostConsultPage />} />
                     <Route path="/debug/appointments" element={<AppointmentDebug />} />
                     <Route path="/debug/firestore" element={<FirestoreInspector />} />
                     <Route path="/professional-profile" element={<ProfessionalProfile />} />

@@ -34,6 +34,49 @@ export const formatTimestamp = (
   }
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' } as Intl.DateTimeFormatOptions);
 };
+export const formatFirestoreDate = (
+  timestamp: any,
+  format: 'short' | 'long' | 'time' | 'datetime' = 'short'
+): string => {
+  if (!timestamp) return '';
+
+  try {
+    const date = convertTimestamp(timestamp);
+    if (!date) return '';
+
+    if (format === 'time') {
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+      } as Intl.DateTimeFormatOptions);
+    }
+
+    if (format === 'datetime') {
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      } as Intl.DateTimeFormatOptions);
+    }
+
+    if (format === 'long') {
+      return date.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      } as Intl.DateTimeFormatOptions);
+    }
+
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    } as Intl.DateTimeFormatOptions);
+  } catch {
+    return '';
+  }
+};
 export const formatTime = (timestamp: any): string => {
   const date = convertTimestamp(timestamp);
   if (!date) return '';
