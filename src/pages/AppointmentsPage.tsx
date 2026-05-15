@@ -68,6 +68,8 @@ export const AppointmentsPage: React.FC = () => {
         ? 'Appointment accepted successfully.'
         : newStatus === 'cancelled'
         ? 'Appointment cancelled successfully.'
+        : newStatus === 'no_show'
+        ? 'Appointment marked as no-show.'
         : `Appointment updated to ${newStatus}.`;
     setToast({ visible: true, message: msg, type: 'success' });
   };
@@ -109,6 +111,7 @@ export const AppointmentsPage: React.FC = () => {
     pending: appointments.filter((a) => a.status === 'pending').length,
     completed: appointments.filter((a) => a.status === 'completed').length,
     cancelled: appointments.filter((a) => a.status === 'cancelled').length,
+    noShow: appointments.filter((a) => a.status === 'no_show').length,
     today: appointments.filter((a) => {
       const today = new Date();
       const appointmentDate = new Date(a.date);
@@ -205,7 +208,7 @@ export const AppointmentsPage: React.FC = () => {
       )}
       {}
       {!isLoading && !error && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-3 mb-6">
           {}
           <button
             onClick={() => handleCardClick('All')}
@@ -374,6 +377,33 @@ export const AppointmentsPage: React.FC = () => {
               </CardContent>
             </Card>
           </button>
+          <button
+            onClick={() => handleCardClick('no_show')}
+            className={`transition-all duration-300 transform hover:scale-105 ${
+              selectedCard === 'no_show' ? 'ring-2 ring-orange-500 ring-offset-2' : ''
+            }`}
+          >
+            <Card
+              className={`cursor-pointer transition-all duration-300 ${
+                selectedCard === 'no_show'
+                  ? 'bg-orange-50 border-orange-300'
+                  : 'hover:shadow-lg hover:border-gray-300'
+              }`}
+            >
+              <CardContent className="pt-6">
+                <p className={`text-xs font-medium ${
+                  selectedCard === 'no_show' ? 'text-orange-700' : 'text-gray-600'
+                }`}>
+                  No-Show
+                </p>
+                <p className={`text-2xl font-bold mt-1 ${
+                  selectedCard === 'no_show' ? 'text-orange-700' : 'text-orange-600'
+                }`}>
+                  {stats.noShow}
+                </p>
+              </CardContent>
+            </Card>
+          </button>
         </div>
       )}
       {}
@@ -386,6 +416,7 @@ export const AppointmentsPage: React.FC = () => {
               {selectedCard === 'pending' && '⏳ Pending Appointments'}
               {selectedCard === 'completed' && '✓ Completed Appointments'}
               {selectedCard === 'cancelled' && '✗ Cancelled Appointments'}
+              {selectedCard === 'no_show' && '🚫 No-Show Appointments'}
               {selectedCard === 'All' && 'All Appointments'}
             </CardTitle>
           </CardHeader>
@@ -406,8 +437,6 @@ export const AppointmentsPage: React.FC = () => {
         <AppointmentDetails
           appointment={selectedAppointment}
           onClose={() => setSelectedAppointment(null)}
-          onEdit={() => {
-          }}
           onStatusChange={handleStatusChange}
           onReschedule={handleReschedule}
         />

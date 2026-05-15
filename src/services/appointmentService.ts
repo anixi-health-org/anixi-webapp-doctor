@@ -1,5 +1,6 @@
 import { 
   addDoc, 
+  arrayUnion,
   collection, 
   doc, 
   getDoc, 
@@ -12,9 +13,10 @@ import {
   updateDoc, 
   where
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+import { db, storage } from '../lib/firebase';
 import { USERS_COLLECTION, APPOINTMENTS_COLLECTION } from '../shared/constants';
-import { Appointment } from '../types';
+import { Appointment, AppointmentDocument, PostConsultAction, PostConsultActionType } from '../types';
 import { convertTimestamp } from '../utils/dateFormatter';
 
 const normalizeAppointmentTime = (timeValue: any, fallbackTimestamp?: any): string => {
@@ -139,6 +141,63 @@ const normalizeStatus = (status: any): Appointment['status'] => {
   };
   return statusMap[normalized] || 'pending';
 };
+
+const normalizeAppointmentDocuments = (value: any): AppointmentDocument[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item: any) => {
+      if (!item || typeof item !== 'object') return null;
+      const downloadURL = typeof item.downloadURL === 'string' ? item.downloadURL : '';
+      const fileName = typeof item.fileName === 'string' ? item.fileName : 'document';
+      if (!downloadURL) return null;
+      return {
+        id: typeof item.id === 'string' ? item.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        title: typeof item.title === 'string' ? item.title : undefined,
+        fileName,
+        fileType: typeof item.fileType === 'string' ? item.fileType : 'image/jpeg',
+        fileSize: typeof item.fileSize === 'number' ? item.fileSize : 0,
+        downloadURL,
+        storagePath: typeof item.storagePath === 'string' ? item.storagePath : '',
+        createdAt: convertTimestamp(item.createdAt) || new Date(),
+        createdBy: typeof item.createdBy === 'string' ? item.createdBy : '',
+      } as AppointmentDocument;
+    })
+    .filter((item): item is AppointmentDocument => item !== null)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+};
+
+const normalizePostConsultActions = (value: any): PostConsultAction[] => {
+  if (!Array.isArray(value)) return [];
+
+  const validTypes: PostConsultActionType[] = [
+    'prescription_draft',
+    'doctor_letter_draft',
+    'medical_document',
+    'session_recording',
+    'post_consult_note',
+  ];
+
+  return value
+    .map((item: any) => {
+      if (!item || typeof item !== 'object') return null;
+      const actionType = item.type as PostConsultActionType;
+      if (!validTypes.includes(actionType)) return null;
+
+      return {
+        id: typeof item.id === 'string' ? item.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        type: actionType,
+        title: typeof item.title === 'string' ? item.title : undefined,
+        content: typeof item.content === 'string' ? item.content : '',
+        status: item.status === 'finalized' ? 'finalized' : 'draft',
+        metadata: item.metadata && typeof item.metadata === 'object' ? item.metadata : undefined,
+        createdBy: typeof item.createdBy === 'string' ? item.createdBy : '',
+        createdAt: convertTimestamp(item.createdAt) || new Date(),
+        updatedAt: convertTimestamp(item.updatedAt) || convertTimestamp(item.createdAt) || new Date(),
+      } as PostConsultAction;
+    })
+    .filter((item): item is PostConsultAction => item !== null)
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+};
 export const getDoctorAppointments = async (doctorId: string): Promise<Appointment[]> => {
   try {
     const appointments: Appointment[] = [];
@@ -165,6 +224,8 @@ export const getDoctorAppointments = async (doctorId: string): Promise<Appointme
             date: convertTimestamp(data.date) || new Date(),
             time: normalizeAppointmentTime(data.time, data.startAt || data.date),
             notes: data.notes || '',
+            documents: normalizeAppointmentDocuments(data.documents),
+            postConsultActions: normalizePostConsultActions(data.postConsultActions),
             isManual: data.isManual ?? false,
             startAt: convertTimestamp(data.startAt) || undefined,
             endAt: convertTimestamp(data.endAt) || undefined,
@@ -201,6 +262,8 @@ export const getDoctorAppointments = async (doctorId: string): Promise<Appointme
               date: convertTimestamp(data.date) || new Date(),
               time: normalizeAppointmentTime(data.time, data.startAt || data.date),
               notes: data.notes || '',
+              documents: normalizeAppointmentDocuments(data.documents),
+              postConsultActions: normalizePostConsultActions(data.postConsultActions),
               isManual: data.isManual ?? false,
               startAt: convertTimestamp(data.startAt) || undefined,
               endAt: convertTimestamp(data.endAt) || undefined,
@@ -246,6 +309,8 @@ export const getAppointmentById = async (
       date: convertTimestamp(data.date) || new Date(),
       time: normalizeAppointmentTime(data.time, data.startAt || data.date),
       notes: data.notes || '',
+      documents: normalizeAppointmentDocuments(data.documents),
+      postConsultActions: normalizePostConsultActions(data.postConsultActions),
       createdAt: convertTimestamp(data.createdAt) || convertTimestamp(data.date) || new Date(),
       updatedAt: convertTimestamp(data.updatedAt) || convertTimestamp(data.date) || new Date(),
     };
@@ -393,6 +458,22 @@ export const updateAppointment = async (
     delete updateData.id;
     delete updateData.doctorId;
     delete updateData.createdAt;
+    
+    // Remove undefined values to prevent Firebase errors
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined) {
+        delete updateData[key];
+      }
+    });
+
+    const isManualAppointment = Boolean(
+      updates.isManual ?? appointmentData?.isManual ?? false
+    );
+    const canWritePatientSubcollection = Boolean(
+      foundPatientId &&
+        !isManualAppointment &&
+        !String(foundPatientId).startsWith('manual_')
+    );
 
     // Update ALL collections using the master appointmentId
     const updatePromises = [];
@@ -401,12 +482,14 @@ export const updateAppointment = async (
     const globalRef = doc(db, APPOINTMENTS_COLLECTION, appointmentId);
     updatePromises.push(
       updateDoc(globalRef, updateData).catch(async (error) => {
-        const fullData = {
+        const fullData: any = {
           doctorId,
-          patientId: foundPatientId,
           ...appointmentData,
           ...updateData,
         };
+        if (foundPatientId) {
+          fullData.patientId = foundPatientId;
+        }
         return setDoc(globalRef, fullData);
       })
     );
@@ -415,17 +498,19 @@ export const updateAppointment = async (
     const doctorAppointmentRef = doc(db, USERS_COLLECTION, doctorId, 'appointments', appointmentId);
     updatePromises.push(
       updateDoc(doctorAppointmentRef, updateData).catch(async (error) => {
-        const fullData = {
-          patientId: foundPatientId,
+        const fullData: any = {
           ...appointmentData,
           ...updateData,
         };
+        if (foundPatientId) {
+          fullData.patientId = foundPatientId;
+        }
         return setDoc(doctorAppointmentRef, fullData);
       })
     );
 
-    // 3. Update patient's subcollection (CRITICAL for mobile app)
-    if (foundPatientId) {
+    // 3. Update patient's subcollection only for real Anixi patients
+    if (canWritePatientSubcollection && foundPatientId) {
       const patientRef = doc(db, USERS_COLLECTION, foundPatientId, 'appointments', appointmentId);
       updatePromises.push(
         updateDoc(patientRef, updateData).catch(async (error) => {
@@ -456,12 +541,10 @@ export const syncAppointmentStatus = async (appointmentId: string): Promise<void
     const globalSnap = await getDoc(globalRef);
 
     let masterData: any = null;
-    let masterSource = '';
 
     // Check global collection first (preferred source for mobile apps)
     if (globalSnap.exists()) {
       masterData = globalSnap.data();
-      masterSource = 'global';
     }
 
     // If no global data, check all doctor subcollections
@@ -625,6 +708,8 @@ export const getMobileAppAppointments = async (doctorId: string): Promise<Appoin
           date: convertTimestamp(data.date) || new Date(),
           time: data.time || '10:00 AM',
           notes: data.notes || '',
+          documents: normalizeAppointmentDocuments(data.documents),
+          postConsultActions: normalizePostConsultActions(data.postConsultActions),
           createdAt: convertTimestamp(data.createdAt) || convertTimestamp(data.date) || new Date(),
           updatedAt: convertTimestamp(data.updatedAt) || convertTimestamp(data.date) || new Date(),
         });
@@ -662,6 +747,8 @@ export const getPatientAppointments = async (patientId: string): Promise<Appoint
             date: convertTimestamp(data.date) || new Date(),
             time: data.time || '10:00 AM',
             notes: data.notes || '',
+            documents: normalizeAppointmentDocuments(data.documents),
+            postConsultActions: normalizePostConsultActions(data.postConsultActions),
             createdAt: convertTimestamp(data.createdAt) || new Date(),
             updatedAt: convertTimestamp(data.updatedAt) || new Date(),
           });
@@ -693,6 +780,8 @@ export const getPatientAppointments = async (patientId: string): Promise<Appoint
               date: convertTimestamp(data.date) || new Date(),
               time: data.time || '10:00 AM',
               notes: data.notes || '',
+              documents: normalizeAppointmentDocuments(data.documents),
+              postConsultActions: normalizePostConsultActions(data.postConsultActions),
               createdAt: convertTimestamp(data.createdAt) || new Date(),
               updatedAt: convertTimestamp(data.updatedAt) || new Date(),
             });
@@ -719,8 +808,6 @@ export const fixInconsistentAppointments = async (): Promise<void> => {
     const globalAppointmentsRef = collection(db, APPOINTMENTS_COLLECTION);
     const globalSnapshot = await getDocs(globalAppointmentsRef);
 
-    let fixedCount = 0;
-
     for (const globalDoc of globalSnapshot.docs) {
       const appointmentId = globalDoc.id;
       const globalData = globalDoc.data();
@@ -737,12 +824,10 @@ export const fixInconsistentAppointments = async (): Promise<void> => {
           // Compare status
           if (doctorData?.status !== globalData.status) {
             await setDoc(doctorRef, globalData, { merge: true });
-            fixedCount++;
           }
         } else {
           // Doctor subcollection missing, create it
           await setDoc(doctorRef, globalData);
-          fixedCount++;
         }
       }
 
@@ -756,12 +841,10 @@ export const fixInconsistentAppointments = async (): Promise<void> => {
           // Compare status
           if (patientData?.status !== globalData.status) {
             await setDoc(patientRef, globalData, { merge: true });
-            fixedCount++;
           }
         } else {
           // Patient subcollection missing, create it
           await setDoc(patientRef, globalData);
-          fixedCount++;
         }
       }
     }
@@ -860,5 +943,95 @@ export const checkAppointmentConflict = async (
     console.error('Error checking appointment conflict:', error);
     // In case of error, assume no conflict to not block the operation
     return false;
+  }
+};
+
+export const addAppointmentDocument = async (
+  doctorId: string,
+  appointmentId: string,
+  file: File,
+  createdBy: string,
+  title?: string
+): Promise<AppointmentDocument> => {
+  try {
+    if (!file) throw new Error('Please select a document to upload.');
+    if (file.size > 15 * 1024 * 1024) {
+      throw new Error('File is too large. Maximum size is 15MB.');
+    }
+
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const documentId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const path = `appointments/${doctorId}/${appointmentId}/documents/${documentId}-${safeName}`;
+    const fileRef = storageRef(storage, path);
+
+    await uploadBytes(fileRef, file);
+    const downloadURL = await getDownloadURL(fileRef);
+
+    const payload = {
+      id: documentId,
+      title: title?.trim() || null,
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      downloadURL,
+      storagePath: path,
+      createdAt: serverTimestamp(),
+      createdBy,
+    };
+
+    const globalRef = doc(db, APPOINTMENTS_COLLECTION, appointmentId);
+    let patientId: string | undefined;
+
+    const globalSnap = await getDoc(globalRef);
+    if (globalSnap.exists()) {
+      patientId = globalSnap.data()?.patientId;
+    } else {
+      const doctorSnap = await getDoc(doc(db, USERS_COLLECTION, doctorId, 'appointments', appointmentId));
+      if (doctorSnap.exists()) {
+        patientId = doctorSnap.data()?.patientId;
+      }
+    }
+
+    const writeTargets = [
+      globalRef,
+      doc(db, USERS_COLLECTION, doctorId, 'appointments', appointmentId),
+    ];
+
+    if (patientId) {
+      writeTargets.push(doc(db, USERS_COLLECTION, patientId, 'appointments', appointmentId));
+    }
+
+    await Promise.all(
+      writeTargets.map((targetRef) =>
+        updateDoc(targetRef, {
+          documents: arrayUnion(payload),
+          updatedAt: serverTimestamp(),
+        }).catch(() =>
+          setDoc(
+            targetRef,
+            {
+              documents: arrayUnion(payload),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          )
+        )
+      )
+    );
+
+    return {
+      id: documentId,
+      title: title?.trim() || undefined,
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      downloadURL,
+      storagePath: path,
+      createdAt: new Date(),
+      createdBy,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to upload scanned document';
+    throw new Error(message);
   }
 };

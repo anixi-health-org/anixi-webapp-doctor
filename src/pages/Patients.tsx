@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { Patient, SharingRequest } from '../types';
 import {
   acceptSharingRequest,
+  getDoctorSharingRequests,
   rejectSharingRequest,
   listenToDoctorPatients,
   listenToDoctorSharingRequests,
@@ -20,6 +21,7 @@ export const Patients: React.FC = () => {
   const [patientsError, setPatientersError] = useState<string | null>(null);
   const [sharingRequests, setSharingRequests] = useState<SharingRequest[]>([]);
   const [sharingRequestsLoading, setSharingRequestsLoading] = useState(false);
+  const [sharingRequestsRefreshing, setSharingRequestsRefreshing] = useState(false);
   const [sharingRequestsError, setSharingRequestsError] = useState<string | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -95,6 +97,22 @@ export const Patients: React.FC = () => {
       setSharingRequestsError(
         error instanceof Error ? error.message : 'Failed to reject sharing request'
       );
+    }
+  };
+
+  const handleRefreshSharingRequests = async () => {
+    if (!doctorId) return;
+    try {
+      setSharingRequestsError(null);
+      setSharingRequestsRefreshing(true);
+      const refreshed = await getDoctorSharingRequests(doctorId);
+      setSharingRequests(refreshed.filter((req) => req.status === 'pending'));
+    } catch (error) {
+      setSharingRequestsError(
+        error instanceof Error ? error.message : 'Failed to refresh sharing requests'
+      );
+    } finally {
+      setSharingRequestsRefreshing(false);
     }
   };
   return (
@@ -185,6 +203,8 @@ export const Patients: React.FC = () => {
                 doctorId={doctorId || ''}
                 onAccept={handleAcceptSharingRequest}
                 onReject={handleRejectSharingRequest}
+                onRefresh={handleRefreshSharingRequests}
+                refreshing={sharingRequestsRefreshing}
               />
             )}
           </div>

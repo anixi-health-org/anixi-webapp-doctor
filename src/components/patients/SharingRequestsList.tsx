@@ -1,7 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import {
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  Inbox,
+  UserRound,
+  XCircle,
+} from 'lucide-react';
 import { SharingRequest } from '../../types';
-import { calculateAge } from '../../services/patientManagementService';
-import { convertTimestamp } from '../../utils/dateFormatter';
 
 interface SharingRequestsListProps {
   requests: SharingRequest[];
@@ -9,7 +15,17 @@ interface SharingRequestsListProps {
   doctorId: string;
   onAccept: (patientId: string, doctorId: string, requestId: string) => Promise<void>;
   onReject: (patientId: string, doctorId: string, requestId: string) => Promise<void>;
+  onRefresh?: () => Promise<void>;
+  refreshing?: boolean;
 }
+
+const formatSentDate = (date: Date): string => {
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+  });
+};
 
 export const SharingRequestsList: React.FC<SharingRequestsListProps> = ({
   requests,
@@ -17,173 +33,195 @@ export const SharingRequestsList: React.FC<SharingRequestsListProps> = ({
   doctorId,
   onAccept,
   onReject,
+  onRefresh,
+  refreshing = false,
 }) => {
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [actionType, setActionType] = useState<'accept' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [groupedRequests, setGroupedRequests] = useState<Map<string, SharingRequest[]>>(new Map());
+  const [rejectTarget, setRejectTarget] = useState<{ patientId: string; requestId: string } | null>(null);
 
-  useEffect(() => {
-    
-    const pendingRequests = requests.filter(req => {
-      return req.status === 'pending';
-    });
-    
-    const grouped = new Map<string, SharingRequest[]>();
-    pendingRequests.forEach((req) => {
-      if (!grouped.has(req.patientId)) {
-        grouped.set(req.patientId, []);
-      }
-      grouped.get(req.patientId)!.push(req);
-    });
-    setGroupedRequests(grouped);
-  }, [requests]);
+  const pendingRequests = useMemo(
+    () => requests.filter((req) => req.status === 'pending'),
+    [requests]
+  );
 
-  const handleAccept = async (patientId: string, doctorId: string, requestId: string) => {
+  const handleAccept = async (patientId: string, requestId: string) => {
     try {
       setError(null);
+      setActionType('accept');
       setLoadingId(requestId);
       await onAccept(patientId, doctorId, requestId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to accept request');
     } finally {
       setLoadingId(null);
+      setActionType(null);
     }
   };
 
-  const handleReject = async (patientId: string, doctorId: string, requestId: string) => {
+  const handleReject = async (patientId: string, requestId: string) => {
     try {
       setError(null);
+      setActionType('reject');
       setLoadingId(requestId);
       await onReject(patientId, doctorId, requestId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reject request');
     } finally {
       setLoadingId(null);
+      setActionType(null);
     }
+  };
+
+  const openRejectModal = (patientId: string, requestId: string) => {
+    setRejectTarget({ patientId, requestId });
+  };
+
+  const closeRejectModal = () => {
+    if (loadingId && actionType === 'reject') return;
+    setRejectTarget(null);
+  };
+
+  const confirmReject = async () => {
+    if (!rejectTarget) return;
+    await handleReject(rejectTarget.patientId, rejectTarget.requestId);
+    setRejectTarget(null);
   };
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-96">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      <div className="flex h-72 items-center justify-center">
+        <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-primary"></div>
       </div>
     );
   }
 
-  const pendingRequestsCount = groupedRequests.size;
-
-  if (pendingRequestsCount === 0) {
-    return null; 
-  }
-
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-end">
+        {onRefresh && (
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted disabled:opacity-60"
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
+        )}
+      </div>
+
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
           {error}
         </div>
       )}
 
-      {Array.from(groupedRequests.entries()).map(([patientId, patientRequests]) => {
-        const patient = patientRequests[0]?.patientInfo;
-        
-        
-        if (!patient) {
-          return (
-            <div key={patientId} className="bg-white border border-gray-200 rounded-lg p-4">
-              <h4 className="font-semibold text-gray-900">Patient</h4>
-              <p className="text-sm text-gray-600">Patient details not available</p>
-            </div>
-          );
-        }
+      {pendingRequests.length === 0 && (
+        <div className="rounded-xl border border-border bg-card p-8 text-center">
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-muted">
+            <Inbox className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <h3 className="text-base font-semibold text-foreground">No incoming requests</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            New patient access requests will appear here.
+          </p>
+        </div>
+      )}
+
+      {pendingRequests.map((request) => {
+        const patientName = request.patientInfo?.displayName || 'Patient';
+        const dateLabel = formatSentDate(request.createdAt);
+        const isProcessing = loadingId === request.id;
 
         return (
-          <div key={patientId} className="space-y-2">
-            {patientRequests.map((request) => {
-              const age = calculateAge(patient.dateOfBirth);
-              
-              return (
-              <div
-                key={request.id}
-                className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all flex items-center justify-between"
-              >
-                <div className="flex-1">
-                  <h4 className="font-semibold text-gray-900">
-                    {patient.displayName || 'No Name'}
-                  </h4>
-                  
-                  {}
-                  <div className="flex gap-6 text-sm text-gray-600 mb-2">
-                    {age !== null && age !== undefined && (
-                      <div>
-                        <span className="text-gray-500">Age:</span>
-                        <span className="ml-2 font-medium">{age} years</span>
-                      </div>
-                    )}
-                    {patient.gender && (
-                      <div>
-                        <span className="text-gray-500">Gender:</span>
-                        <span className="ml-2 font-medium">
-                          {patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {}
-                  {patient.email && (
-                    <div className="text-sm text-gray-600 mb-2">
-                      <span className="text-gray-500">Email:</span>
-                      <span className="ml-2 font-medium">{patient.email}</span>
-                    </div>
-                  )}
-                  
-                  <p className="text-sm text-gray-600">
-                    📅 Request: {convertTimestamp(request.createdAt)?.toLocaleDateString() || 'N/A'}
-                  </p>
-                  {request.reason && (
-                    <p className="text-sm text-gray-600">
-                      💬 {request.reason}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    request.status === 'pending'
-                      ? 'bg-yellow-100 text-yellow-800'
-                      : request.status === 'accepted'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
-                  }`}>
-                    {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                  </span>
-
-                  {request.status === 'pending' && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleAccept(patientId, doctorId, request.id)}
-                        disabled={loadingId === request.id}
-                        className="px-3 py-1 bg-green-500 text-white rounded font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                      >
-                        {loadingId === request.id ? '...' : '✓ Accept'}
-                      </button>
-                      <button
-                        onClick={() => handleReject(patientId, doctorId, request.id)}
-                        disabled={loadingId === request.id}
-                        className="px-3 py-1 bg-red-500 text-white rounded font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                      >
-                        {loadingId === request.id ? '...' : '✗ Reject'}
-                      </button>
-                    </div>
-                  )}
+          <article
+            key={request.id}
+            className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <p className="truncate text-base font-semibold text-foreground">{patientName}</p>
+                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                  <UserRound className="h-4 w-4" />
+                  <span>Patient request</span>
                 </div>
               </div>
-            )
-            })}
-          </div>
+
+              <div className="flex items-center gap-2 rounded-full bg-yellow-100 px-3 py-1">
+                <Clock3 className="h-4 w-4 text-yellow-600" />
+                <span className="text-sm font-medium text-yellow-700">Pending</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+              <CalendarDays className="h-4 w-4" />
+              <span>Sent {dateLabel}</span>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleAccept(request.patientId, request.id)}
+                disabled={isProcessing}
+                className="flex flex-1 items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                <span>
+                  {isProcessing && actionType === 'accept' ? 'Accepting...' : 'Accept'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openRejectModal(request.patientId, request.id)}
+                disabled={isProcessing}
+                className="flex flex-1 items-center justify-center gap-2 rounded-md bg-destructive px-3 py-2 text-sm font-semibold text-destructive-foreground transition hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <XCircle className="h-4 w-4" />
+                <span>
+                  {isProcessing && actionType === 'reject' ? 'Rejecting...' : 'Reject'}
+                </span>
+              </button>
+            </div>
+          </article>
         );
       })}
+
+      {rejectTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl">
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold text-foreground">Reject request?</h3>
+              <p className="text-sm text-muted-foreground">
+                This will decline the patient access request. The patient will need to send a new request.
+              </p>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeRejectModal}
+                disabled={loadingId === rejectTarget.requestId}
+                className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition hover:bg-muted disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmReject}
+                disabled={loadingId === rejectTarget.requestId}
+                className="rounded-md bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-60"
+              >
+                {loadingId === rejectTarget.requestId && actionType === 'reject'
+                  ? 'Rejecting...'
+                  : 'Reject request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -2,10 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AppointmentContextBanner } from '../components/patients/AppointmentContextBanner';
 import { recordPatientVisit } from '../services/recentPatientsService';
+import { getPatientAppointments } from '../services/appointmentService';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import { AppointmentDetails } from '../components/appointments/AppointmentDetails';
+import { AppointmentList } from '../components/appointments/AppointmentList';
 import { useAuth } from '../hooks/useAuth';
 import { getDoctorPatients } from '../services/doctorService';
-import { Patient } from '../types';
+import { Appointment, Patient } from '../types';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import {
   calculateAge,
@@ -27,6 +30,10 @@ export const PatientProfile: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const [patientAppointments, setPatientAppointments] = useState<Appointment[]>([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
+  const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
 
   useEffect(() => {
     const fetchPatient = async () => {
@@ -59,6 +66,67 @@ export const PatientProfile: React.FC = () => {
 
     fetchPatient();
   }, [user, patientId]);
+
+  useEffect(() => {
+    const loadAppointments = async () => {
+      if (!patient?.id) {
+        setPatientAppointments([]);
+        return;
+      }
+
+      try {
+        setAppointmentsLoading(true);
+        setAppointmentsError(null);
+        const appointments = await getPatientAppointments(patient.id);
+        setPatientAppointments(appointments);
+      } catch {
+        setAppointmentsError('Failed to load appointments for this patient');
+      } finally {
+        setAppointmentsLoading(false);
+      }
+    };
+
+    loadAppointments();
+  }, [patient?.id]);
+
+  const refreshPatientAppointments = async () => {
+    if (!patient?.id) return;
+    try {
+      setAppointmentsLoading(true);
+      setAppointmentsError(null);
+      const appointments = await getPatientAppointments(patient.id);
+      setPatientAppointments(appointments);
+    } catch {
+      setAppointmentsError('Failed to refresh appointments');
+    } finally {
+      setAppointmentsLoading(false);
+    }
+  };
+
+  const handleAppointmentStatusChange = (appointmentId: string, newStatus: Appointment['status']) => {
+    setPatientAppointments((prev) =>
+      prev.map((appointment) =>
+        appointment.id === appointmentId
+          ? { ...appointment, status: newStatus, updatedAt: new Date() }
+          : appointment
+      )
+    );
+  };
+
+  const handleAppointmentReschedule = async (
+    appointmentId: string,
+    newDate: Date,
+    newTime: string
+  ) => {
+    setPatientAppointments((prev) =>
+      prev.map((appointment) =>
+        appointment.id === appointmentId
+          ? { ...appointment, date: newDate, time: newTime, status: 'confirmed', updatedAt: new Date() }
+          : appointment
+      )
+    );
+    await refreshPatientAppointments();
+  };
 
   const renderField = (label: string, value: string | null | undefined): React.ReactNode => {
     if (isEmpty(value)) return null;
@@ -271,6 +339,30 @@ export const PatientProfile: React.FC = () => {
           </Card>
         )}
 
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between gap-3">
+            <CardTitle>Appointment Management</CardTitle>
+            <button
+              onClick={() => setShowFollowUpModal(true)}
+              className="px-3 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
+            >
+              + New Appointment
+            </button>
+          </CardHeader>
+          <CardContent>
+            {appointmentsError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                {appointmentsError}
+              </div>
+            )}
+            <AppointmentList
+              appointments={patientAppointments}
+              onSelectAppointment={(appointment) => setSelectedAppointment(appointment)}
+              isLoading={appointmentsLoading}
+            />
+          </CardContent>
+        </Card>
+
         <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
           <button
             onClick={() => navigate(`/patient-profile/${patient.id}/mood-checker`)}
@@ -328,12 +420,24 @@ export const PatientProfile: React.FC = () => {
         <CreateAppointmentModal
           isOpen={showFollowUpModal}
           onClose={() => setShowFollowUpModal(false)}
-          onAppointmentCreated={() => setShowFollowUpModal(false)}
+          onAppointmentCreated={async () => {
+            setShowFollowUpModal(false);
+            await refreshPatientAppointments();
+          }}
           prefillPatientId={patient.id}
           prefillPatientName={patient.displayName}
           prefillPatientEmail={patient.email}
           prefillIsManual={false}
           consultTypeDefault="follow-up"
+        />
+      )}
+
+      {selectedAppointment && (
+        <AppointmentDetails
+          appointment={selectedAppointment}
+          onClose={() => setSelectedAppointment(null)}
+          onStatusChange={handleAppointmentStatusChange}
+          onReschedule={handleAppointmentReschedule}
         />
       )}
     </div>

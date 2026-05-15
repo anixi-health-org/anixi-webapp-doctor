@@ -222,7 +222,10 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
         patientName: resolvedPatientName,
         patientEmail: resolvedPatientEmail,
         type: selectedConsultType === 'teleconsult' ? 'Virtual' : 'In-Person',
-        status: practiceSession?.bookingPolicy?.confirmationMode === 'auto' ? 'confirmed' : 'pending',
+        status:
+          bookingMode === 'manual' || practiceSession?.bookingPolicy?.confirmationMode === 'auto'
+            ? 'confirmed'
+            : 'pending',
         date: startAt,
         time: timeStr,
         notes: formData.notes,
