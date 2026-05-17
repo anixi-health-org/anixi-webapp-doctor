@@ -56,49 +56,29 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
   return (
     <div
       onClick={onClick}
-      className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-lg cursor-pointer transition-all duration-200 hover:scale-[1.02]"
+      className={`border rounded-3xl p-5 cursor-pointer transition-all duration-200 bg-white ${appointment.status === 'cancelled' ? 'opacity-80' : ''} shadow-sm hover:shadow-md`}
     >
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-gray-900 text-sm truncate">
-            👤 {String(appointment.patientName)}
-          </h3>
-          <p className="text-xs text-gray-500 mt-1 truncate">
-            {String(appointment.patientEmail)}
-          </p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="h-11 w-11 rounded-2xl bg-white/80 border border-white shadow-sm flex items-center justify-center text-xl">
+            {getTypeIcon(appointment.type)}
+          </div>
+          <div className="min-w-0">
+            <h3 className="font-semibold text-gray-900 text-sm truncate">👤 {String(appointment.patientName)}</h3>
+            <p className="text-xs text-gray-500 mt-1 truncate">{String(appointment.patientEmail)}</p>
+            <p className="text-[26px] leading-none font-bold text-[#0E2340] mt-2">{String(dateFormatted)}</p>
+            <p className="text-sm text-gray-700 mt-1">{String(timeDisplay)}</p>
+            <p className="text-xs text-gray-500 mt-2">Created {createdAtFormatted}</p>
+          </div>
         </div>
-        <span
-          className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap border ${getStatusColor(
-            appointment.status
-          )}`}
-        >
-          {String(appointment.status)}
-        </span>
-      </div>
-      <div className="space-y-2 mb-3">
-        <div className="flex items-center gap-2 text-sm text-gray-700">
-          <span>📅</span>
-          <span>{String(dateFormatted)}</span>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-gray-700">
-          <span>🕐</span>
-          <span>{String(timeDisplay)}</span>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-gray-700">
-          <span>{getTypeIcon(appointment.type)}</span>
-          <span>{appointment.type}</span>
+        <div className="flex flex-col items-end justify-between">
+          <span className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap border ${getStatusColor(appointment.status)}`}>{String(appointment.status)}</span>
+          <div className="text-sm text-gray-700 mt-4">{appointment.type}</div>
         </div>
       </div>
       {appointment.notes && (
-        <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded mt-3 line-clamp-2 italic">
-          "{appointment.notes}"
-        </div>
+        <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded mt-4 line-clamp-2 italic">"{appointment.notes}"</div>
       )}
-      <div className="mt-3 pt-3 border-t border-gray-100">
-        <p className="text-xs text-gray-500">
-          Created {createdAtFormatted}
-        </p>
-      </div>
     </div>
   );
 };

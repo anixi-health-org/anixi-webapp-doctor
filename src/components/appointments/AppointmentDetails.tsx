@@ -516,14 +516,15 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               </div>
               <div>
                 <p className="text-xs font-semibold text-gray-600 uppercase mb-1">Email</p>
-                <p className="text-gray-900">
-                  <a
-                    href={`mailto:${patientEmail}`}
-                    className="text-blue-600 hover:underline"
-                  >
-                    {patientEmail}
-                  </a>
-                </p>
+                {patientEmail && patientEmail !== 'N/A' ? (
+                  <p className="text-gray-900">
+                    <a href={`mailto:${patientEmail}`} className="text-blue-600 hover:underline">
+                      {patientEmail}
+                    </a>
+                  </p>
+                ) : (
+                  <p className="text-gray-700 italic">Not provided</p>
+                )}
               </div>
             </div>
           </div>
@@ -586,7 +587,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
             {documents.length === 0 ? (
               <p className="text-sm text-gray-500">No scanned documents saved yet.</p>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-40 overflow-y-auto">
                 {documents.map((item) => (
                   <a
                     key={item.id}
@@ -606,8 +607,8 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
           </div>
         </div>
         {}
-        {/* Modal-style action sheet for appointment management */}
-        <div className="w-full flex flex-col items-center justify-center px-2 py-4 border-t border-gray-200 bg-gray-50 sticky bottom-0 z-10">
+        {/* Modal-style action sheet for appointment management (moved below content; scrollable) */}
+        <div className="w-full flex flex-col items-center justify-center px-2 py-4 border-t border-gray-200 bg-gray-50 mt-4">
           <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-lg p-5 flex flex-col items-center">
             <h2 className="text-2xl font-semibold text-gray-800 mb-1">Manage appointment</h2>
             <p className="text-base text-gray-600 mb-5">Choose an action for this appointment.</p>
