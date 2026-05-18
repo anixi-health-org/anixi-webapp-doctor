@@ -99,15 +99,15 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
 
               <div className="flex items-center gap-2 sm:gap-4">
                 <GlobalPatientSearch />
-                <span className="hidden sm:block text-sm text-anixi-green font-medium truncate max-w-[220px]">
-                  Welcome back, Dr. {user?.displayName || 'Doctor'}
-                </span>
+                {/* Removed duplicate welcome message to avoid repetition */}
                 <NotificationBell />
-                <div className="h-8 w-8 rounded-full bg-anixi-green flex items-center justify-center">
-                  <span className="text-anixi-beige text-sm font-medium">
-                    {user?.displayName?.charAt(0) || 'D'}
-                  </span>
-                </div>
+                {user?.displayName ? (
+                  <div className="h-8 w-8 rounded-full bg-anixi-green flex items-center justify-center">
+                    <span className="text-anixi-beige text-sm font-medium">
+                      {user.displayName.charAt(0)}
+                    </span>
+                  </div>
+                ) : null}
                 <button
                   onClick={handleLogout}
                   className="ml-4 px-3 py-1 bg-anixi-green text-white rounded-md hover:bg-anixi-green/90 text-sm font-medium"
