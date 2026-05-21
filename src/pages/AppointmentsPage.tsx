@@ -8,6 +8,7 @@ import { AppointmentList } from '../components/appointments/AppointmentList';
 import { AppointmentDetails } from '../components/appointments/AppointmentDetails';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import { DashboardStatsCard } from '../components/dashboard/DashboardStatsCard';
 import { Toast } from '../components/ui';
 import { customColors } from '../lib/customColors';
 type FilterType = Appointment['status'] | 'All' | 'Today';
@@ -89,24 +90,13 @@ export const AppointmentsPage: React.FC = () => {
 
   /** Spec §10: Anixi appointment → Patient Profile; Manual → AppointmentDetails */
   const handleAppointmentClick = (apt: Appointment) => {
-    const isAnixiPatient = !apt.isManual && apt.patientId && apt.patientId !== 'unknown';
-    if (isAnixiPatient) {
-      navigate(`/patient-profile/${apt.patientId}`, {
-        state: {
-          appointmentId: apt.id,
-          appointmentTime: apt.time,
-          appointmentDate: apt.date ? new Date(apt.date).toLocaleDateString() : undefined,
-          consultType: apt.consultType,
-          status: apt.status,
-        },
-      });
-    } else {
-      setSelectedAppointment(apt);
-    }
+    // Always show appointment details in a modal for consistent behavior
+    setSelectedAppointment(apt);
   };
 
   const stats = {
-    total: appointments.length,
+    // Exclude cancelled and completed appointments from the default "total"/overview counts
+    total: appointments.filter((a) => a.status !== 'cancelled' && a.status !== 'completed').length,
     confirmed: appointments.filter((a) => a.status === 'confirmed').length,
     pending: appointments.filter((a) => a.status === 'pending').length,
     completed: appointments.filter((a) => a.status === 'completed').length,
@@ -118,7 +108,9 @@ export const AppointmentsPage: React.FC = () => {
       return (
         appointmentDate.getFullYear() === today.getFullYear() &&
         appointmentDate.getMonth() === today.getMonth() &&
-        appointmentDate.getDate() === today.getDate()
+        appointmentDate.getDate() === today.getDate() &&
+        a.status !== 'cancelled' &&
+        a.status !== 'completed'
       );
     }).length,
   };
@@ -132,10 +124,15 @@ export const AppointmentsPage: React.FC = () => {
       setFilterStatus(card as Appointment['status']);
     }
   };
+  // By default hide cancelled and completed appointments. Only show them when user selects their respective cards.
+  const baseAppointments =
+    selectedCard === 'cancelled' || selectedCard === 'completed'
+      ? appointments
+      : appointments.filter((a) => a.status !== 'cancelled' && a.status !== 'completed');
   let filteredAppointments: Appointment[] = [];
   if (selectedCard === 'Today') {
     const today = new Date();
-    filteredAppointments = appointments.filter((a) => {
+    filteredAppointments = baseAppointments.filter((a) => {
       const appointmentDate = new Date(a.date);
       return (
         appointmentDate.getFullYear() === today.getFullYear() &&
@@ -144,13 +141,13 @@ export const AppointmentsPage: React.FC = () => {
       );
     });
   } else if (selectedCard && selectedCard !== 'All') {
-    filteredAppointments = appointments.filter((a) => a.status === selectedCard);
+    filteredAppointments = baseAppointments.filter((a) => a.status === selectedCard);
   } else if (selectedCard === 'All') {
-    filteredAppointments = appointments;
+    filteredAppointments = baseAppointments;
   } else if ((filterStatus as string) === 'All') {
-    filteredAppointments = appointments;
+    filteredAppointments = baseAppointments;
   } else {
-    filteredAppointments = appointments.filter((a) => a.status === filterStatus);
+    filteredAppointments = baseAppointments.filter((a) => a.status === filterStatus);
   }
   return (
     <div
@@ -208,202 +205,13 @@ export const AppointmentsPage: React.FC = () => {
       )}
       {}
       {!isLoading && !error && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-3 mb-6">
-          {}
-          <button
-            onClick={() => handleCardClick('All')}
-            className={`transition-all duration-300 transform hover:scale-105 ${
-              selectedCard === 'All' ? 'ring-2 ring-blue-500 ring-offset-2' : ''
-            }`}
-          >
-            <Card
-              className={`cursor-pointer transition-all duration-300 ${
-                selectedCard === 'All'
-                  ? 'bg-blue-50 border-blue-300'
-                  : 'hover:shadow-lg hover:border-gray-300'
-              }`}
-            >
-              <CardContent className="pt-6">
-                <p className={`text-xs font-medium ${
-                  selectedCard === 'All' ? 'text-blue-700' : 'text-gray-600'
-                }`}>
-                  Total
-                </p>
-                <p className={`text-2xl font-bold mt-1 ${
-                  selectedCard === 'All' ? 'text-blue-700' : 'text-gray-900'
-                }`}>
-                  {stats.total}
-                </p>
-              </CardContent>
-            </Card>
-          </button>
-          {}
-          <button
-            onClick={() => handleCardClick('confirmed')}
-            className={`transition-all duration-300 transform hover:scale-105 ${
-              selectedCard === 'confirmed' ? 'ring-2 ring-green-500 ring-offset-2' : ''
-            }`}
-          >
-            <Card
-              className={`cursor-pointer transition-all duration-300 ${
-                selectedCard === 'confirmed'
-                  ? 'bg-green-50 border-green-300'
-                  : 'hover:shadow-lg hover:border-gray-300'
-              }`}
-            >
-              <CardContent className="pt-6">
-                <p className={`text-xs font-medium ${
-                  selectedCard === 'confirmed' ? 'text-green-700' : 'text-gray-600'
-                }`}>
-                  Confirmed
-                </p>
-                <p className={`text-2xl font-bold mt-1 ${
-                  selectedCard === 'confirmed' ? 'text-green-700' : 'text-green-600'
-                }`}>
-                  {stats.confirmed}
-                </p>
-              </CardContent>
-            </Card>
-          </button>
-          {}
-          <button
-            onClick={() => handleCardClick('pending')}
-            className={`transition-all duration-300 transform hover:scale-105 ${
-              selectedCard === 'pending' ? 'ring-2 ring-yellow-500 ring-offset-2' : ''
-            }`}
-          >
-            <Card
-              className={`cursor-pointer transition-all duration-300 ${
-                selectedCard === 'pending'
-                  ? 'bg-yellow-50 border-yellow-300'
-                  : 'hover:shadow-lg hover:border-gray-300'
-              }`}
-            >
-              <CardContent className="pt-6">
-                <p className={`text-xs font-medium ${
-                  selectedCard === 'pending' ? 'text-yellow-700' : 'text-gray-600'
-                }`}>
-                  Pending
-                </p>
-                <p className={`text-2xl font-bold mt-1 ${
-                  selectedCard === 'pending' ? 'text-yellow-700' : 'text-yellow-600'
-                }`}>
-                  {stats.pending}
-                </p>
-              </CardContent>
-            </Card>
-          </button>
-          {}
-          <button
-            onClick={() => handleCardClick('completed')}
-            className={`transition-all duration-300 transform hover:scale-105 ${
-              selectedCard === 'completed' ? 'ring-2 ring-blue-500 ring-offset-2' : ''
-            }`}
-          >
-            <Card
-              className={`cursor-pointer transition-all duration-300 ${
-                selectedCard === 'completed'
-                  ? 'bg-blue-50 border-blue-300'
-                  : 'hover:shadow-lg hover:border-gray-300'
-              }`}
-            >
-              <CardContent className="pt-6">
-                <p className={`text-xs font-medium ${
-                  selectedCard === 'completed' ? 'text-blue-700' : 'text-gray-600'
-                }`}>
-                  Completed
-                </p>
-                <p className={`text-2xl font-bold mt-1 ${
-                  selectedCard === 'completed' ? 'text-blue-700' : 'text-blue-600'
-                }`}>
-                  {stats.completed}
-                </p>
-              </CardContent>
-            </Card>
-          </button>
-          {}
-          <button
-            onClick={() => handleCardClick('cancelled')}
-            className={`transition-all duration-300 transform hover:scale-105 ${
-              selectedCard === 'cancelled' ? 'ring-2 ring-red-500 ring-offset-2' : ''
-            }`}
-          >
-            <Card
-              className={`cursor-pointer transition-all duration-300 ${
-                selectedCard === 'cancelled'
-                  ? 'bg-red-50 border-red-300'
-                  : 'hover:shadow-lg hover:border-gray-300'
-              }`}
-            >
-              <CardContent className="pt-6">
-                <p className={`text-xs font-medium ${
-                  selectedCard === 'cancelled' ? 'text-red-700' : 'text-gray-600'
-                }`}>
-                  Cancelled
-                </p>
-                <p className={`text-2xl font-bold mt-1 ${
-                  selectedCard === 'cancelled' ? 'text-red-700' : 'text-red-600'
-                }`}>
-                  {stats.cancelled}
-                </p>
-              </CardContent>
-            </Card>
-          </button>
-          {}
-          <button
-            onClick={() => handleCardClick('Today')}
-            className={`transition-all duration-300 transform hover:scale-105 ${
-              selectedCard === 'Today' ? 'ring-2 ring-purple-500 ring-offset-2' : ''
-            }`}
-          >
-            <Card
-              className={`cursor-pointer transition-all duration-300 ${
-                selectedCard === 'Today'
-                  ? 'bg-purple-50 border-purple-300'
-                  : 'hover:shadow-lg hover:border-gray-300'
-              }`}
-            >
-              <CardContent className="pt-6">
-                <p className={`text-xs font-medium ${
-                  selectedCard === 'Today' ? 'text-purple-700' : 'text-gray-600'
-                }`}>
-                  Today
-                </p>
-                <p className={`text-2xl font-bold mt-1 ${
-                  selectedCard === 'Today' ? 'text-purple-700' : 'text-blue-600'
-                }`}>
-                  {stats.today}
-                </p>
-              </CardContent>
-            </Card>
-          </button>
-          <button
-            onClick={() => handleCardClick('no_show')}
-            className={`transition-all duration-300 transform hover:scale-105 ${
-              selectedCard === 'no_show' ? 'ring-2 ring-orange-500 ring-offset-2' : ''
-            }`}
-          >
-            <Card
-              className={`cursor-pointer transition-all duration-300 ${
-                selectedCard === 'no_show'
-                  ? 'bg-orange-50 border-orange-300'
-                  : 'hover:shadow-lg hover:border-gray-300'
-              }`}
-            >
-              <CardContent className="pt-6">
-                <p className={`text-xs font-medium ${
-                  selectedCard === 'no_show' ? 'text-orange-700' : 'text-gray-600'
-                }`}>
-                  No-Show
-                </p>
-                <p className={`text-2xl font-bold mt-1 ${
-                  selectedCard === 'no_show' ? 'text-orange-700' : 'text-orange-600'
-                }`}>
-                  {stats.noShow}
-                </p>
-              </CardContent>
-            </Card>
-          </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
+          <DashboardStatsCard label="Total" value={stats.total} icon={'📋'} color="blue" onClick={() => handleCardClick('All')} isActive={selectedCard === 'All'} />
+          <DashboardStatsCard label="Confirmed" value={stats.confirmed} icon={'✅'} color="green" onClick={() => handleCardClick('confirmed')} isActive={selectedCard === 'confirmed'} />
+          <DashboardStatsCard label="Pending" value={stats.pending} icon={'⏳'} color="orange" onClick={() => handleCardClick('pending')} isActive={selectedCard === 'pending'} />
+          <DashboardStatsCard label="Completed" value={stats.completed} icon={'✓'} color="blue" onClick={() => handleCardClick('completed')} isActive={selectedCard === 'completed'} />
+          <DashboardStatsCard label="Cancelled" value={stats.cancelled} icon={'✗'} color="red" onClick={() => handleCardClick('cancelled')} isActive={selectedCard === 'cancelled'} />
+          <DashboardStatsCard label="Today" value={stats.today} icon={'📅'} color="blue" onClick={() => handleCardClick('Today')} isActive={selectedCard === 'Today'} />
         </div>
       )}
       {}
@@ -416,7 +224,7 @@ export const AppointmentsPage: React.FC = () => {
               {selectedCard === 'pending' && '⏳ Pending Appointments'}
               {selectedCard === 'completed' && '✓ Completed Appointments'}
               {selectedCard === 'cancelled' && '✗ Cancelled Appointments'}
-              {selectedCard === 'no_show' && '🚫 No-Show Appointments'}
+              {/* No-Show filter removed */}
               {selectedCard === 'All' && 'All Appointments'}
             </CardTitle>
           </CardHeader>
