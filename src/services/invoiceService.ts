@@ -24,7 +24,7 @@ export const generateInvoiceNumber = (appointmentId: string): string => {
 /**
  * Create a new invoice record
  */
-export const createInvoice = async (
+export const createInvoiceRecord = async (
   doctorId: string,
   patientId: string,
   appointmentId: string,
@@ -214,52 +214,57 @@ export const resendInvoice = async (invoiceId: string): Promise<void> => {
     lastResentAt: Timestamp.fromDate(new Date()),
   });
 };
-export interface InvoiceLineItem {
+interface LocalInvoiceLineItem {
   description: string;
   amount: number;
   currency: string;
 }
 
-export interface Invoice {
+interface LocalInvoice {
   id: string;
   invoiceNumber: string;
   appointmentId?: string;
   patientName?: string;
   createdAt: string;
-  status: 'pending' | 'paid';
-  lineItems: InvoiceLineItem[];
+  status: 'pending' | 'paid' | 'issued' | 'outstanding';
+  lineItems: LocalInvoiceLineItem[];
   total: number;
 }
 
 const STORAGE_KEY = 'anixi_invoices_v1';
 
-const readAll = (): Invoice[] => {
+const readAll = (): LocalInvoice[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as Invoice[];
+    return JSON.parse(raw) as LocalInvoice[];
   } catch {
     return [];
   }
 };
 
-const writeAll = (items: Invoice[]) => {
+const writeAll = (items: LocalInvoice[]) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 };
 
-export const createInvoice = (payload: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'total'>): Invoice => {
+export const createInvoiceLocal = (payload: {
+  appointmentId?: string;
+  patientName?: string;
+  status?: 'pending' | 'paid' | 'issued' | 'outstanding';
+  lineItems: LocalInvoiceLineItem[];
+}): LocalInvoice => {
   const all = readAll();
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const invoiceNumber = `INV-${new Date().getFullYear().toString().slice(-2)}-${Math.floor(1000 + Math.random() * 9000)}`;
-  const total = (payload.lineItems || []).reduce((s, li) => s + (li.amount || 0), 0);
-  const inv: Invoice = {
+  const total = payload.lineItems.reduce((s, li) => s + (li.amount || 0), 0);
+  const inv: LocalInvoice = {
     id,
     invoiceNumber,
     appointmentId: payload.appointmentId,
     patientName: payload.patientName,
     createdAt: new Date().toISOString(),
     status: payload.status || 'pending',
-    lineItems: payload.lineItems || [],
+    lineItems: payload.lineItems,
     total,
   };
   all.unshift(inv);
@@ -267,22 +272,22 @@ export const createInvoice = (payload: Omit<Invoice, 'id' | 'invoiceNumber' | 'c
   return inv;
 };
 
-export const getInvoice = (id: string): Invoice | null => {
+export const getLocalInvoice = (id: string): LocalInvoice | null => {
   const all = readAll();
   return all.find((i) => i.id === id) || null;
 };
 
-export const updateInvoice = (id: string, patch: Partial<Invoice>): Invoice | null => {
+export const updateLocalInvoice = (id: string, patch: Partial<LocalInvoice>): LocalInvoice | null => {
   const all = readAll();
   const idx = all.findIndex((i) => i.id === id);
   if (idx === -1) return null;
-  const updated = { ...all[idx], ...patch };
+  const updated: LocalInvoice = { ...all[idx], ...patch };
   if (patch.lineItems) {
-    updated.total = (patch.lineItems || []).reduce((s, li) => s + (li.amount || 0), 0);
+    updated.total = patch.lineItems.reduce((s, li) => s + (li.amount || 0), 0);
   }
   all[idx] = updated;
   writeAll(all);
   return updated;
 };
 
-export const listInvoices = (): Invoice[] => readAll();
+export const listLocalInvoices = (): LocalInvoice[] => readAll();

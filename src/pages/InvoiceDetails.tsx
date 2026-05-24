@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '../components/ui/Card';
-import { getInvoice, updateInvoice } from '../services/invoiceService';
+import { getLocalInvoice, updateLocalInvoice } from '../services/invoiceService';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../hooks/useAuth';
 import { getAppointmentById } from '../services/appointmentService';
@@ -16,7 +16,7 @@ const InvoiceDetails: React.FC = () => {
 
   useEffect(() => {
     if (!invoiceId) return;
-    const inv = getInvoice(invoiceId);
+    const inv = getLocalInvoice(invoiceId);
     setInvoice(inv);
     if (inv && inv.lineItems && inv.lineItems[0]) {
       setDesc(inv.lineItems[0].description || '');
@@ -32,7 +32,7 @@ const InvoiceDetails: React.FC = () => {
       try {
         const apt = await getAppointmentById(user.id, invoice.appointmentId);
         if (apt?.patientName) {
-          const updated = updateInvoice(invoice.id, { patientName: apt.patientName });
+          const updated = updateLocalInvoice(invoice.id, { patientName: apt.patientName });
           setInvoice(updated || { ...invoice, patientName: apt.patientName });
         }
       } catch {
@@ -46,13 +46,13 @@ const InvoiceDetails: React.FC = () => {
 
   const handleSaveEdit = () => {
     const amount = parseFloat(amt) || 0;
-    const updated = updateInvoice(invoice.id, { lineItems: [{ description: desc, amount, currency: invoice.lineItems?.[0]?.currency || 'ZAR' }] });
+    const updated = updateLocalInvoice(invoice.id, { lineItems: [{ description: desc, amount, currency: invoice.lineItems?.[0]?.currency || 'ZAR' }] });
     setInvoice(updated);
     setEditing(false);
   };
 
   const handleMarkPaid = () => {
-    const updated = updateInvoice(invoice.id, { status: 'paid' });
+    const updated = updateLocalInvoice(invoice.id, { status: 'paid' });
     setInvoice(updated);
   };
 
