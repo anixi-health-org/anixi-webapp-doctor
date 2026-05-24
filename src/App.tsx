@@ -9,6 +9,7 @@ import AppointmentsPage from './pages/AppointmentsPage';
 import AppointmentDebug from './pages/AppointmentDebug';
 import FirestoreInspector from './pages/FirestoreInspector';
 import { Dashboard } from './pages/Dashboard';
+import AppointmentSummary from './pages/AppointmentSummary';
 import { Login } from './pages/Login';
 import { PatientList } from './pages/PatientList';
 import { PatientProfile } from './pages/PatientProfile';
@@ -27,6 +28,10 @@ import AdherenceLogsPage from './pages/AdherenceLogsPage';
 import AdherenceDailyPage from './pages/AdherenceDailyPage';
 import VitalsHistoryPage from './pages/VitalsHistoryPage';
 import PostConsultPage from './pages/PostConsultPage';
+import InvoiceCreate from './pages/InvoiceCreate';
+import InvoiceDetails from './pages/InvoiceDetails';
+import InvoiceList from './pages/InvoiceList';
+import PrintDocumentsPage from './pages/PrintDocumentsPage';
 const queryClient = new QueryClient();
 
 const checkPatientFields = async () => {
@@ -161,7 +166,12 @@ function App() {
                     <Route path="/patients" element={<Patients />} />
                     <Route path="/find-doctor" element={<DoctorSearch />} />
                     <Route path="/appointments" element={<AppointmentsPage />} />
+                    <Route path="/appointments/:appointmentId" element={<AppointmentSummary />} />
                     <Route path="/appointments/:appointmentId/post-consult" element={<PostConsultPage />} />
+                    <Route path="/invoices/new/:appointmentId" element={<InvoiceCreate />} />
+                    <Route path="/invoices" element={<InvoiceList />} />
+                    <Route path="/invoices/:invoiceId" element={<InvoiceDetails />} />
+                    <Route path="/appointments/:appointmentId/print-docs" element={<PrintDocumentsPage />} />
                     <Route path="/debug/appointments" element={<AppointmentDebug />} />
                     <Route path="/debug/firestore" element={<FirestoreInspector />} />
                     <Route path="/professional-profile" element={<ProfessionalProfile />} />

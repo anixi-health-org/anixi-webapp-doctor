@@ -20,22 +20,19 @@ export const GlobalPatientSearch: React.FC = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load patients once when search opens
   useEffect(() => {
     if (!open || !user?.id || patients.length > 0) return;
     setLoading(true);
     getDoctorPatients(user.id)
       .then(setPatients)
-      .catch(() => {/* fail silently */})
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [open, user?.id, patients.length]);
 
-  // Focus input when opened
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 50);
   }, [open]);
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -64,7 +61,7 @@ export const GlobalPatientSearch: React.FC = () => {
 
   return (
     <div ref={containerRef} className="relative">
-      {/* Search trigger button */}
+      
       {!open && (
         <button
           onClick={() => setOpen(true)}
@@ -76,7 +73,7 @@ export const GlobalPatientSearch: React.FC = () => {
         </button>
       )}
 
-      {/* Expanded search bar */}
+      
       {open && (
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-anixi-green/40 bg-white shadow-sm w-56 sm:w-72">
           <MagnifyingGlassIcon className="h-4 w-4 text-anixi-green/50 shrink-0" />
@@ -98,7 +95,7 @@ export const GlobalPatientSearch: React.FC = () => {
         </div>
       )}
 
-      {/* Results dropdown */}
+      
       {open && (query.trim() || loading) && (
         <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden">
           {loading && (

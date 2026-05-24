@@ -99,7 +99,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
 
               <div className="flex items-center gap-2 sm:gap-4">
                 <GlobalPatientSearch />
-                {/* Removed duplicate welcome message to avoid repetition */}
+                
                 <NotificationBell />
                 {user?.displayName ? (
                   <div className="h-8 w-8 rounded-full bg-anixi-green flex items-center justify-center">

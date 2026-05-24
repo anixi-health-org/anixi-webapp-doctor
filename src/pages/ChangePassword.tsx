@@ -41,7 +41,7 @@ const ChangePassword: React.FC = () => {
       try {
         await updatePassword(user, newPassword);
       } catch (err: any) {
-        // requires recent login -> reauthenticate
+
         if (err.code === 'auth/requires-recent-login') {
           const email = user.email;
           if (!email) throw new Error('No email available for re-authentication.');

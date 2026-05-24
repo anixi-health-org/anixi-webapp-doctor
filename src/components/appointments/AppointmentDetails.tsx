@@ -411,11 +411,14 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
           </head>
           <body>
             <div class="header">
-              <div>
-                <h1 class="title">Invoice</h1>
-                <div class="meta">
-                  <div><strong>No:</strong> ${invoiceNumber}</div>
-                  <div><strong>Issued:</strong> ${issuedDate} ${issuedTime}</div>
+              <div style="display:flex;align-items:center;gap:12px;">
+                <img src="/anixi.png" alt="Anixi" style="width:80px;height:auto;object-fit:contain;"/>
+                <div style="margin-left:6px;">
+                  <h1 class="title">Invoice</h1>
+                  <div class="meta">
+                    <div><strong>No:</strong> ${invoiceNumber}</div>
+                    <div><strong>Issued:</strong> ${issuedDate} ${issuedTime}</div>
+                  </div>
                 </div>
               </div>
               <div class="meta" style="text-align: right;">
@@ -439,7 +442,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
                 <div><strong>Time:</strong> ${appointmentTime}</div>
                 <div><strong>Type:</strong> ${appointmentType}</div>
                 <div><strong>Status:</strong> ${appointmentStatus}</div>
-                <div><strong>Reference:</strong> ${appointment.id}</div>
+                
               </div>
             </div>
 
@@ -588,26 +591,35 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               <p className="text-sm text-gray-500">No scanned documents saved yet.</p>
             ) : (
               <div className="space-y-2 max-h-40 overflow-y-auto">
-                {documents.map((item) => (
-                  <a
-                    key={item.id}
-                    href={item.downloadURL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="block p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors"
-                  >
-                    <p className="text-sm font-semibold text-gray-900">{item.title || item.fileName}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {item.fileName} • {new Date(item.createdAt).toLocaleString()}
-                    </p>
-                  </a>
-                ))}
+                {documents.map((item) => {
+                  const isAudio = String(item.fileType || item.fileName || '').startsWith('audio') || /\.(webm|mp3|wav|ogg)$/i.test(item.fileName || '');
+                  return (
+                    <div key={item.id} className="p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">{item.title || item.fileName}</p>
+                          <p className="text-xs text-gray-500 mt-1">{item.fileName} • {new Date(item.createdAt).toLocaleString()}</p>
+                        </div>
+                        {!isAudio && (
+                          <div className="ml-4">
+                            <a href={item.downloadURL} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">Open</a>
+                          </div>
+                        )}
+                      </div>
+                      {isAudio && (
+                        <div className="mt-2">
+                          <audio controls src={item.downloadURL} className="w-full" />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
         {}
-        {/* Modal-style action sheet for appointment management (moved below content; scrollable) */}
+        
         <div className="w-full flex flex-col items-center justify-center px-2 py-4 border-t border-gray-200 bg-gray-50 mt-4">
           <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-lg p-5 flex flex-col items-center">
             <h2 className="text-2xl font-semibold text-gray-800 mb-1">Manage appointment</h2>
@@ -681,7 +693,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
         </div>
       </div>
 
-      {/* Follow-up modal */}
+      
       {showFollowUpModal && (
         <CreateAppointmentModal
           isOpen={showFollowUpModal}

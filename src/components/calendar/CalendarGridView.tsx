@@ -8,7 +8,6 @@ import { getSoftBlocks, createBookableBlock, deleteSoftBlock } from '../../servi
 import { AppointmentDetails } from '../appointments/AppointmentDetails';
 import { CreateAppointmentModal } from '../appointments/CreateAppointmentModal';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const isSameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() &&
@@ -17,8 +16,8 @@ const isSameDay = (a: Date, b: Date) =>
 
 const startOfWeek = (date: Date): Date => {
   const d = new Date(date);
-  const day = d.getDay(); // 0 = Sun
-  const diff = day === 0 ? -6 : 1 - day; // Monday start
+  const day = d.getDay(); 
+  const diff = day === 0 ? -6 : 1 - day; 
   d.setDate(d.getDate() + diff);
   d.setHours(0, 0, 0, 0);
   return d;
@@ -33,7 +32,7 @@ const addDays = (date: Date, days: number): Date => {
 const toMinutes = (h: number, m: number) => h * 60 + m;
 const minToTop = (min: number, startHour: number) => ((min - startHour * 60) / 60) * ROW_HEIGHT;
 
-const ROW_HEIGHT = 64; // px per hour
+const ROW_HEIGHT = 64; 
 const DAY_START_HOUR = 7;
 const DAY_END_HOUR = 20;
 const VISIBLE_HOURS = DAY_END_HOUR - DAY_START_HOUR;
@@ -55,7 +54,6 @@ const SOFT_BLOCK_COLORS: Record<string, string> = {
   other: 'bg-slate-50 border-slate-300 text-slate-600',
 };
 
-// ─── Component ────────────────────────────────────────────────────────────────
 
 interface CalendarGridViewProps {
   onStatusChange?: (appointmentId: string, newStatus: Appointment['status']) => void;
@@ -105,7 +103,6 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
 
   useEffect(() => { load(); }, [load]);
 
-  // ─── Event positioning ────────────────────────────────────────────────────
 
   const getEventStyle = (start: Date, end: Date): React.CSSProperties => {
     const startMin = toMinutes(start.getHours(), start.getMinutes());
@@ -115,7 +112,6 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
     return { position: 'absolute', top, height, left: 2, right: 2 };
   };
 
-  // ─── Convert soft block to bookable ──────────────────────────────────────
 
   const handleConvertSoftBlock = async (block: SoftBlock) => {
     if (!practiceId || !user?.id) return;
@@ -142,17 +138,15 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
         active: true,
       });
 
-      // Remove the soft block
       await deleteSoftBlock(practiceId, block.id);
       await load();
     } catch {
-      // silently fail — UI feedback is sufficient
+
     } finally {
       setConvertingBlock(null);
     }
   };
 
-  // ─── Appointment tap ──────────────────────────────────────────────────────
 
   const handleAppointmentClick = (apt: Appointment) => {
     const isAnixiPatient = !apt.isManual && apt.patientId && apt.patientId !== 'unknown';
@@ -171,7 +165,6 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
     }
   };
 
-  // ─── Status change propagation ────────────────────────────────────────────
 
   const handleStatusChange = (id: string, status: Appointment['status']) => {
     setAppointments((prev) =>
@@ -181,13 +174,12 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
     onStatusChange?.(id, status);
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────
 
   const todayStr = new Date().toDateString();
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar */}
+      
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <button
@@ -232,7 +224,7 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
         </div>
       ) : (
         <div className="overflow-auto rounded-[30px] border border-[#E2E8F0] bg-white shadow-sm">
-          {/* Day headers */}
+          
           <div className="grid sticky top-0 z-10 bg-white border-b border-[#E9EEF4]" style={{ gridTemplateColumns: '56px repeat(7, 1fr)' }}>
             <div className="text-xs text-[#C0CAD8] p-2" />
             {days.map((day) => {
@@ -251,12 +243,12 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
             })}
           </div>
 
-          {/* Time grid */}
+          
           <div
             className="grid"
             style={{ gridTemplateColumns: '56px repeat(7, 1fr)', height: `${VISIBLE_HOURS * ROW_HEIGHT}px`, position: 'relative' }}
           >
-            {/* Hour labels */}
+            
             <div className="relative">
               {hours.map((h) => (
                 <div
@@ -269,7 +261,7 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
               ))}
             </div>
 
-            {/* Day columns */}
+            
             {days.map((day) => {
               const dayApts = appointments.filter((a) => isSameDay(a.date, day));
               const daySoftBlocks = softBlocks.filter((b) => isSameDay(b.startAt, day));
@@ -280,7 +272,7 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
                   className="relative border-l border-[#F1F4F8]"
                   style={{ height: `${VISIBLE_HOURS * ROW_HEIGHT}px` }}
                 >
-                  {/* Hour grid lines */}
+                  
                   {hours.map((h) => (
                     <div
                       key={h}
@@ -289,7 +281,7 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
                     />
                   ))}
 
-                  {/* Soft blocks (rendered behind appointments) */}
+                  
                   {daySoftBlocks.map((block) => {
                     const style = getEventStyle(block.startAt, block.endAt);
                     const colorClass = SOFT_BLOCK_COLORS[block.category] ?? SOFT_BLOCK_COLORS.other;
@@ -315,10 +307,10 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
                     );
                   })}
 
-                  {/* Appointments */}
+                  
                   {dayApts.map((apt) => {
                     const aptStart = apt.startAt ?? apt.date;
-                    const aptEnd = apt.endAt ?? addDays(aptStart, 0); // fallback: 30 min
+                    const aptEnd = apt.endAt ?? addDays(aptStart, 0); 
                     if (!apt.endAt) aptEnd.setMinutes(aptEnd.getMinutes() + 30);
                     const style = getEventStyle(aptStart, aptEnd);
                     const colors = STATUS_COLORS[apt.status] ?? STATUS_COLORS.confirmed;
@@ -363,7 +355,7 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
         </div>
       )}
 
-      {/* Appointment detail (manual appointments only) */}
+      
       {selectedAppointment && (
         <AppointmentDetails
           appointment={selectedAppointment}
@@ -380,7 +372,7 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
         />
       )}
 
-      {/* Create appointment modal */}
+      
       {showCreateModal && (
         <CreateAppointmentModal
           isOpen={showCreateModal}
