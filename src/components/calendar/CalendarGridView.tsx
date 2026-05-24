@@ -84,6 +84,11 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
 
   const practiceId = practiceSession?.practice?.id;
 
+  const getLocationName = (locationId?: string): string | null => {
+    if (!locationId) return null;
+    return (practiceSession?.practice?.locations ?? []).find((l) => l.id === locationId)?.name ?? null;
+  };
+
   const load = useCallback(async () => {
     if (!user?.id) return;
     setIsLoading(true);
@@ -325,6 +330,9 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
                       >
                         <p className="font-semibold truncate">{apt.patientName}</p>
                         <p className="opacity-70 truncate">{apt.time}</p>
+                        {apt.locationId && getLocationName(apt.locationId) && (
+                          <p className="opacity-60 truncate text-[10px]">📍 {getLocationName(apt.locationId)}</p>
+                        )}
                         {isAnixiPatient && (
                           <span className="text-[10px] opacity-60">→ Profile</span>
                         )}

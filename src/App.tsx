@@ -28,6 +28,7 @@ import AdherenceLogsPage from './pages/AdherenceLogsPage';
 import AdherenceDailyPage from './pages/AdherenceDailyPage';
 import VitalsHistoryPage from './pages/VitalsHistoryPage';
 import PostConsultPage from './pages/PostConsultPage';
+import InvoicesPage from './pages/InvoicesPage';
 import InvoiceCreate from './pages/InvoiceCreate';
 import InvoiceDetails from './pages/InvoiceDetails';
 import InvoiceList from './pages/InvoiceList';
@@ -168,6 +169,7 @@ function App() {
                     <Route path="/appointments" element={<AppointmentsPage />} />
                     <Route path="/appointments/:appointmentId" element={<AppointmentSummary />} />
                     <Route path="/appointments/:appointmentId/post-consult" element={<PostConsultPage />} />
+                    <Route path="/invoices" element={<InvoicesPage />} />
                     <Route path="/invoices/new/:appointmentId" element={<InvoiceCreate />} />
                     <Route path="/invoices" element={<InvoiceList />} />
                     <Route path="/invoices/:invoiceId" element={<InvoiceDetails />} />

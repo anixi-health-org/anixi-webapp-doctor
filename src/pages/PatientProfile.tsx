@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { AppointmentContextBanner } from '../components/patients/AppointmentContextBanner';
 import { recordPatientVisit } from '../services/recentPatientsService';
+import { logPatientActivity } from '../services/patientActivityService';
 import { getPatientAppointments } from '../services/appointmentService';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { AppointmentDetails } from '../components/appointments/AppointmentDetails';
@@ -23,8 +24,21 @@ import {
 
 export const PatientProfile: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { patientId } = useParams<{ patientId: string }>();
   const { user } = useAuth();
+
+  const contextState = (location.state ?? {}) as {
+    appointmentId?: string;
+    appointmentTime?: string;
+    appointmentDate?: string;
+    consultType?: string;
+    status?: string;
+  };
+  const appointmentContextId =
+    typeof contextState.appointmentId === 'string' && contextState.appointmentId.length > 0
+      ? contextState.appointmentId
+      : undefined;
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -34,6 +48,28 @@ export const PatientProfile: React.FC = () => {
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+
+  const logActivity = (
+    actionType: string,
+    description: string,
+    metadata?: Record<string, string | number | boolean | null | undefined>
+  ) => {
+    if (!user?.id || !patient?.id) return;
+    void logPatientActivity({
+      doctorId: user.id,
+      patientId: patient.id,
+      appointmentId: appointmentContextId,
+      actionType,
+      description,
+      metadata: {
+        contextStatus: contextState.status,
+        contextConsultType: contextState.consultType,
+        contextAppointmentDate: contextState.appointmentDate,
+        contextAppointmentTime: contextState.appointmentTime,
+        ...(metadata || {}),
+      },
+    });
+  };
 
   useEffect(() => {
     const fetchPatient = async () => {
@@ -88,6 +124,33 @@ export const PatientProfile: React.FC = () => {
 
     loadAppointments();
   }, [patient?.id]);
+
+  useEffect(() => {
+    if (!user?.id || !patient?.id) return;
+    void logPatientActivity({
+      doctorId: user.id,
+      patientId: patient.id,
+      appointmentId: appointmentContextId,
+      actionType: 'open_patient_context',
+      description: appointmentContextId
+        ? 'Opened patient profile from appointment context.'
+        : 'Opened patient profile without appointment context.',
+      metadata: {
+        contextStatus: contextState.status,
+        contextConsultType: contextState.consultType,
+        contextAppointmentDate: contextState.appointmentDate,
+        contextAppointmentTime: contextState.appointmentTime,
+      },
+    });
+  }, [
+    user?.id,
+    patient?.id,
+    appointmentContextId,
+    contextState.status,
+    contextState.consultType,
+    contextState.appointmentDate,
+    contextState.appointmentTime,
+  ]);
 
   const refreshPatientAppointments = async () => {
     if (!patient?.id) return;
@@ -343,7 +406,10 @@ export const PatientProfile: React.FC = () => {
           <CardHeader className="flex flex-row items-center justify-between gap-3">
             <CardTitle>Appointment Management</CardTitle>
             <button
-              onClick={() => setShowFollowUpModal(true)}
+              onClick={() => {
+                logActivity('open_follow_up_modal', 'Opened follow-up booking from patient profile.');
+                setShowFollowUpModal(true);
+              }}
               className="px-3 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
             >
               + New Appointment
@@ -357,7 +423,13 @@ export const PatientProfile: React.FC = () => {
             )}
             <AppointmentList
               appointments={patientAppointments}
-              onSelectAppointment={(appointment) => setSelectedAppointment(appointment)}
+              onSelectAppointment={(appointment) => {
+                logActivity('open_appointment_details', 'Opened appointment details from patient profile.', {
+                  selectedAppointmentId: appointment.id,
+                  selectedAppointmentStatus: appointment.status,
+                });
+                setSelectedAppointment(appointment);
+              }}
               isLoading={appointmentsLoading}
             />
           </CardContent>
@@ -365,7 +437,10 @@ export const PatientProfile: React.FC = () => {
 
         <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
           <button
-            onClick={() => navigate(`/patient-profile/${patient.id}/mood-checker`)}
+            onClick={() => {
+              logActivity('open_mood_checker', 'Opened mood checker from patient profile.');
+              navigate(`/patient-profile/${patient.id}/mood-checker`);
+            }}
             className="p-4 sm:p-6 bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-lg hover:shadow-lg transition-all text-left group"
           >
             <p className="text-3xl mb-2">🎭</p>
@@ -375,7 +450,10 @@ export const PatientProfile: React.FC = () => {
           </button>
 
           <button
-            onClick={() => navigate(`/patient-profile/${patient.id}/adherence-calendar`)}
+            onClick={() => {
+              logActivity('open_adherence_calendar', 'Opened adherence calendar from patient profile.');
+              navigate(`/patient-profile/${patient.id}/adherence-calendar`);
+            }}
             className="p-4 sm:p-6 bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-lg hover:shadow-lg transition-all text-left group"
           >
             <p className="text-3xl mb-2">📅</p>
@@ -385,7 +463,10 @@ export const PatientProfile: React.FC = () => {
           </button>
 
           <button
-            onClick={() => navigate(`/patient-profile/${patient.id}/adherence-logs`)}
+            onClick={() => {
+              logActivity('open_adherence_logs', 'Opened adherence logs from patient profile.');
+              navigate(`/patient-profile/${patient.id}/adherence-logs`);
+            }}
             className="p-4 sm:p-6 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg hover:shadow-lg transition-all text-left group"
           >
             <p className="text-3xl mb-2">📋</p>
@@ -395,7 +476,10 @@ export const PatientProfile: React.FC = () => {
           </button>
 
           <button
-            onClick={() => navigate(`/patient-profile/${patient.id}/vitals-history`)}
+            onClick={() => {
+              logActivity('open_vitals_history', 'Opened vitals history from patient profile.');
+              navigate(`/patient-profile/${patient.id}/vitals-history`);
+            }}
             className="p-4 sm:p-6 bg-gradient-to-br from-red-50 to-orange-50 border border-red-200 rounded-lg hover:shadow-lg transition-all text-left group"
           >
             <p className="text-3xl mb-2">❤️</p>
@@ -405,7 +489,10 @@ export const PatientProfile: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setShowFollowUpModal(true)}
+            onClick={() => {
+              logActivity('open_schedule_follow_up', 'Opened schedule follow-up action from patient profile.');
+              setShowFollowUpModal(true);
+            }}
             className="p-4 sm:p-6 bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg hover:shadow-lg transition-all text-left group"
           >
             <p className="text-3xl mb-2">🔄</p>

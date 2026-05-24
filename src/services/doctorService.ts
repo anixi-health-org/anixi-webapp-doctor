@@ -17,6 +17,8 @@ export const getDoctorProfile = async (doctorId: string): Promise<Doctor | null>
                 licenseNumber: doctorData.licenseNumber,
                 phoneNumber: doctorData.phoneNumber,
                 officeAddress: doctorData.officeAddress,
+                practiceName: doctorData.practiceName,
+                logoUrl: doctorData.logoUrl,
                 createdAt: doctorData.createdAt?.toDate() || new Date(),
                 updatedAt: doctorData.updatedAt?.toDate() || new Date(),
             } as Doctor;

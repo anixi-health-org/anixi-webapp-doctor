@@ -1,9 +1,14 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/AuthContext';
 import { getPracticeDailySchedule, setPracticeDailySchedule } from '../services/practiceCalendarService';
+import { getDoctorAppointments } from '../services/appointmentService';
 import type { AvailabilityStatus } from '../types';
+import { Appointment } from '../types';
 import { CalendarGridView } from '../components/calendar/CalendarGridView';
 import { TabPill } from '../components/ui/TabPill';
+import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
+import { AppointmentDetails } from '../components/appointments/AppointmentDetails';
 
 const PRACTICE_BRAND = {
   primary: '#516059',
@@ -15,7 +20,8 @@ const PRACTICE_BRAND = {
 type Tab = 'calendar' | 'daySettings';
 
 const PracticeCalendarPage: React.FC = () => {
-  const { practiceSession } = useAuth();
+  const { practiceSession, user } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('calendar');
   const [availability, setAvailability] = useState<AvailabilityStatus>('open');
   const [openTime, setOpenTime] = useState('09:00');
@@ -25,23 +31,33 @@ const PracticeCalendarPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [dayAppointments, setDayAppointments] = useState<Appointment[]>([]);
+  const [loadingDayApts, setLoadingDayApts] = useState(false);
+  const [selectedDayAppointment, setSelectedDayAppointment] = useState<Appointment | null>(null);
 
   const practice = practiceSession?.practice;
   const today = new Date().toISOString().split('T')[0];
   const [selectedDate, setSelectedDate] = useState(today);
   const [miniMonth, setMiniMonth] = useState<Date>(new Date());
 
+  // Reload availability settings whenever the selected date changes
   useEffect(() => {
     if (!practice) return;
     const loadSchedule = async () => {
       setLoading(true);
       try {
-        const schedule = await getPracticeDailySchedule(practice.id, today);
+        const schedule = await getPracticeDailySchedule(practice.id, selectedDate);
         if (schedule) {
           setAvailability(schedule.availability);
           setOpenTime(schedule.openTime || '09:00');
           setCloseTime(schedule.closeTime || '17:00');
           setNote(schedule.note || '');
+        } else {
+          setAvailability('open');
+          setOpenTime('09:00');
+          setCloseTime('17:00');
+          setNote('');
         }
       } catch (error) {
         console.error('Error loading schedule:', error);
@@ -50,7 +66,34 @@ const PracticeCalendarPage: React.FC = () => {
       }
     };
     loadSchedule();
-  }, [practice, today]);
+  }, [practice, selectedDate]);
+
+  // Load appointments for the selected date (Day View operational list)
+  const loadDayAppointments = useCallback(async () => {
+    if (!user?.id) return;
+    setLoadingDayApts(true);
+    try {
+      const all = await getDoctorAppointments(user.id);
+      const sel = new Date(selectedDate);
+      const filtered = all
+        .filter((a) => {
+          const d = new Date(a.date);
+          return (
+            d.getFullYear() === sel.getFullYear() &&
+            d.getMonth() === sel.getMonth() &&
+            d.getDate() === sel.getDate()
+          );
+        })
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      setDayAppointments(filtered);
+    } catch {
+      setDayAppointments([]);
+    } finally {
+      setLoadingDayApts(false);
+    }
+  }, [user?.id, selectedDate]);
+
+  useEffect(() => { loadDayAppointments(); }, [loadDayAppointments]);
 
   const handleSave = async () => {
     if (!practice) return;
@@ -58,7 +101,7 @@ const PracticeCalendarPage: React.FC = () => {
     try {
       await setPracticeDailySchedule({
         practiceId: practice.id,
-        date: today,
+        date: selectedDate,
         availability,
         openTime: availability === 'closed' ? undefined : openTime,
         closeTime: availability === 'closed' ? undefined : closeTime,
@@ -125,7 +168,8 @@ const PracticeCalendarPage: React.FC = () => {
             </div>
             <button
               type="button"
-              className="inline-flex items-center justify-center gap-3 rounded-2xl bg-[#425950] px-6 py-4 text-base font-semibold text-white shadow-lg shadow-[#425950]/20"
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center justify-center gap-3 rounded-2xl bg-[#425950] px-6 py-4 text-base font-semibold text-white shadow-lg shadow-[#425950]/20 hover:bg-[#374d45] transition-colors"
             >
               <span className="text-2xl leading-none">+</span>
               <span>Quick Add</span>
@@ -190,22 +234,48 @@ const PracticeCalendarPage: React.FC = () => {
               <p className="mt-2 text-sm text-white/65">
                 {new Date(selectedDate).toLocaleDateString('en-ZA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               </p>
-              <div className="mt-5 space-y-3 text-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-white/60">Total Slots</span>
-                  <span className="font-semibold text-white">{availability === 'closed' ? 0 : 0}</span>
-                </div>
-                <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                  <div className="h-full w-0 bg-emerald-400" />
-                </div>
-                <p className="text-xs text-white/45 italic">Calculated based on current month allocation.</p>
-              </div>
+              {loadingDayApts ? (
+                <p className="mt-4 text-xs text-white/40">Loading…</p>
+              ) : (() => {
+                const active = dayAppointments.filter((a) => a.status !== 'cancelled');
+                const confirmed = dayAppointments.filter((a) => a.status === 'confirmed').length;
+                const pending = dayAppointments.filter((a) => a.status === 'pending').length;
+                const completed = dayAppointments.filter((a) => a.status === 'completed').length;
+                const ratio = active.length > 0 ? Math.round((confirmed / active.length) * 100) : 0;
+                return (
+                  <div className="mt-5 space-y-3 text-sm">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-white/60">Total</span>
+                      <span className="font-semibold text-white">{active.length}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-white/60">Confirmed</span>
+                      <span className="font-semibold text-emerald-400">{confirmed}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-white/60">Pending</span>
+                      <span className="font-semibold text-amber-300">{pending}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-white/60">Completed</span>
+                      <span className="font-semibold text-white/80">{completed}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                      <div className="h-full bg-emerald-400 transition-all" style={{ width: `${ratio}%` }} />
+                    </div>
+                    <p className="text-xs text-white/40">{ratio}% confirmed</p>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
           <div className="rounded-[30px] border border-[#E2E8F0] bg-white shadow-sm p-4 sm:p-6 min-h-[720px]">
             {activeTab === 'daySettings' && (
-              <div className="rounded-[24px] border border-[#E9EEF4] bg-[#FBFCFD] p-4 sm:p-6">
+              <div className="space-y-6">
+                {/* Availability settings */}
+                <div className="rounded-[24px] border border-[#E9EEF4] bg-[#FBFCFD] p-4 sm:p-6">
+                  <h3 className="text-sm font-semibold text-[#0E2340] mb-4">Availability Settings</h3>
                 <div className="space-y-6">
                     <div>
                       <label className="block text-sm font-medium text-[#0E2340] mb-3">Availability</label>
@@ -274,10 +344,64 @@ const PracticeCalendarPage: React.FC = () => {
                         style={{ backgroundColor: PRACTICE_BRAND.primary }}
                         onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = PRACTICE_BRAND.primaryDark)}
                         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = PRACTICE_BRAND.primary)}>
-                        {saving ? 'Saving...' : 'Save Today'}
+                        {saving ? 'Saving...' : 'Save'}
                       </button>
                     </div>
                   </div>
+                </div>
+
+                {/* Operational day schedule */}
+                <div className="rounded-[24px] border border-[#E9EEF4] bg-white p-4 sm:p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold text-[#0E2340]">
+                      Schedule — {new Date(selectedDate).toLocaleDateString('en-ZA', { weekday: 'long', month: 'long', day: 'numeric' })}
+                    </h3>
+                    {loadingDayApts && <span className="text-xs text-[#8FA0B6]">Loading…</span>}
+                  </div>
+                  {!loadingDayApts && dayAppointments.length === 0 && (
+                    <p className="text-sm text-[#8FA0B6] italic">No appointments scheduled for this day.</p>
+                  )}
+                  <div className="space-y-2">
+                    {dayAppointments
+                      .filter((a) => a.status !== 'cancelled')
+                      .map((apt) => {
+                        const isAnixi = !apt.isManual && apt.patientId && apt.patientId !== 'manual' && apt.patientId !== 'unknown';
+                        const statusColors: Record<string, string> = {
+                          confirmed: 'border-l-emerald-400 bg-emerald-50',
+                          pending: 'border-l-amber-400 bg-amber-50',
+                          completed: 'border-l-gray-400 bg-gray-50',
+                          no_show: 'border-l-orange-400 bg-orange-50',
+                        };
+                        const colorClass = statusColors[apt.status] ?? 'border-l-gray-300 bg-gray-50';
+                        return (
+                          <button
+                            key={apt.id}
+                            type="button"
+                            onClick={() => {
+                              if (isAnixi) {
+                                navigate(`/patient-profile/${apt.patientId}`, {
+                                  state: { appointmentId: apt.id, consultType: apt.consultType, status: apt.status },
+                                });
+                              } else {
+                                setSelectedDayAppointment(apt);
+                              }
+                            }}
+                            className={`w-full text-left border-l-4 rounded-r-xl px-4 py-3 transition-colors hover:brightness-95 ${colorClass}`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-semibold text-[#0E2340] truncate">{apt.patientName}</span>
+                              <span className="text-xs text-[#6F7F95] shrink-0">{apt.time}</span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1">
+                              <span className="text-xs text-[#8FA0B6] capitalize">{apt.consultType ?? apt.type}</span>
+                              {apt.isManual && <span className="text-[10px] text-[#8FA0B6]">manual</span>}
+                              {isAnixi && <span className="text-[10px] text-[#0FA968]">Anixi → Profile</span>}
+                            </div>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -285,6 +409,34 @@ const PracticeCalendarPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showCreateModal && (
+        <CreateAppointmentModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onAppointmentCreated={async (message) => {
+            await loadDayAppointments();
+            setShowCreateModal(false);
+          }}
+        />
+      )}
+
+      {selectedDayAppointment && (
+        <AppointmentDetails
+          appointment={selectedDayAppointment}
+          onClose={() => setSelectedDayAppointment(null)}
+          onStatusChange={(id, status) => {
+            setDayAppointments((prev) =>
+              prev.map((a) => (a.id === id ? { ...a, status } : a))
+            );
+            setSelectedDayAppointment(null);
+          }}
+          onReschedule={async () => {
+            await loadDayAppointments();
+            setSelectedDayAppointment(null);
+          }}
+        />
+      )}
     </div>
   );
 };

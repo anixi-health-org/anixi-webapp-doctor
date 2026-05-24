@@ -143,6 +143,8 @@ export interface Doctor extends User {
     licenseNumber?: string;
     phoneNumber?: string;
     officeAddress?: string;
+    practiceName?: string;
+    logoUrl?: string;
 }
 export interface Patient extends User {
     role: 'patient';
@@ -314,5 +316,31 @@ export interface PracticeDailySchedule {
     openTime?: string; 
     closeTime?: string; 
     note?: string;
+    updatedAt: Date;
+}
+
+export type InvoiceStatus = 'issued' | 'outstanding' | 'paid';
+
+export interface InvoiceLineItem {
+    description: string;
+    quantity: number;
+    amount: number;
+}
+
+export interface Invoice {
+    id: string;
+    doctorId: string;
+    patientId: string;
+    appointmentId: string;
+    invoiceNumber: string;
+    status: InvoiceStatus;
+    lineItems: InvoiceLineItem[];
+    totalAmount: number;
+    currency?: string;
+    issuedAt: Date;
+    dueDate?: Date;
+    paidAt?: Date;
+    notes?: string;
+    createdAt: Date;
     updatedAt: Date;
 }

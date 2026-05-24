@@ -89,6 +89,20 @@ export const AppointmentsPage: React.FC = () => {
 
   
   const handleAppointmentClick = (apt: Appointment) => {
+    const isAnixiPatient = !apt.isManual && apt.patientId && apt.patientId !== 'manual' && apt.patientId !== 'unknown';
+    if (isAnixiPatient) {
+      navigate(`/patient-profile/${apt.patientId}`, {
+        state: {
+          appointmentId: apt.id,
+          appointmentTime: apt.time,
+          appointmentDate: apt.date ? new Date(apt.date).toLocaleDateString() : undefined,
+          consultType: apt.consultType,
+          status: apt.status,
+        },
+      });
+    } else {
+      setSelectedAppointment(apt);
+    }
 
     navigate(`/appointments/${apt.id}`, { state: { appointment: apt } });
   };
@@ -202,6 +216,43 @@ export const AppointmentsPage: React.FC = () => {
           </button>
         </div>
       )}
+      {/* Booking Requests Inbox — §7 Path 1: pending patient-requested appointments */}
+      {!isLoading && (() => {
+        const requests = appointments.filter((a) => a.status === 'pending' && !a.isManual);
+        if (requests.length === 0) return null;
+        return (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-lg">📬</span>
+              <h2 className="text-base font-semibold text-amber-800">Booking Requests ({requests.length})</h2>
+              <span className="text-xs text-amber-600 font-normal ml-1">Awaiting confirmation</span>
+            </div>
+            <div className="space-y-2">
+              {requests.map((req) => (
+                <div
+                  key={req.id}
+                  className="flex items-center justify-between gap-3 bg-white rounded-lg border border-amber-100 px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{req.patientName}</p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {new Date(req.date).toLocaleDateString('en-ZA', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      {' · '}{req.time}
+                      {req.consultType && ` · ${req.consultType}`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedAppointment(req)}
+                    className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors"
+                  >
+                    Review
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
       {}
       {!isLoading && !error && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">

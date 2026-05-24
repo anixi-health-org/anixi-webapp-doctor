@@ -2,9 +2,11 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   query,
   serverTimestamp,
+  setDoc,
   Timestamp,
   updateDoc,
   where,
@@ -319,6 +321,7 @@ export const checkCancellationPolicy = (
 
 
 export interface ScheduledAppointmentData {
+  appointmentId?: string;
   practiceId: string;
   doctorId: string;
   patientId: string;
@@ -329,6 +332,7 @@ export interface ScheduledAppointmentData {
   startAt: Date;
   endAt: Date;
   notes?: string;
+  status?: Appointment['status'];
   requestedByRole: 'patient' | 'doctor' | 'delegate';
   overrideApplied: boolean;
   conflictMeta?: { softBlockId?: string; appointmentId?: string; reason?: string };
@@ -337,12 +341,6 @@ export interface ScheduledAppointmentData {
 export const createScheduledAppointment = async (
   data: ScheduledAppointmentData
 ): Promise<string> => {
-  const ref = collection(
-    db,
-    PRACTICES_COLLECTION,
-    data.practiceId,
-    PRACTICE_APPOINTMENTS_SUBCOLLECTION
-  );
   const payload = {
     doctorId: data.doctorId,
     patientId: data.patientId,
@@ -353,13 +351,32 @@ export const createScheduledAppointment = async (
     startAt: Timestamp.fromDate(data.startAt),
     endAt: Timestamp.fromDate(data.endAt),
     notes: data.notes ?? '',
-    status: 'pending',
+    status: data.status ?? 'pending',
     requestedByRole: data.requestedByRole,
     overrideApplied: data.overrideApplied,
     conflictMeta: data.conflictMeta ?? null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
+
+  if (data.appointmentId) {
+    const scheduledRef = doc(
+      db,
+      PRACTICES_COLLECTION,
+      data.practiceId,
+      PRACTICE_APPOINTMENTS_SUBCOLLECTION,
+      data.appointmentId
+    );
+    await setDoc(scheduledRef, payload, { merge: true });
+    return data.appointmentId;
+  }
+
+  const ref = collection(
+    db,
+    PRACTICES_COLLECTION,
+    data.practiceId,
+    PRACTICE_APPOINTMENTS_SUBCOLLECTION
+  );
   const docRef = await addDoc(ref, payload);
   return docRef.id;
 };
@@ -367,12 +384,54 @@ export const createScheduledAppointment = async (
 export const updateScheduledAppointmentStatus = async (
   practiceId: string,
   appointmentId: string,
-  status: Appointment['status']
+  status: Appointment['status'],
+  options?: { doctorId?: string; patientId?: string; startAt?: Date }
 ): Promise<void> => {
-  await updateDoc(
-    doc(db, PRACTICES_COLLECTION, practiceId, PRACTICE_APPOINTMENTS_SUBCOLLECTION, appointmentId),
-    { status, updatedAt: serverTimestamp() }
+  const targetRef = doc(
+    db,
+    PRACTICES_COLLECTION,
+    practiceId,
+    PRACTICE_APPOINTMENTS_SUBCOLLECTION,
+    appointmentId
   );
+  const targetSnap = await getDoc(targetRef);
+
+  if (targetSnap.exists()) {
+    await updateDoc(targetRef, { status, updatedAt: serverTimestamp() });
+    return;
+  }
+
+  // Fallback for legacy records where practice appointment ID differs from global appointment ID.
+  if (!options?.doctorId) return;
+
+  const ref = collection(
+    db,
+    PRACTICES_COLLECTION,
+    practiceId,
+    PRACTICE_APPOINTMENTS_SUBCOLLECTION
+  );
+  const snap = await getDocs(query(ref, where('doctorId', '==', options.doctorId)));
+
+  const candidates = snap.docs.filter((d) => {
+    const data = d.data();
+    if (options.patientId && data.patientId !== options.patientId) return false;
+    return true;
+  });
+
+  if (candidates.length === 0) return;
+
+  let bestMatch = candidates[0];
+  if (options.startAt) {
+    const targetTime = options.startAt.getTime();
+    bestMatch = candidates.reduce((best, current) => {
+      const bestTime = best.data().startAt instanceof Timestamp ? best.data().startAt.toDate().getTime() : 0;
+      const currentTime =
+        current.data().startAt instanceof Timestamp ? current.data().startAt.toDate().getTime() : 0;
+      return Math.abs(currentTime - targetTime) < Math.abs(bestTime - targetTime) ? current : best;
+    }, candidates[0]);
+  }
+
+  await updateDoc(bestMatch.ref, { status, updatedAt: serverTimestamp() });
 };
 
 export const getPracticeAppointments = async (

@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../lib/firebase';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { TabPill } from '../components/ui/TabPill';
@@ -39,6 +41,9 @@ const ProfessionalProfileForm: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string>(user?.logoUrl ?? '');
+  const [logoUploading, setLogoUploading] = useState(false);
 
   const [formData, setFormData] = useState<ProfessionalProfileFormData>({
     title: '',
@@ -83,12 +88,24 @@ const ProfessionalProfileForm: React.FC = () => {
     setMessage('');
 
     try {
+      let logoUrl: string | undefined = user?.logoUrl;
+
+      if (logoFile && user?.id) {
+        setLogoUploading(true);
+        const storageRef = ref(storage, `doctor-logos/${user.id}`);
+        const snapshot = await uploadBytes(storageRef, logoFile);
+        logoUrl = await getDownloadURL(snapshot.ref);
+        setLogoUploading(false);
+      }
+
       const doctorData: Partial<Doctor> = {
         displayName: formData.fullName,
         specialty: formData.medicalSpecialty,
         licenseNumber: formData.hpcsaRegistrationNumber,
         phoneNumber: formData.phoneNumber,
         officeAddress: formData.practiceAddress,
+        practiceName: formData.practiceName,
+        ...(logoUrl !== undefined && { logoUrl }),
       };
 
       await updateDoctorProfile(user.id, doctorData);
@@ -508,6 +525,40 @@ const ProfessionalProfileForm: React.FC = () => {
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
             required
           />
+        </div>
+
+        {/* Practice Logo for Letterhead */}
+        <div className="md:col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Practice Logo <span className="text-gray-500">(used on invoices &amp; letterhead)</span>
+          </label>
+          <div className="flex items-center gap-4">
+            {logoPreview && (
+              <img
+                src={logoPreview}
+                alt="Practice logo preview"
+                className="w-16 h-16 object-contain rounded border border-gray-200 bg-gray-50"
+              />
+            )}
+            <label className="cursor-pointer flex-1">
+              <div className="w-full px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-[#425950] hover:text-[#425950] transition text-center">
+                {logoUploading ? 'Uploading…' : logoPreview ? 'Change logo' : 'Upload logo (PNG or JPG)'}
+              </div>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/jpg"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  if (file) {
+                    setLogoFile(file);
+                    setLogoPreview(URL.createObjectURL(file));
+                  }
+                }}
+              />
+            </label>
+          </div>
+          <p className="mt-1 text-xs text-gray-500">Recommended: square image, min 200×200 px.</p>
         </div>
       </div>
     </div>

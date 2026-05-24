@@ -325,7 +325,7 @@ export const createAppointment = async (data: Omit<Appointment, 'id' | 'createdA
     
     
     const globalAppointmentRef = collection(db, APPOINTMENTS_COLLECTION);
-    const globalDocRef = await addDoc(globalAppointmentRef, {
+    const basePayload = {
       doctorId: data.doctorId,
       patientId: data.patientId,
       patientName: data.patientName,
@@ -336,21 +336,31 @@ export const createAppointment = async (data: Omit<Appointment, 'id' | 'createdA
       time: data.time,
       notes: data.notes || '',
       isManual: data.isManual ?? false,
+      practiceId: data.practiceId,
+      consultType: data.consultType,
+      locationId: data.locationId,
+      startAt: data.startAt ? Timestamp.fromDate(data.startAt) : undefined,
+      endAt: data.endAt ? Timestamp.fromDate(data.endAt) : undefined,
+      requestedByRole: data.requestedByRole,
+      overrideApplied: data.overrideApplied,
+      conflictMeta: data.conflictMeta,
+    };
+
+    Object.keys(basePayload).forEach((key) => {
+      if ((basePayload as any)[key] === undefined) {
+        delete (basePayload as any)[key];
+      }
+    });
+
+    const globalDocRef = await addDoc(globalAppointmentRef, {
+      ...basePayload,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
 
     const doctorAppointmentRef = doc(db, USERS_COLLECTION, data.doctorId, 'appointments', globalDocRef.id);
     await setDoc(doctorAppointmentRef, {
-      patientId: data.patientId,
-      patientName: data.patientName,
-      patientEmail: data.patientEmail,
-      type: normalizeType(data.type),
-      status: normalizeStatus(data.status),
-      date: Timestamp.fromDate(data.date),
-      time: data.time,
-      notes: data.notes || '',
-      isManual: data.isManual ?? false,
+      ...basePayload,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -358,15 +368,7 @@ export const createAppointment = async (data: Omit<Appointment, 'id' | 'createdA
     if (data.patientId && !data.isManual) {
       const patientAppointmentRef = doc(db, USERS_COLLECTION, data.patientId, 'appointments', globalDocRef.id);
       await setDoc(patientAppointmentRef, {
-        doctorId: data.doctorId,
-        patientId: data.patientId,
-        patientName: data.patientName,
-        patientEmail: data.patientEmail,
-        type: normalizeType(data.type),
-        status: normalizeStatus(data.status),
-        date: Timestamp.fromDate(data.date),
-        time: data.time,
-        notes: data.notes || '',
+        ...basePayload,
         isManual: false,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
