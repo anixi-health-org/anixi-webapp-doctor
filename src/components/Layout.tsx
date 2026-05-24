@@ -4,6 +4,7 @@ import {
   BuildingOffice2Icon,
   CalendarIcon,
   Cog6ToothIcon,
+  CurrencyDollarIcon,
   LockClosedIcon,
   HomeIcon,
   QuestionMarkCircleIcon,
@@ -44,6 +45,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
     { name: 'Appointments', href: '/appointments', icon: CalendarIcon },
+    { name: 'Invoices', href: '/invoices', icon: CurrencyDollarIcon },
     { name: 'My Patients', href: '/patients', icon: UserGroupIcon },
     { name: 'Practice Calendar', href: '/practice-calendar', icon: CalendarIcon },
     { name: 'Practice Settings', href: '/practice-settings', icon: BuildingOffice2Icon },

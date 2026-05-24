@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Appointment, AppointmentDocument, ConsultType } from '../../types';
+import { Appointment, AppointmentDocument, ConsultType, InvoiceLineItem } from '../../types';
 import { convertTimestamp } from '../../utils/dateFormatter';
 import { customColors } from '../../lib/customColors';
 import {
@@ -10,8 +10,11 @@ import {
 } from '../../services/appointmentService';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useAuth } from '../../hooks/AuthContext';
-import { validateSlot } from '../../services/schedulingService';
+import { updateScheduledAppointmentStatus, validateSlot } from '../../services/schedulingService';
+import { createInvoice } from '../../services/invoiceService';
 import { CreateAppointmentModal } from './CreateAppointmentModal';
+import { InvoiceModal } from './InvoiceModal';
+import { sendPatientNotification } from '../../services/notificationService';
 
 interface AppointmentDetailsProps {
   appointment: Appointment;
@@ -90,6 +93,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [showScanModal, setShowScanModal] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [scanTitle, setScanTitle] = useState('');
   const [scanFile, setScanFile] = useState<File | null>(null);
   const [scanPreviewURL, setScanPreviewURL] = useState<string | null>(null);
@@ -100,7 +104,6 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   const [rescheduleDate, setRescheduleDate] = useState(safeDate.toISOString().split('T')[0]);
   const [rescheduleTime, setRescheduleTime] = useState(convertTo24Hour(appointment.time));
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const appointmentDate = convertTimestamp(appointment.date) || new Date();
   const fullDateFormatted = appointmentDate.toLocaleDateString('en-US', {
@@ -127,8 +130,6 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
 
   const hoursUntilAppointment = (appointmentDateTime.getTime() - Date.now()) / (60 * 60 * 1000);
   const isTerminal = appointment.status === 'cancelled' || appointment.status === 'completed';
-  const canAcceptAppointment = canManage && appointment.status === 'pending';
-  const canDeclineAppointment = canManage && appointment.status === 'pending';
   const canRescheduleAppointment = canManage && !isTerminal && appointment.status !== 'no_show';
   const canCancelAppointment = canManage && !isTerminal && appointment.status !== 'pending' && hoursUntilAppointment >= 1;
   const canNoShowAppointment =
@@ -138,6 +139,8 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     appointment.status !== 'no_show' &&
     appointment.status !== 'pending';
   const canGenerateInvoice = canManage;
+  const isPendingAppointment = appointment.status === 'pending';
+  const canStartConsultation = canManage && appointment.status === 'confirmed';
 
   useEffect(() => {
     setDocuments(appointment.documents ?? []);
@@ -158,6 +161,17 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     return 'initial';
   };
 
+  const syncPracticeAppointmentStatus = async (status: Appointment['status']) => {
+    const practiceId = appointment.practiceId ?? practiceSession?.practice?.id;
+    if (!practiceId) return;
+
+    await updateScheduledAppointmentStatus(practiceId, appointment.id, status, {
+      doctorId: appointment.doctorId,
+      patientId: appointment.patientId,
+      startAt: appointment.startAt ?? appointmentDateTime,
+    });
+  };
+
   const handleAccept = async () => {
     if (!onStatusChange) return;
     setIsProcessing(true);
@@ -166,6 +180,16 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
       await updateAppointment(appointment.doctorId, appointment.id, { status: 'confirmed' });
       
       await syncAppointmentStatus(appointment.id);
+      await syncPracticeAppointmentStatus('confirmed');
+      if (!appointment.isManual) {
+        sendPatientNotification(appointment.patientId, {
+          type: 'booking_confirmed',
+          title: 'Appointment Confirmed',
+          body: `Your appointment on ${appointmentDateTime.toLocaleDateString('en-ZA', { weekday: 'long', month: 'long', day: 'numeric' })} at ${appointmentTime} has been confirmed.`,
+          appointmentId: appointment.id,
+          doctorId: appointment.doctorId,
+        }).catch(() => {});
+      }
       onStatusChange(appointment.id, 'confirmed');
       onClose();
     } catch (err) {
@@ -184,6 +208,16 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
       await updateAppointment(appointment.doctorId, appointment.id, { status: 'cancelled' });
       
       await syncAppointmentStatus(appointment.id);
+      await syncPracticeAppointmentStatus('cancelled');
+      if (!appointment.isManual) {
+        sendPatientNotification(appointment.patientId, {
+          type: 'booking_cancelled',
+          title: 'Appointment Cancelled',
+          body: `Your appointment on ${appointmentDateTime.toLocaleDateString('en-ZA', { weekday: 'long', month: 'long', day: 'numeric' })} at ${appointmentTime} has been cancelled.`,
+          appointmentId: appointment.id,
+          doctorId: appointment.doctorId,
+        }).catch(() => {});
+      }
       onStatusChange(appointment.id, 'cancelled');
       onClose();
     } catch (err) {
@@ -194,19 +228,41 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     }
   };
 
-  const handleComplete = async () => {
-    if (!onStatusChange) return;
-    setIsProcessing(true);
-    setError(null);
+  const handleCreateInvoice = async (lineItems: InvoiceLineItem[], notes?: string) => {
+    if (!user?.id) {
+      setError('User not authenticated');
+      return;
+    }
+
     try {
-      await updateAppointment(appointment.doctorId, appointment.id, { status: 'completed' });
-      await syncAppointmentStatus(appointment.id);
-      onStatusChange(appointment.id, 'completed');
-      onClose();
+      // Create invoice
+      await createInvoice(
+        appointment.doctorId,
+        appointment.patientId,
+        appointment.id,
+        lineItems,
+        notes
+      );
+
+      // Mark appointment as completed
+      if (!onStatusChange) return;
+      setIsProcessing(true);
+      setError(null);
+      try {
+        await updateAppointment(appointment.doctorId, appointment.id, { status: 'completed' });
+        await syncAppointmentStatus(appointment.id);
+        await syncPracticeAppointmentStatus('completed');
+        onStatusChange(appointment.id, 'completed');
+        setShowInvoiceModal(false);
+        onClose();
+      } catch (err) {
+        setError('Failed to mark appointment as completed');
+      } finally {
+        setIsProcessing(false);
+      }
     } catch (err) {
-      setError('Failed to mark as completed');
-    } finally {
-      setIsProcessing(false);
+      const msg = err instanceof Error ? err.message : 'Failed to create invoice';
+      setError(msg);
     }
   };
 
@@ -217,6 +273,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     try {
       await updateAppointment(appointment.doctorId, appointment.id, { status: 'no_show' });
       await syncAppointmentStatus(appointment.id);
+      await syncPracticeAppointmentStatus('no_show');
       onStatusChange(appointment.id, 'no_show');
       onClose();
     } catch (err) {
@@ -287,6 +344,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
       });
       
       await syncAppointmentStatus(appointment.id);
+      await syncPracticeAppointmentStatus('confirmed');
       onReschedule(appointment.id, startAt, convertTo12Hour(rescheduleTime));
       setShowRescheduleModal(false);
       onClose();
@@ -348,134 +406,16 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     }
   };
 
-  const handleGenerateInvoice = async () => {
+  const handleOpenInvoiceModal = () => {
     if (!canGenerateInvoice) return;
+    setShowInvoiceModal(true);
+  };
 
-    setIsGeneratingInvoice(true);
-    setError(null);
-
-    try {
-      const invoiceNumber = `INV-${appointment.id.slice(0, 8).toUpperCase()}`;
-      const issuedAt = new Date();
-      const issuedDate = issuedAt.toLocaleDateString('en-US');
-      const issuedTime = issuedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
-      const safePatientName = patientName.replace(/[&<>"']/g, (char) => {
-        const entities: Record<string, string> = {
-          '&': '&amp;',
-          '<': '&lt;',
-          '>': '&gt;',
-          '"': '&quot;',
-          "'": '&#39;',
-        };
-        return entities[char] || char;
-      });
-
-      const safePatientEmail = patientEmail.replace(/[&<>"']/g, (char) => {
-        const entities: Record<string, string> = {
-          '&': '&amp;',
-          '<': '&lt;',
-          '>': '&gt;',
-          '"': '&quot;',
-          "'": '&#39;',
-        };
-        return entities[char] || char;
-      });
-
-      const doctorName = (user as any)?.displayName || 'Doctor';
-      const doctorEmail = (user as any)?.email || '';
-
-      const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-      if (!printWindow) {
-        throw new Error('Popup blocked. Please allow popups to print invoices.');
-      }
-
-      printWindow.document.write(`
-        <!doctype html>
-        <html>
-          <head>
-            <meta charset="utf-8" />
-            <title>${invoiceNumber}</title>
-            <style>
-              body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
-              .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
-              .title { font-size: 28px; font-weight: 700; margin: 0; }
-              .meta { font-size: 13px; color: #4b5563; line-height: 1.6; }
-              .card { border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
-              .section-title { font-size: 14px; font-weight: 700; color: #374151; margin: 0 0 8px 0; text-transform: uppercase; }
-              .table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-              .table th, .table td { border-bottom: 1px solid #e5e7eb; text-align: left; padding: 10px 8px; font-size: 14px; }
-              .table th { color: #4b5563; font-weight: 600; }
-              .footer { margin-top: 20px; font-size: 12px; color: #6b7280; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <div>
-                <h1 class="title">Invoice</h1>
-                <div class="meta">
-                  <div><strong>No:</strong> ${invoiceNumber}</div>
-                  <div><strong>Issued:</strong> ${issuedDate} ${issuedTime}</div>
-                </div>
-              </div>
-              <div class="meta" style="text-align: right;">
-                <div><strong>Doctor:</strong> ${doctorName}</div>
-                <div>${doctorEmail}</div>
-              </div>
-            </div>
-
-            <div class="card">
-              <p class="section-title">Patient</p>
-              <div class="meta">
-                <div><strong>Name:</strong> ${safePatientName}</div>
-                <div><strong>Email:</strong> ${safePatientEmail}</div>
-              </div>
-            </div>
-
-            <div class="card">
-              <p class="section-title">Appointment</p>
-              <div class="meta">
-                <div><strong>Date:</strong> ${fullDateFormatted}</div>
-                <div><strong>Time:</strong> ${appointmentTime}</div>
-                <div><strong>Type:</strong> ${appointmentType}</div>
-                <div><strong>Status:</strong> ${appointmentStatus}</div>
-                <div><strong>Reference:</strong> ${appointment.id}</div>
-              </div>
-            </div>
-
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Description</th>
-                  <th>Qty</th>
-                  <th>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Consultation</td>
-                  <td>1</td>
-                  <td>To be completed</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <p class="footer">Generated from appointment record.</p>
-            <script>
-              window.onload = function() {
-                window.print();
-              };
-            </script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to generate invoice';
-      setError(message);
-    } finally {
-      setIsGeneratingInvoice(false);
-    }
+  const handleOpenPostConsult = () => {
+    navigate(`/appointments/${appointment.id}/post-consult`, {
+      state: { appointment },
+    });
+    onClose();
   };
 
   return (
@@ -506,9 +446,34 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
         <div className="p-4 sm:p-6 space-y-6">
           {}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              👤 Patient Information
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                👤 Patient Information
+              </h2>
+              {appointment.isManual ? (
+                <span className="text-xs font-medium px-2 py-1 rounded-full bg-gray-100 text-gray-500 border border-gray-200">
+                  Manual — no Anixi account
+                </span>
+              ) : (
+                <button
+                  onClick={() => {
+                    navigate(`/patient-profile/${appointment.patientId}`, {
+                      state: {
+                        appointmentId: appointment.id,
+                        appointmentTime,
+                        appointmentDate: fullDateFormatted,
+                        consultType: appointment.consultType ?? toConsultType(),
+                        status: appointment.status,
+                      },
+                    });
+                    onClose();
+                  }}
+                  className="text-sm font-medium text-[#425950] hover:underline"
+                >
+                  View profile →
+                </button>
+              )}
+            </div>
             <div className="space-y-3">
               <div>
                 <p className="text-xs font-semibold text-gray-600 uppercase mb-1">Name</p>
@@ -619,19 +584,19 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               </p>
             )}
 
-            {canAcceptAppointment && (
+            {canManage && (
               <button
                 onClick={handleAccept}
-                disabled={isProcessing}
+                disabled={isProcessing || !isPendingAppointment}
                 className="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-4 mb-3 text-lg font-semibold bg-[#3F544D] text-white shadow-sm hover:bg-[#2d3c36] transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span className="text-xl">✔️</span> Accept appointment
               </button>
             )}
-            {canDeclineAppointment && (
+            {canManage && (
               <button
                 onClick={handleCancel}
-                disabled={isProcessing}
+                disabled={isProcessing || !isPendingAppointment}
                 className="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-4 mb-3 text-lg font-semibold bg-red-500 text-white shadow-sm hover:bg-red-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span className="text-xl">✖️</span> Decline appointment
@@ -639,6 +604,22 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
             )}
 
             <div className="w-full flex flex-col gap-2 mt-2">
+              {canStartConsultation && (
+                <button
+                  onClick={handleOpenPostConsult}
+                  disabled={isProcessing}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 bg-green-600 text-white font-medium text-base hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="text-lg">🩺</span> Start consultation
+                </button>
+              )}
+              <button
+                onClick={handleOpenPostConsult}
+                disabled={isProcessing || isPendingAppointment}
+                className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 border border-gray-300 bg-white text-[#3F544D] font-medium text-base hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="text-lg">🩺</span> Post-consult workflow
+              </button>
               <button
                 onClick={() => setShowRescheduleModal(true)}
                 disabled={!canRescheduleAppointment || isProcessing}
@@ -661,11 +642,11 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
                 <span className="text-lg">👤✖️</span> No-show
               </button>
               <button
-                onClick={handleGenerateInvoice}
-                disabled={!canGenerateInvoice || isGeneratingInvoice || isProcessing}
+                onClick={handleOpenInvoiceModal}
+                disabled={!canGenerateInvoice || isProcessing}
                 className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 border border-gray-300 bg-white text-[#3F544D] font-medium text-base hover:bg-gray-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <span className="text-lg">🧾</span> {isGeneratingInvoice ? 'Generating invoice...' : 'Invoice'}
+                <span className="text-lg">🧾</span> Complete & Create Invoice
               </button>
             </div>
             <p className="text-xs text-gray-500 mt-5">Cancellations require at least 1 hour before the visit.</p>
@@ -849,6 +830,15 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
           </div>
         </div>
       )}
+
+      <InvoiceModal
+        isOpen={showInvoiceModal}
+        onClose={() => {
+          setShowInvoiceModal(false);
+        }}
+        onSubmit={handleCreateInvoice}
+        appointmentType={appointment.consultType || appointment.type}
+      />
     </div>
   );
 };
