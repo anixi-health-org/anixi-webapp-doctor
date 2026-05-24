@@ -416,6 +416,134 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
       state: { appointment },
     });
     onClose();
+    setIsGeneratingInvoice(true);
+    setError(null);
+
+    try {
+      const invoiceNumber = `INV-${appointment.id.slice(0, 8).toUpperCase()}`;
+      const issuedAt = new Date();
+      const issuedDate = issuedAt.toLocaleDateString('en-US');
+      const issuedTime = issuedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+      const safePatientName = patientName.replace(/[&<>"']/g, (char) => {
+        const entities: Record<string, string> = {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        };
+        return entities[char] || char;
+      });
+
+      const safePatientEmail = patientEmail.replace(/[&<>"']/g, (char) => {
+        const entities: Record<string, string> = {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        };
+        return entities[char] || char;
+      });
+
+      const doctorName = (user as any)?.displayName || 'Doctor';
+      const doctorEmail = (user as any)?.email || '';
+
+      const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+      if (!printWindow) {
+        throw new Error('Popup blocked. Please allow popups to print invoices.');
+      }
+
+      printWindow.document.write(`
+        <!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>${invoiceNumber}</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
+              .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+              .title { font-size: 28px; font-weight: 700; margin: 0; }
+              .meta { font-size: 13px; color: #4b5563; line-height: 1.6; }
+              .card { border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+              .section-title { font-size: 14px; font-weight: 700; color: #374151; margin: 0 0 8px 0; text-transform: uppercase; }
+              .table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+              .table th, .table td { border-bottom: 1px solid #e5e7eb; text-align: left; padding: 10px 8px; font-size: 14px; }
+              .table th { color: #4b5563; font-weight: 600; }
+              .footer { margin-top: 20px; font-size: 12px; color: #6b7280; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <img src="/anixi.png" alt="Anixi" style="width:80px;height:auto;object-fit:contain;"/>
+                <div style="margin-left:6px;">
+                  <h1 class="title">Invoice</h1>
+                  <div class="meta">
+                    <div><strong>No:</strong> ${invoiceNumber}</div>
+                    <div><strong>Issued:</strong> ${issuedDate} ${issuedTime}</div>
+                  </div>
+                </div>
+              </div>
+              <div class="meta" style="text-align: right;">
+                <div><strong>Doctor:</strong> ${doctorName}</div>
+                <div>${doctorEmail}</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <p class="section-title">Patient</p>
+              <div class="meta">
+                <div><strong>Name:</strong> ${safePatientName}</div>
+                <div><strong>Email:</strong> ${safePatientEmail}</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <p class="section-title">Appointment</p>
+              <div class="meta">
+                <div><strong>Date:</strong> ${fullDateFormatted}</div>
+                <div><strong>Time:</strong> ${appointmentTime}</div>
+                <div><strong>Type:</strong> ${appointmentType}</div>
+                <div><strong>Status:</strong> ${appointmentStatus}</div>
+                
+              </div>
+            </div>
+
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Qty</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Consultation</td>
+                  <td>1</td>
+                  <td>To be completed</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <p class="footer">Generated from appointment record.</p>
+            <script>
+              window.onload = function() {
+                window.print();
+              };
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to generate invoice';
+      setError(message);
+    } finally {
+      setIsGeneratingInvoice(false);
+    }
   };
 
   return (
@@ -553,26 +681,35 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               <p className="text-sm text-gray-500">No scanned documents saved yet.</p>
             ) : (
               <div className="space-y-2 max-h-40 overflow-y-auto">
-                {documents.map((item) => (
-                  <a
-                    key={item.id}
-                    href={item.downloadURL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="block p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors"
-                  >
-                    <p className="text-sm font-semibold text-gray-900">{item.title || item.fileName}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {item.fileName} • {new Date(item.createdAt).toLocaleString()}
-                    </p>
-                  </a>
-                ))}
+                {documents.map((item) => {
+                  const isAudio = String(item.fileType || item.fileName || '').startsWith('audio') || /\.(webm|mp3|wav|ogg)$/i.test(item.fileName || '');
+                  return (
+                    <div key={item.id} className="p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">{item.title || item.fileName}</p>
+                          <p className="text-xs text-gray-500 mt-1">{item.fileName} • {new Date(item.createdAt).toLocaleString()}</p>
+                        </div>
+                        {!isAudio && (
+                          <div className="ml-4">
+                            <a href={item.downloadURL} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">Open</a>
+                          </div>
+                        )}
+                      </div>
+                      {isAudio && (
+                        <div className="mt-2">
+                          <audio controls src={item.downloadURL} className="w-full" />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
         {}
-        {/* Modal-style action sheet for appointment management (moved below content; scrollable) */}
+        
         <div className="w-full flex flex-col items-center justify-center px-2 py-4 border-t border-gray-200 bg-gray-50 mt-4">
           <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-lg p-5 flex flex-col items-center">
             <h2 className="text-2xl font-semibold text-gray-800 mb-1">Manage appointment</h2>
@@ -662,7 +799,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
         </div>
       </div>
 
-      {/* Follow-up modal */}
+      
       {showFollowUpModal && (
         <CreateAppointmentModal
           isOpen={showFollowUpModal}

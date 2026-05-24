@@ -5,7 +5,6 @@ import { usePermissions } from '../hooks/usePermissions';
 import { getDoctorAppointments } from '../services/appointmentService';
 import { Appointment } from '../types';
 import { AppointmentList } from '../components/appointments/AppointmentList';
-import { AppointmentDetails } from '../components/appointments/AppointmentDetails';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { DashboardStatsCard } from '../components/dashboard/DashboardStatsCard';
@@ -88,7 +87,7 @@ export const AppointmentsPage: React.FC = () => {
     setToast({ visible: true, message: 'Appointment rescheduled successfully.', type: 'success' });
   };
 
-  /** Spec §10: Anixi appointment → Patient Profile; Manual → AppointmentDetails */
+  
   const handleAppointmentClick = (apt: Appointment) => {
     const isAnixiPatient = !apt.isManual && apt.patientId && apt.patientId !== 'manual' && apt.patientId !== 'unknown';
     if (isAnixiPatient) {
@@ -104,10 +103,12 @@ export const AppointmentsPage: React.FC = () => {
     } else {
       setSelectedAppointment(apt);
     }
+
+    navigate(`/appointments/${apt.id}`, { state: { appointment: apt } });
   };
 
   const stats = {
-    // Exclude cancelled and completed appointments from the default "total"/overview counts
+
     total: appointments.filter((a) => a.status !== 'cancelled' && a.status !== 'completed').length,
     confirmed: appointments.filter((a) => a.status === 'confirmed').length,
     pending: appointments.filter((a) => a.status === 'pending').length,
@@ -136,7 +137,7 @@ export const AppointmentsPage: React.FC = () => {
       setFilterStatus(card as Appointment['status']);
     }
   };
-  // By default hide cancelled and completed appointments. Only show them when user selects their respective cards.
+
   const baseAppointments =
     selectedCard === 'cancelled' || selectedCard === 'completed'
       ? appointments
@@ -273,7 +274,7 @@ export const AppointmentsPage: React.FC = () => {
               {selectedCard === 'pending' && '⏳ Pending Appointments'}
               {selectedCard === 'completed' && '✓ Completed Appointments'}
               {selectedCard === 'cancelled' && '✗ Cancelled Appointments'}
-              {/* No-Show filter removed */}
+              
               {selectedCard === 'All' && 'All Appointments'}
             </CardTitle>
           </CardHeader>
@@ -290,14 +291,7 @@ export const AppointmentsPage: React.FC = () => {
         </CardContent>
       </Card>
       {}
-      {selectedAppointment && (
-        <AppointmentDetails
-          appointment={selectedAppointment}
-          onClose={() => setSelectedAppointment(null)}
-          onStatusChange={handleStatusChange}
-          onReschedule={handleReschedule}
-        />
-      )}
+      
 
       <CreateAppointmentModal
         isOpen={showCreateModal}

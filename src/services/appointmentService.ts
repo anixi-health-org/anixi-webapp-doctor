@@ -45,7 +45,6 @@ const normalizeAppointmentTime = (timeValue: any, fallbackTimestamp?: any): stri
   return '10:00 AM';
 };
 
-// Migration function to sync appointments from subcollections to global collection
 export const migrateDoctorAppointmentsToGlobal = async (doctorId: string): Promise<number> => {
   try {
     let migratedCount = 0;
@@ -238,8 +237,7 @@ export const getDoctorAppointments = async (doctorId: string): Promise<Appointme
       });
     } catch (error) {
     }
-    
-    // Also read from doctor's subcollection for backward compatibility and sync check
+
     try {
       const doctorAppointmentsRef = collection(db, USERS_COLLECTION, doctorId, 'appointments');
       const doctorSnapshot = await getDocs(doctorAppointmentsRef);
@@ -277,8 +275,7 @@ export const getDoctorAppointments = async (doctorId: string): Promise<Appointme
       });
     } catch (error) {
     }
-    
-    // Sort by date descending (most recent first)
+
     const sorted = appointments.sort((a, b) => b.date.getTime() - a.date.getTime());
     return sorted;
   } catch (error) {
@@ -360,16 +357,14 @@ export const createAppointment = async (data: Omit<Appointment, 'id' | 'createdA
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    
-    // Create in doctor's subcollection
+
     const doctorAppointmentRef = doc(db, USERS_COLLECTION, data.doctorId, 'appointments', globalDocRef.id);
     await setDoc(doctorAppointmentRef, {
       ...basePayload,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    
-    // Create in patient's subcollection (only for Anixi patients)
+
     if (data.patientId && !data.isManual) {
       const patientAppointmentRef = doc(db, USERS_COLLECTION, data.patientId, 'appointments', globalDocRef.id);
       await setDoc(patientAppointmentRef, {
@@ -386,7 +381,7 @@ export const createAppointment = async (data: Omit<Appointment, 'id' | 'createdA
     throw error;
   }
 };
-// Enhanced updateAppointment with better cross-collection synchronization
+
 export const updateAppointment = async (
   doctorId: string,
   appointmentId: string,
@@ -394,11 +389,9 @@ export const updateAppointment = async (
 ): Promise<void> => {
   try {
 
-    // Strategy: Find the appointment in any collection and update ALL collections
     let appointmentData: any = null;
     let foundPatientId: string | undefined;
 
-    // 1. Try doctor's subcollection first
     const doctorRef = doc(db, USERS_COLLECTION, doctorId, 'appointments', appointmentId);
     const doctorSnap = await getDoc(doctorRef);
     if (doctorSnap.exists()) {
@@ -460,8 +453,7 @@ export const updateAppointment = async (
     delete updateData.id;
     delete updateData.doctorId;
     delete updateData.createdAt;
-    
-    // Remove undefined values to prevent Firebase errors
+
     Object.keys(updateData).forEach(key => {
       if (updateData[key] === undefined) {
         delete updateData[key];
@@ -511,7 +503,6 @@ export const updateAppointment = async (
       })
     );
 
-    // 3. Update patient's subcollection only for real Anixi patients
     if (canWritePatientSubcollection && foundPatientId) {
       const patientRef = doc(db, USERS_COLLECTION, foundPatientId, 'appointments', appointmentId);
       updatePromises.push(
@@ -544,7 +535,6 @@ export const syncAppointmentStatus = async (appointmentId: string): Promise<void
 
     let masterData: any = null;
 
-    // Check global collection first (preferred source for mobile apps)
     if (globalSnap.exists()) {
       masterData = globalSnap.data();
     }
@@ -731,7 +721,6 @@ export const getPatientAppointments = async (patientId: string): Promise<Appoint
   try {
     const appointments: Appointment[] = [];
 
-    // First, try to read from patient's subcollection
     try {
       const patientAppointmentsRef = collection(db, USERS_COLLECTION, patientId, 'appointments');
       const patientSnapshot = await getDocs(patientAppointmentsRef);
@@ -760,7 +749,6 @@ export const getPatientAppointments = async (patientId: string): Promise<Appoint
     } catch (error) {
     }
 
-    // Also read from global appointments collection to ensure no appointments are missed
     try {
       const globalAppointmentsRef = collection(db, APPOINTMENTS_COLLECTION);
       const q = query(globalAppointmentsRef, where('patientId', '==', patientId));
@@ -802,11 +790,9 @@ export const getPatientAppointments = async (patientId: string): Promise<Appoint
   }
 };
 
-// Function to find and fix inconsistent appointments
 export const fixInconsistentAppointments = async (): Promise<void> => {
   try {
 
-    // Get all appointments from global collection
     const globalAppointmentsRef = collection(db, APPOINTMENTS_COLLECTION);
     const globalSnapshot = await getDocs(globalAppointmentsRef);
 
@@ -816,7 +802,6 @@ export const fixInconsistentAppointments = async (): Promise<void> => {
       const doctorId = globalData.doctorId;
       const patientId = globalData.patientId;
 
-      // Check doctor's subcollection
       if (doctorId) {
         const doctorRef = doc(db, USERS_COLLECTION, doctorId, 'appointments', appointmentId);
         const doctorSnap = await getDoc(doctorRef);
@@ -977,7 +962,8 @@ export const addAppointmentDocument = async (
       fileSize: file.size,
       downloadURL,
       storagePath: path,
-      createdAt: serverTimestamp(),
+
+      createdAt: Timestamp.fromDate(new Date()),
       createdBy,
     };
 

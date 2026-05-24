@@ -24,7 +24,7 @@ interface CreateAppointmentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAppointmentCreated: (message?: string) => void;
-  /** Pre-fill from a follow-up context */
+  
   prefillPatientId?: string;
   prefillPatientName?: string;
   prefillPatientEmail?: string;
@@ -54,12 +54,11 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
     type: 'success',
   });
 
-  /** Booking mode: Anixi patient from dropdown vs free-text manual */
+  
   const [bookingMode, setBookingMode] = useState<'anixi' | 'manual'>(prefillIsManual ? 'manual' : 'anixi');
   const [manualName, setManualName] = useState(prefillIsManual ? (prefillPatientName ?? '') : '');
   const [manualEmail, setManualEmail] = useState(prefillIsManual ? (prefillPatientEmail ?? '') : '');
 
-  // Slot-picker state
   
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedConsultType, setSelectedConsultType] = useState<ConsultType>(consultTypeDefault ?? 'initial');
@@ -96,7 +95,6 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
     if (isOpen && user?.id) loadPatients();
   }, [isOpen, user?.id, loadPatients]);
 
-  // Load slots when date or consult type changes
   useEffect(() => {
     if (!selectedDate || !practiceId || !user?.id) {
       setAvailableSlots([]);
@@ -133,7 +131,6 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Resolve patient info based on booking mode
     const resolvedPatientId = bookingMode === 'anixi' ? formData.patientId : 'manual';
     const resolvedPatientName = bookingMode === 'anixi' ? formData.patientName : manualName.trim();
     const resolvedPatientEmail = bookingMode === 'anixi' ? formData.patientEmail : manualEmail.trim();
@@ -233,7 +230,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
         time: timeStr,
         notes: formData.notes,
         isManual: bookingMode === 'manual',
-        // Extended fields
+
         
         practiceId: practiceId ?? undefined,
         consultType: selectedConsultType,
@@ -314,7 +311,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Booking Mode Toggle */}
+              
               {}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Booking Type</label>
@@ -344,7 +341,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 </div>
               </div>
 
-              {/* Patient — Anixi mode */}
+              
               {bookingMode === 'anixi' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Patient *</label>
@@ -368,7 +365,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 </div>
               )}
 
-              {/* Patient — Manual mode */}
+              
               {bookingMode === 'manual' && (
                 <>
                   <div>
@@ -395,7 +392,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 </>
               )}
 
-              {/* Consult Type */}
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Consult Type *</label>
                 <select
@@ -499,7 +496,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 </div>
               )}
 
-              {/* Notes */}
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Notes (optional)

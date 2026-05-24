@@ -127,7 +127,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
 
   return (
     <div className={`bg-[${customColors.backgroundMedium}] min-h-screen`}>
-      {/* Header */}
+      
       <div
         className={`bg-[${customColors.backgroundLight}] border-b border-gray-200 shadow-sm`}
       >
@@ -214,7 +214,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
         </div>
       </div>
 
-      {/* Daily Adherence Details */}
+      
       {selectedPatient && selectedAdherenceDate && (
         <div
           className={`bg-[${customColors.backgroundLight}] border-t border-gray-200 py-6`}
@@ -265,7 +265,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
         </div>
       )}
 
-      {/* Patient List */}
+      
       {showPatientList && !selectedPatient && (
         <div
           className={`bg-[${customColors.backgroundLight}] border-t border-gray-200 py-6`}
@@ -287,7 +287,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
         </div>
       )}
 
-      {/* Recent Patients */}
+      
       {!selectedPatient && (
         <div className={`bg-[${customColors.backgroundLight}] border-t border-gray-200 py-6`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -299,7 +299,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
         </div>
       )}
 
-      {/* Main Content */}
+      
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {selectedPatient ? (
           <div

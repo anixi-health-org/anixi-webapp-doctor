@@ -5,7 +5,7 @@ export interface RecentPatientEntry {
   patientId: string;
   patientName: string;
   email?: string;
-  visitedAt: number; // unix ms
+  visitedAt: number; 
 }
 
 export function recordPatientVisit(
@@ -21,7 +21,7 @@ export function recordPatientVisit(
     ].slice(0, MAX_RECENT);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   } catch {
-    // localStorage may be unavailable in some environments; fail silently
+
   }
 }
 
@@ -41,6 +41,6 @@ export function clearRecentPatients(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
-    // fail silently
+
   }
 }
