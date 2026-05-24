@@ -214,16 +214,18 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
       const timeStr = fmt12(startAt);
 
       
-      await createAppointment({
+      const appointmentStatus =
+        bookingMode === 'manual' || practiceSession?.bookingPolicy?.confirmationMode === 'auto'
+          ? 'confirmed'
+          : 'pending';
+
+      const appointmentId = await createAppointment({
         doctorId: user.id,
         patientId: resolvedPatientId,
         patientName: resolvedPatientName,
         patientEmail: resolvedPatientEmail,
         type: selectedConsultType === 'teleconsult' ? 'Virtual' : 'In-Person',
-        status:
-          bookingMode === 'manual' || practiceSession?.bookingPolicy?.confirmationMode === 'auto'
-            ? 'confirmed'
-            : 'pending',
+        status: appointmentStatus,
         date: startAt,
         time: timeStr,
         notes: formData.notes,
@@ -243,16 +245,18 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
       
       if (practiceId) {
         await createScheduledAppointment({
+          appointmentId,
           practiceId,
           doctorId: user.id,
           patientId: resolvedPatientId,
           patientName: resolvedPatientName,
-          patientEmail: formData.patientEmail,
+          patientEmail: resolvedPatientEmail,
           consultType: selectedConsultType,
           locationId: selectedSlot?.locationId ?? '',
           startAt,
           endAt,
           notes: formData.notes,
+          status: appointmentStatus,
           requestedByRole: 'doctor',
           overrideApplied,
           conflictMeta,
