@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { createInvoice } from '../services/invoiceService';
+import { createInvoiceLocal } from '../services/invoiceService';
 import { useAuth } from '../hooks/useAuth';
 import { getAppointmentById } from '../services/appointmentService';
 
@@ -15,17 +15,23 @@ const InvoiceCreate: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [patientName, setPatientName] = useState<string | undefined>(undefined);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const amt = parseFloat(amount) || 0;
     setSaving(true);
-    const inv = createInvoice({
-      appointmentId: appointmentId || undefined,
-      patientName: patientName || undefined,
-      status: 'pending',
-      lineItems: [{ description: description || 'Item', amount: amt, currency }],
-    });
-    setSaving(false);
-    navigate(`/invoices/${inv.id}`);
+
+    try {
+      const inv = createInvoiceLocal({
+        appointmentId: appointmentId || undefined,
+        patientName: patientName || undefined,
+        status: 'pending',
+        lineItems: [{ description: description || 'Item', amount: amt, currency }],
+      });
+      navigate(`/invoices/${inv.id}`);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   useEffect(() => {

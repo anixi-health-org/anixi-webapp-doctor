@@ -11,7 +11,7 @@ import {
 import { usePermissions } from '../../hooks/usePermissions';
 import { useAuth } from '../../hooks/AuthContext';
 import { updateScheduledAppointmentStatus, validateSlot } from '../../services/schedulingService';
-import { createInvoice } from '../../services/invoiceService';
+import { createInvoiceRecord } from '../../services/invoiceService';
 import { CreateAppointmentModal } from './CreateAppointmentModal';
 import { InvoiceModal } from './InvoiceModal';
 import { sendPatientNotification } from '../../services/notificationService';
@@ -98,6 +98,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   const [scanFile, setScanFile] = useState<File | null>(null);
   const [scanPreviewURL, setScanPreviewURL] = useState<string | null>(null);
   const [isSavingScan, setIsSavingScan] = useState(false);
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [documents, setDocuments] = useState<AppointmentDocument[]>(appointment.documents ?? []);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const safeDate = convertTimestamp(appointment.date) ?? new Date();
@@ -236,7 +237,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
 
     try {
       // Create invoice
-      await createInvoice(
+      await createInvoiceRecord(
         appointment.doctorId,
         appointment.patientId,
         appointment.id,
@@ -744,18 +745,18 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               {canStartConsultation && (
                 <button
                   onClick={handleOpenPostConsult}
-                  disabled={isProcessing}
+                  disabled={isProcessing || isGeneratingInvoice}
                   className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 bg-green-600 text-white font-medium text-base hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <span className="text-lg">🩺</span> Start consultation
+                  <span className="text-lg">🩺</span> {isGeneratingInvoice ? 'Starting...' : 'Start consultation'}
                 </button>
               )}
               <button
                 onClick={handleOpenPostConsult}
-                disabled={isProcessing || isPendingAppointment}
+                disabled={isProcessing || isPendingAppointment || isGeneratingInvoice}
                 className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 border border-gray-300 bg-white text-[#3F544D] font-medium text-base hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span className="text-lg">🩺</span> Post-consult workflow
+                <span className="text-lg">🩺</span> {isGeneratingInvoice ? 'Starting...' : 'Post-consult workflow'}
               </button>
               <button
                 onClick={() => setShowRescheduleModal(true)}
