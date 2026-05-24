@@ -38,18 +38,15 @@ const PracticeSettingsPage: React.FC = () => {
   const [practiceNameDraft, setPracticeNameDraft] = useState('');
   const [savingName, setSavingName] = useState(false);
 
-  // Timezone editing
   const [editingTimezone, setEditingTimezone] = useState(false);
   const [timezoneDraft, setTimezoneDraft] = useState('');
   const [savingTimezone, setSavingTimezone] = useState(false);
 
-  // Location management
   const [newLocName, setNewLocName] = useState('');
   const [newLocType, setNewLocType] = useState<PracticeLocation['type']>('clinic');
   const [newLocAddress, setNewLocAddress] = useState('');
   const [savingLoc, setSavingLoc] = useState(false);
 
-  // Consult types
   const [consultTypesDraft, setConsultTypesDraft] = useState<ConsultType[]>([]);
   const [savingConsultTypes, setSavingConsultTypes] = useState(false);
 
@@ -193,7 +190,7 @@ const PracticeSettingsPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Tabs */}
+      
       <div className="flex gap-3 mb-6 rounded-3xl border border-[#E4EAF2] bg-white p-2 shadow-sm overflow-x-auto">
         {TAB_CONFIG.map((tab) => (
           <TabPill

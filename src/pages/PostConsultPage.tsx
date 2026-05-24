@@ -64,6 +64,13 @@ const PostConsultPage: React.FC = () => {
   const [isSavingNote, setIsSavingNote] = useState(false);
 
   const [showDocumentModal, setShowDocumentModal] = useState(false);
+  const [showRecorder, setShowRecorder] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const [recordedChunks, setRecordedChunks] = useState<BlobPart[]>([]);
+  const [isUploadingRecording, setIsUploadingRecording] = useState(false);
+  const [recordingTitle, setRecordingTitle] = useState('Session recording');
   const [documentMode, setDocumentMode] = useState<DocumentMode>('scan');
   const [documentTitle, setDocumentTitle] = useState('');
   const [documentFile, setDocumentFile] = useState<File | null>(null);
@@ -200,10 +207,24 @@ const PostConsultPage: React.FC = () => {
   ) => {
     if (!appointment || !user?.id) return;
 
-    await updateAppointment(user.id, appointment.id, {
-      ...(updates || {}),
-      postConsultActions: nextActions,
-    } as unknown as Partial<Appointment>);
+    const sanitize = (v: any): any => {
+      if (v === undefined) return undefined;
+      if (v === null) return null;
+      if (Array.isArray(v)) return v.map((item) => sanitize(item)).filter((x) => x !== undefined);
+      if (typeof v === 'object') {
+        const out: any = {};
+        Object.keys(v).forEach((k) => {
+          const val = sanitize(v[k]);
+          if (val !== undefined) out[k] = val;
+        });
+        return out;
+      }
+      return v;
+    };
+
+    const safeUpdates = sanitize({ ...(updates || {}), postConsultActions: nextActions });
+
+    await updateAppointment(user.id, appointment.id, safeUpdates as Partial<Appointment>);
     await syncAppointmentStatus(appointment.id);
 
     setAppointment((prev) => {
@@ -271,6 +292,113 @@ const PostConsultPage: React.FC = () => {
     } finally {
       setIsSavingNote(false);
     }
+  };
+
+  const startRecording = async () => {
+    try {
+      setRecordedChunks([]);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      const options: any = {};
+      const mr = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mr;
+      mr.ondataavailable = (ev: BlobEvent) => {
+        if (ev.data && ev.data.size > 0) {
+          setRecordedChunks((prev) => [...prev, ev.data]);
+        }
+      };
+      mr.onstop = () => {
+
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+          mediaStreamRef.current = null;
+        }
+      };
+      mr.start();
+      setIsRecording(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to start recording';
+      setToast({ visible: true, message, type: 'error' });
+    }
+  };
+
+  const stopAndUploadRecording = async () => {
+    try {
+      setIsUploadingRecording(true);
+      setIsRecording(false);
+      const mr = mediaRecorderRef.current;
+      if (mr && mr.state !== 'inactive') {
+        await new Promise((res) => {
+          mr.onstop = res as any;
+          mr.stop();
+        });
+      }
+
+      if (recordedChunks.length === 0) {
+        setToast({ visible: true, message: 'No audio recorded.', type: 'error' });
+        setIsUploadingRecording(false);
+        return;
+      }
+
+      const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+      const filename = `${(appointment?.patientName || 'session').replace(/[^a-z0-9]+/gi, '_')}-${Date.now()}.webm`;
+      const file = new File([blob], filename, { type: blob.type });
+
+      if (!appointment || !user?.id) {
+        setToast({ visible: true, message: 'Appointment not loaded', type: 'error' });
+        setIsUploadingRecording(false);
+        return;
+      }
+
+      const saved = await addAppointmentDocument(appointment.doctorId, appointment.id, file, user.id, recordingTitle || undefined);
+
+      const now = new Date();
+      const newAction: PostConsultAction = {
+        id: `session_recording-${now.getTime()}`,
+        type: 'session_recording',
+        title: recordingTitle || 'Session recording',
+        content: `Audio recording saved: ${saved.fileName}`,
+        status: 'finalized',
+        metadata: {
+          fileName: saved.fileName,
+          downloadURL: saved.downloadURL,
+        },
+        createdBy: user.id,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const currentActions = appointment.postConsultActions ?? [];
+      const nextActions = [newAction, ...currentActions];
+      const nextDocuments = [saved, ...(appointment.documents ?? [])];
+
+      await persistActions(nextActions, { documents: nextDocuments });
+
+      setToast({ visible: true, message: 'Recording saved to appointment.', type: 'success' });
+      setShowRecorder(false);
+      setRecordedChunks([]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to upload recording';
+      setToast({ visible: true, message, type: 'error' });
+    } finally {
+      setIsUploadingRecording(false);
+    }
+  };
+
+  const cancelRecording = () => {
+    try {
+      const mr = mediaRecorderRef.current;
+      if (mr && mr.state !== 'inactive') {
+        mr.stop();
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+        mediaStreamRef.current = null;
+      }
+    } catch {}
+    setIsRecording(false);
+    setRecordedChunks([]);
+    setShowRecorder(false);
   };
 
   const savePrescriptionDraft = async () => {
@@ -730,103 +858,60 @@ const PostConsultPage: React.FC = () => {
   const isManual = appointment?.isManual;
 
   const actionConfig = [
-    !isManual && {
-      key: 'note',
-      label: 'Add consult note',
+    {
+      key: 'internal',
+      label: 'Internal',
       icon: '📝',
       enabled: true,
       onClick: () => setShowNoteModal(true),
     },
-    !isManual && {
-      key: 'upload',
-      label: 'Upload document',
-      icon: '⤴',
-      enabled: true,
-      onClick: () => openDocumentModal('upload'),
-    },
-    !isManual && {
-      key: 'scan',
-      label: 'Scan document',
-      icon: '📷',
-      enabled: true,
-      onClick: () => openDocumentModal('scan'),
-    },
-    !isManual && {
-      key: 'doctorLetter',
-      label: 'Generate doctor letter',
-      icon: '📄',
-      enabled: true,
-      onClick: () => setShowDoctorLetterModal(true),
-    },
-    !isManual && {
-      key: 'prescription',
-      label: 'Manage prescription',
-      icon: '🩺',
-      enabled: true,
-      onClick: () => setShowPrescriptionModal(true),
-    },
-    !isManual && {
-      key: 'recording',
-      label: 'Session recording note',
-      icon: '🎙',
-      enabled: true,
-      onClick: () => addQuickAction('session_recording', 'Session recording note saved.', 'Session recording'),
-    },
-    !isManual && {
-      key: 'followup',
-      label: 'Schedule follow-up',
-      icon: '✉',
-      enabled: true,
-      onClick: () => setShowFollowUpModal(true),
-    },
-    isManual && {
-      key: 'internalNote',
-      label: 'Internal note',
-      icon: '📝',
-      enabled: true,
-      onClick: () => setShowNoteModal(true),
-    },
-    isManual && {
-      key: 'printDocs',
-      label: 'Print documents',
-      icon: '🖨',
-      enabled: true,
-      onClick: handleManualPrintDocuments,
-    },
-    isManual && {
+    {
       key: 'invite',
-      label: 'Invite to Anixi',
+      label: 'Invite to',
       icon: '📧',
       enabled: true,
       onClick: () => setToast({ visible: true, message: 'Invite sent (demo).', type: 'success' }),
     },
-  ].filter(Boolean) as Array<{ key: string; label: string; icon: string; enabled: boolean; onClick: () => void }>;
+    {
+      key: 'invoice',
+      label: 'Invoice',
+      icon: '💳',
+      enabled: true,
+      onClick: () => {
+        if (appointment?.id) navigate(`/invoices/new/${appointment.id}`);
+        else setToast({ visible: true, message: 'Appointment not loaded', type: 'error' });
+      },
+    },
+    {
+      key: 'print',
+      label: 'Print docs',
+      icon: '🖨',
+      enabled: true,
+      onClick: handleManualPrintDocuments,
+    },
+    {
+      key: 'followup',
+      label: 'Follow-up',
+      icon: '✉',
+      enabled: true,
+      onClick: () => setShowFollowUpModal(true),
+    },
+    {
+      key: 'record',
+      label: 'Record session',
+      icon: '🎙',
+      enabled: true,
+      onClick: () => setShowRecorder(true),
+    },
+  ] as Array<{ key: string; label: string; icon: string; enabled: boolean; onClick: () => void }>;
 
   const futureActions = [
-    {
-      key: 'eprescription',
-      label: 'e-Prescription (AES)',
-      icon: '🛡',
-      tooltip: 'Coming soon: AES integration for compliant electronic prescriptions.',
-    },
-    {
-      key: 'insurance',
-      label: 'Insurance authorisation',
-      icon: '🛡',
-      tooltip: 'Coming soon: submit and track insurance authorisations from this screen.',
-    },
-    {
-      key: 'telehealth',
-      label: 'Telehealth session',
-      icon: '📞',
-      tooltip: 'Coming soon: launch secure telehealth sessions directly from post consult.',
-    },
-    {
-      key: 'monitoring',
-      label: 'Live monitoring data',
-      icon: '📊',
-      tooltip: 'Coming soon: live patient monitoring insights after each consult.',
-    },
+    { key: 'eprescription', label: 'e-Prescription (AES)', icon: '🛡', tooltip: 'e-Prescription (AES) integration coming soon.' },
+    { key: 'insurance', label: 'Insurance', icon: '🧾', tooltip: 'Insurance authorisation coming soon.' },
+    { key: 'telehealth', label: 'Telehealth', icon: '📞', tooltip: 'Telehealth sessions coming soon.' },
+    { key: 'hospital', label: 'Hospital admission', icon: '🏥', tooltip: 'Hospital admission workflow coming soon.' },
+    { key: 'clinical', label: 'Clinical support', icon: '🩺', tooltip: 'Clinical support integrations coming soon.' },
+    { key: 'dashboard', label: 'Dashboard', icon: '📊', tooltip: 'Post-consult dashboard coming soon.' },
   ];
 
   if (isLoading) {
@@ -852,7 +937,7 @@ const PostConsultPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="bg-gray-50 min-h-screen">
       {toast.visible && (
         <Toast
           message={toast.message}
@@ -860,62 +945,51 @@ const PostConsultPage: React.FC = () => {
           onClose={() => setToast({ visible: false, message: '', type: 'success' })}
         />
       )}
+      {showRecorder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-60">
+          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Record session</h2>
+              <button onClick={cancelRecording} className="text-gray-500">×</button>
+            </div>
 
-      <div className="mx-auto w-full max-w-2xl px-4 py-5 sm:py-6">
-        <div className="mb-8 flex items-center justify-between">
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-700">Title</label>
+                <input value={recordingTitle} onChange={(e) => setRecordingTitle(e.target.value)} className="w-full rounded-md border px-3 py-2" />
+              </div>
+
+              <div className="flex items-center gap-3">
+                {!isRecording ? (
+                  <button onClick={startRecording} className="px-4 py-2 bg-red-600 text-white rounded">Start</button>
+                ) : (
+                  <button onClick={() => { setIsRecording(false); const mr = mediaRecorderRef.current; if (mr) mr.stop(); }} className="px-4 py-2 bg-yellow-500 text-white rounded">Stop</button>
+                )}
+                <div className="text-sm text-gray-600">{isRecording ? 'Recording…' : recordedChunks.length ? `${(recordedChunks.reduce((s, c) => s + (c as Blob).size, 0) / 1024).toFixed(1)} KB recorded` : 'No recording yet'}</div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button onClick={cancelRecording} className="px-4 py-2 border rounded">Cancel</button>
+                <button onClick={stopAndUploadRecording} disabled={isUploadingRecording || recordedChunks.length === 0} className="px-4 py-2 bg-green-600 text-white rounded">{isUploadingRecording ? 'Saving…' : 'Save recording'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="rounded-[30px] border border-[#D8DEE5] bg-white shadow-sm p-6 space-y-6">
+          <div className="mb-8 relative">
           <button
             onClick={() => navigate(-1)}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-2xl text-foreground"
+            className="absolute left-0 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-2xl text-foreground"
           >
             ←
           </button>
-          <h1 className="text-3xl font-semibold text-foreground sm:text-3xl">Post consult</h1>
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-xl text-foreground"
-          >
-            ⌂
-          </button>
+          <h1 className="text-3xl font-semibold text-foreground sm:text-3xl text-center w-full">Post consult</h1>
         </div>
 
-        <div className="mb-6 rounded-xl border border-border bg-card p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">Generate prescription</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Draft is saved to the record. You can preview or export as PDF.
-              </p>
-            </div>
-            <Stethoscope className="h-5 w-5 text-primary" />
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setShowPrescriptionModal(true)}
-              className="inline-flex min-h-12 items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
-            >
-              <FileText className="h-4 w-4" />
-              Manage prescription
-            </button>
-            <button
-              type="button"
-              onClick={previewPrescription}
-              className="inline-flex min-h-12 items-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80"
-            >
-              <Eye className="h-4 w-4" />
-              Preview PDF
-            </button>
-            <button
-              type="button"
-              onClick={exportPrescription}
-              className="inline-flex min-h-12 items-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
-            >
-              <Download className="h-4 w-4" />
-              Export as PDF
-            </button>
-          </div>
-        </div>
+        
 
         {latestPrescriptionDraft && (
           <div className="mb-6 rounded-xl border border-border bg-muted/40 p-4">
@@ -993,9 +1067,10 @@ const PostConsultPage: React.FC = () => {
             </div>
           </div>
         )}
+        </div>
       </div>
 
-      {showPrescriptionModal && (
+        {showPrescriptionModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
           <div className="w-full max-w-2xl rounded-xl border border-border bg-card p-6 shadow-xl">
             <div className="mb-4 flex items-start justify-between gap-3">

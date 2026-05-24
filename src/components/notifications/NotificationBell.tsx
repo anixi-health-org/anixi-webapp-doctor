@@ -43,13 +43,12 @@ export const NotificationBell: React.FC = () => {
       const apts = await getDoctorAppointments(user.id);
       setAppointments(apts);
     } catch {
-      // silent
+
     }
   }, [user?.id]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
@@ -92,7 +91,7 @@ export const NotificationBell: React.FC = () => {
           </div>
 
           <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
-            {/* Morning summary */}
+            
             <div className="px-4 py-3">
               <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Today's Schedule</p>
               {todaysApts.length === 0 ? (
@@ -122,7 +121,7 @@ export const NotificationBell: React.FC = () => {
               )}
             </div>
 
-            {/* Pending booking requests */}
+            
             {pending.length > 0 && (
               <div className="px-4 py-3">
                 <p className="text-xs font-semibold text-yellow-700 uppercase mb-2">
@@ -150,7 +149,7 @@ export const NotificationBell: React.FC = () => {
               </div>
             )}
 
-            {/* Recent cancellations */}
+            
             {recentCancellations.length > 0 && (
               <div className="px-4 py-3">
                 <p className="text-xs font-semibold text-red-600 uppercase mb-2">

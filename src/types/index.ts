@@ -252,9 +252,9 @@ export interface Appointment {
     notes?: string;
     documents?: AppointmentDocument[];
     postConsultActions?: PostConsultAction[];
-    /** true = manually booked (free-text name, no Anixi account) */
+    
     isManual?: boolean;
-    // Practice scheduling extensions
+
     practiceId?: string;
     locationId?: string;
     consultType?: ConsultType;
