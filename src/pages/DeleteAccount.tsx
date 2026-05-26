@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import { useNavigate } from 'react-router-dom';
 import { deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
@@ -9,6 +10,7 @@ import { USERS_COLLECTION, DOCTORS_COLLECTION } from '../shared/constants';
 const DeleteAccount: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { navigateBack } = useNavigateWithFallback();
   const navigate = useNavigate();
 
   const handleDelete = async () => {
@@ -76,7 +78,7 @@ const DeleteAccount: React.FC = () => {
             {loading ? 'Deleting…' : 'Delete Account'}
           </button>
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigateBack('/dashboard')}
             className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200"
           >
             Cancel

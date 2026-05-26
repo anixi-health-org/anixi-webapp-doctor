@@ -38,7 +38,19 @@ export const DoctorSearch: React.FC = () => {
             updatedAt: data.updatedAt?.toDate?.() || new Date(),
           } as Doctor);
         });
-        setDoctors(doctorsList);
+        
+        // Deduplicate doctors by email to prevent showing duplicates
+        const seen = new Set<string>();
+        const uniqueDoctors = doctorsList.filter((doctor) => {
+          const key = doctor.email?.toLowerCase() || doctor.displayName?.toLowerCase() || doctor.id;
+          if (seen.has(key)) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        });
+        
+        setDoctors(uniqueDoctors);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Failed to fetch doctors';
         ;

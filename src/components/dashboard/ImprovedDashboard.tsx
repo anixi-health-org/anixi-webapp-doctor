@@ -138,10 +138,10 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
             </h1>
             <button
               onClick={() => navigate('/patients')}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#06A66A] hover:bg-[#099760] text-white font-semibold text-xl px-7 py-4 shadow-lg shadow-[#06A66A]/30 transition-colors"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#2d5a52] hover:bg-[#1f3d38] text-white font-semibold text-xl px-7 py-4 shadow-lg shadow-[#2d5a52]/30 transition-colors"
             >
               <span className="text-3xl leading-none">+</span>
-              <span>Add Patient</span>
+              <span>New Patient Record</span>
             </button>
           </div>
 

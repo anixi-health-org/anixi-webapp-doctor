@@ -1,16 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Patient, SharingRequest } from '../types';
+import { PatientRequest } from '../services/patientManagementService';
 import {
   acceptSharingRequest,
   getDoctorSharingRequests,
   rejectSharingRequest,
   listenToDoctorPatients,
   listenToDoctorSharingRequests,
+  listenToDoctorPatientRequests,
+  acceptPatientRequest,
+  rejectPatientRequest,
 } from '../services/patientManagementService';
 import { PatientList } from '../components/patients/PatientList';
 import { SharingRequestsList } from '../components/patients/SharingRequestsList';
 import { PatientDetailModal } from '../components/patients/PatientDetailModal';
+import { AddPatientModal } from '../components/patients/AddPatientModal';
 import { TabPill } from '../components/ui/TabPill';
 type TabType = 'patients' | 'requests';
 export const Patients: React.FC = () => {
@@ -20,11 +25,15 @@ export const Patients: React.FC = () => {
   const [patientsLoading, setPatientsLoading] = useState(false);
   const [patientsError, setPatientersError] = useState<string | null>(null);
   const [sharingRequests, setSharingRequests] = useState<SharingRequest[]>([]);
+  const [patientRequests, setPatientRequests] = useState<PatientRequest[]>([]);
   const [sharingRequestsLoading, setSharingRequestsLoading] = useState(false);
+  const [patientRequestsLoading, setPatientRequestsLoading] = useState(false);
   const [sharingRequestsRefreshing, setSharingRequestsRefreshing] = useState(false);
   const [sharingRequestsError, setSharingRequestsError] = useState<string | null>(null);
+  const [patientRequestsError, setPatientRequestsError] = useState<string | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [showAddPatient, setShowAddPatient] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const doctorId = user?.id;
   useEffect(() => {
@@ -62,9 +71,23 @@ export const Patients: React.FC = () => {
       }
     );
 
+    const unsubscribePatientRequests = listenToDoctorPatientRequests(
+      doctorId,
+      (requests) => {
+        setPatientRequests(requests);
+        setPatientRequestsLoading(false);
+      },
+      (error) => {
+        ;
+        setPatientRequestsError(error.message);
+        setPatientRequestsLoading(false);
+      }
+    );
+
     return () => {
       unsubscribePatients();
       unsubscribeSharingRequests();
+      unsubscribePatientRequests();
     };
   }, [doctorId, user]);
   useEffect(() => {
@@ -100,6 +123,30 @@ export const Patients: React.FC = () => {
     }
   };
 
+  const handleAcceptPatientRequest = async (patientId: string, requestId: string) => {
+    if (!doctorId) return;
+    try {
+      await acceptPatientRequest(doctorId, requestId, patientId);
+      setSuccessMessage('Patient request accepted successfully!');
+    } catch (error) {
+      setPatientRequestsError(
+        error instanceof Error ? error.message : 'Failed to accept patient request'
+      );
+    }
+  };
+
+  const handleRejectPatientRequest = async (requestId: string) => {
+    if (!doctorId) return;
+    try {
+      await rejectPatientRequest(doctorId, requestId);
+      setSuccessMessage('Patient request rejected successfully!');
+    } catch (error) {
+      setPatientRequestsError(
+        error instanceof Error ? error.message : 'Failed to reject patient request'
+      );
+    }
+  };
+
   const handleRefreshSharingRequests = async () => {
     if (!doctorId) return;
     try {
@@ -127,6 +174,7 @@ export const Patients: React.FC = () => {
           </div>
           <button
             type="button"
+            onClick={() => setShowAddPatient(true)}
             className="inline-flex items-center justify-center gap-3 rounded-2xl px-6 py-4 text-base font-semibold shadow-lg shadow-[#425950]/15"
           >
             <span className="text-2xl leading-none">+</span>
@@ -191,21 +239,70 @@ export const Patients: React.FC = () => {
         )}
         {activeTab === 'requests' && (
           <div className="rounded-[28px] border border-[#E4EAF2] bg-white shadow-sm overflow-hidden p-4 sm:p-6">
-            {sharingRequestsLoading && (
+            {(sharingRequestsLoading || patientRequestsLoading) && (
               <div className="flex justify-center items-center h-40">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#425950]"></div>
               </div>
             )}
-            {!sharingRequestsLoading && (
-              <SharingRequestsList
-                requests={sharingRequests}
-                loading={sharingRequestsLoading}
-                doctorId={doctorId || ''}
-                onAccept={handleAcceptSharingRequest}
-                onReject={handleRejectSharingRequest}
-                onRefresh={handleRefreshSharingRequests}
-                refreshing={sharingRequestsRefreshing}
-              />
+            {!sharingRequestsLoading && !patientRequestsLoading && (
+              <>
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold mb-4 text-[#0E2340]">Share Requests</h3>
+                  <SharingRequestsList
+                    requests={sharingRequests}
+                    loading={sharingRequestsLoading}
+                    doctorId={doctorId || ''}
+                    onAccept={handleAcceptSharingRequest}
+                    onReject={handleRejectSharingRequest}
+                    onRefresh={handleRefreshSharingRequests}
+                    refreshing={sharingRequestsRefreshing}
+                  />
+                </div>
+                
+                {patientRequests.length > 0 && (
+                  <div className="border-t pt-6 mt-6">
+                    <h3 className="text-lg font-semibold mb-4 text-[#0E2340]">Patient Requests</h3>
+                    <div className="space-y-3">
+                      {patientRequests.map((request) => (
+                        <div
+                          key={request.id}
+                          className="flex items-center justify-between p-4 border border-[#E4EAF2] rounded-lg hover:bg-[#F8FAFB] transition-colors"
+                        >
+                          <div className="flex-1">
+                            <p className="font-semibold text-[#0E2340]">
+                              {request.patientInfo?.displayName || 'Unknown Patient'}
+                            </p>
+                            <p className="text-sm text-[#72829B]">
+                              {request.patientInfo?.email || 'No email'}
+                            </p>
+                            <p className="text-xs text-[#72829B] mt-1">
+                              Requested: {request.requestedAt ? new Date(request.requestedAt).toLocaleDateString() : 'N/A'}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleAcceptPatientRequest(request.patientId, request.id)}
+                              className="px-4 py-2 bg-[#32A887] text-white rounded-lg text-sm font-medium hover:bg-[#2a9878] transition-colors"
+                            >
+                              Accept
+                            </button>
+                            <button
+                              onClick={() => handleRejectPatientRequest(request.id)}
+                              className="px-4 py-2 border border-[#E4EAF2] text-[#0E2340] rounded-lg text-sm font-medium hover:bg-[#F8FAFB] transition-colors"
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {patientRequests.length === 0 && sharingRequests.length === 0 && (
+                  <p className="text-center text-[#72829B] py-8">No pending requests</p>
+                )}
+              </>
             )}
           </div>
         )}
@@ -216,6 +313,14 @@ export const Patients: React.FC = () => {
         onClose={() => {
           setShowModal(false);
           setSelectedPatient(null);
+        }}
+      />
+      <AddPatientModal
+        isOpen={showAddPatient}
+        onClose={() => setShowAddPatient(false)}
+        onAdded={(id) => {
+          setSuccessMessage('Patient added successfully');
+          setShowAddPatient(false);
         }}
       />
     </div>

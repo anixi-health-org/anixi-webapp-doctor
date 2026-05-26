@@ -1,10 +1,11 @@
 import React from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { AdherenceLogs } from '../components/AdherenceLogs';
 import { useAuth } from '../hooks/useAuth';
+import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 export const AdherenceLogsPage: React.FC = () => {
-  const navigate = useNavigate();
+  const { navigateBack } = useNavigateWithFallback();
   const { patientId } = useParams<{ patientId: string }>();
   const { user } = useAuth();
   if (!patientId) {
@@ -21,7 +22,7 @@ export const AdherenceLogsPage: React.FC = () => {
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigateBack(`/patients`)}
             className="mb-4 px-4 py-2 bg-anixi-green text-white hover:opacity-90 rounded-lg transition-all"
           >
             ← Back to Patient Profile
