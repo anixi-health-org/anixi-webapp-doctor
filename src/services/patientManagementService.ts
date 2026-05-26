@@ -7,6 +7,7 @@ import {
   where,
   writeBatch,
   addDoc,
+  setDoc,
   serverTimestamp,
   onSnapshot,
   Unsubscribe,
@@ -21,7 +22,7 @@ export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> =>
     if (!doctorId || doctorId.trim() === '') {
       return [];
     }
-    const patientsRef = collection(db, 'doctors', doctorId, 'approved_patients');
+    const patientsRef = collection(db, USERS_COLLECTION, doctorId, 'approved_patients');
     let snapshot;
     try {
       snapshot = await getDocs(patientsRef);
@@ -272,6 +273,49 @@ export const getPatientStatus = (patient: Patient): 'stable' | 'warning' | 'inac
   return 'stable';
 };
 
+/**
+ * Add a patient record manually and approve them for the given doctor.
+ * Returns the new patient id.
+ */
+export const addPatientManually = async (
+  doctorId: string,
+  payload: {
+    displayName: string;
+    email?: string;
+    phoneNumber?: string;
+    dateOfBirth?: Date;
+    notes?: string;
+  }
+): Promise<{ patientId: string }> => {
+  if (!doctorId) throw new Error('Doctor ID is required');
+  try {
+    const patientsRef = collection(db, 'patients');
+    const newPatientRef = await addDoc(patientsRef, {
+      displayName: payload.displayName,
+      email: payload.email || '',
+      phoneNumber: payload.phoneNumber || '',
+      dateOfBirth: payload.dateOfBirth ? serverTimestamp() : null,
+      notes: payload.notes || '',
+      isManual: true,
+      assignedDoctorId: doctorId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    // add reference under doctor's approved_patients so doctor immediately sees the patient
+    const approvedRef = doc(db, USERS_COLLECTION, doctorId, 'approved_patients', newPatientRef.id);
+    await setDoc(approvedRef, {
+      patientId: newPatientRef.id,
+      acceptedAt: serverTimestamp(),
+      status: 'active',
+    });
+
+    return { patientId: newPatientRef.id };
+  } catch (error) {
+    throw error;
+  }
+};
+
 
 export const getDoctorSharingRequests = async (doctorId: string): Promise<SharingRequest[]> => {
   try {
@@ -364,139 +408,61 @@ export const getPatientsWithSharingRequests = async (doctorId: string): Promise<
 };
 
 export const acceptSharingRequest = async (
-  patientId: string,
-  doctorId: string,
-  requestId: string
-): Promise<void> => {
-  try {
-
-    if (!patientId || !doctorId || !requestId) {
-      throw new Error(`Missing required parameters: patientId=${patientId}, doctorId=${doctorId}, requestId=${requestId}`);
-    }
-
-    const batch = writeBatch(db);
-
-    const sharingReqRef = doc(db, USERS_COLLECTION, doctorId, 'incoming_sharing_requests', requestId);
-    batch.update(sharingReqRef, {
-      status: 'approved',
-      respondedAt: serverTimestamp(),
-    });
-
-    const approvedPatientRef = doc(db, USERS_COLLECTION, doctorId, 'approved_patients', patientId);
-    batch.set(approvedPatientRef, {
-      patientId: patientId,
-      approvedAt: serverTimestamp(),
-      status: 'active',
-      dataAccessScope: 'all',
-    });
-
-    const approvedDoctorRef = doc(db, USERS_COLLECTION, patientId, 'approved_doctors', doctorId);
-    batch.set(approvedDoctorRef, {
-      acceptedAt: serverTimestamp(),
-      status: 'active',
-      dataAccessScope: 'all',
-    });
-
-    await batch.commit();
-  } catch (error) {
-    throw error;
-  }
-};
-
-export const listenToDoctorPatientRequests = (
-  doctorId: string,
-  onRequestsUpdate: (requests: PatientRequest[]) => void,
-  onError: (error: Error) => void
-): Unsubscribe => {
-  if (!doctorId || doctorId.trim() === '') {
-    onError(new Error('Doctor ID is required'));
-    return () => {};
-  }
-
-
-  const requestsRef = collection(db, 'doctors', doctorId, 'patient_requests');
-
-  const unsubscribe = onSnapshot(
-    requestsRef,
-    async (snapshot: QuerySnapshot<DocumentData>) => {
-      try {
-        const requests: PatientRequest[] = [];
-
-        for (const docSnapshot of snapshot.docs) {
-          const data = docSnapshot.data();
-          const patientId = data.patientId;
-
-          try {
-            const patientDocRef = doc(db, 'patients', patientId);
-            const patientSnap = await getDoc(patientDocRef);
-
-            if (patientSnap.exists()) {
-              const userData = patientSnap.data() as any;
-              const patientInfo: Patient = {
-                id: patientId,
-                email: userData.email || '',
-                displayName: userData.displayName || 'Patient',
-                role: 'patient',
-                dateOfBirth: userData.dateOfBirth?.toDate?.() || undefined,
-                gender: userData.gender || undefined,
-                maritalStatus: userData.maritalStatus || undefined,
-                language: userData.language || undefined,
-                address: userData.address || undefined,
-                phoneNumber: userData.phoneNumber || undefined,
-                assignedDoctorId: userData.assignedDoctorId,
-                emergencyContact: userData.emergencyContact || undefined,
-                medicalAid: userData.medicalAid || undefined,
-                chronicDiseases: userData.chronicDiseases || [],
-                allergies: userData.allergies || [],
-                currentTreatments: userData.currentTreatments || [],
-                createdAt: userData.createdAt?.toDate?.() || new Date(),
-                updatedAt: userData.updatedAt?.toDate?.() || new Date(),
-              };
-
-              requests.push({
-                id: docSnapshot.id,
-                patientId,
-                doctorId,
-                status: data.status || 'pending',
-                requestedAt: data.requestedAt?.toDate?.() || new Date(),
-                respondedAt: data.respondedAt?.toDate?.() || undefined,
-                patientInfo,
-              });
-            } else {
-            }
-          } catch (error) {
-          }
-        }
-
-        onRequestsUpdate(requests);
-      } catch (error) {
-        onError(error instanceof Error ? error : new Error('Unknown error'));
-      }
-    },
-    (error) => {
-      onError(error);
-    }
-  );
-
-  return unsubscribe;
-};
+   patientId: string,
+   doctorId: string,
+   requestId: string
+ ): Promise<void> => {
+   try {
+ 
+     if (!patientId || !doctorId || !requestId) {
+       throw new Error(`Missing required parameters: patientId=${patientId}, doctorId=${doctorId}, requestId=${requestId}`);
+     }
+ 
+     const batch = writeBatch(db);
+ 
+     const sharingReqRef = doc(db, USERS_COLLECTION, doctorId, 'incoming_sharing_requests', requestId);
+     batch.update(sharingReqRef, {
+       status: 'approved',
+       respondedAt: serverTimestamp(),
+     });
+ 
+     const approvedPatientRef = doc(db, USERS_COLLECTION, doctorId, 'approved_patients', patientId);
+     batch.set(approvedPatientRef, {
+       patientId: patientId,
+       approvedAt: serverTimestamp(),
+       status: 'active',
+       dataAccessScope: 'all',
+     });
+ 
+     const approvedDoctorRef = doc(db, USERS_COLLECTION, patientId, 'approved_doctors', doctorId);
+     batch.set(approvedDoctorRef, {
+       acceptedAt: serverTimestamp(),
+       status: 'active',
+       dataAccessScope: 'all',
+     });
+ 
+     await batch.commit();
+   } catch (error) {
+     throw error;
+   }
+ };
 
 export const rejectSharingRequest = async (
-  patientId: string,
-  doctorId: string,
-  requestId: string
+   patientId: string,
+   doctorId: string,
+   requestId: string
 ): Promise<void> => {
-  try {
+   try {
 
-    const sharingReqRef = doc(db, USERS_COLLECTION, doctorId, 'incoming_sharing_requests', requestId);
-    await writeBatch(db)
-      .delete(sharingReqRef)
-      .commit();
+     const sharingReqRef = doc(db, USERS_COLLECTION, doctorId, 'incoming_sharing_requests', requestId);
+     await writeBatch(db)
+       .delete(sharingReqRef)
+       .commit();
 
-  } catch (error) {
-    throw error;
-  }
-};
+   } catch (error) {
+     throw error;
+   }
+ };
 
 export const sendSharingRequest = async (
   patientId: string,
@@ -758,6 +724,85 @@ export const listenToDoctorSharingRequests = (
             } as SharingRequest);
 
           } catch (error) {
+          }
+        }
+
+        onRequestsUpdate(requests);
+      } catch (error) {
+        onError(error instanceof Error ? error : new Error('Unknown error'));
+      }
+    },
+    (error) => {
+      onError(error);
+    }
+  );
+
+  return unsubscribe;
+};
+
+export const listenToDoctorPatientRequests = (
+  doctorId: string,
+  onRequestsUpdate: (requests: PatientRequest[]) => void,
+  onError: (error: Error) => void
+): Unsubscribe => {
+  if (!doctorId || doctorId.trim() === '') {
+    onError(new Error('Doctor ID is required'));
+    return () => {};
+  }
+
+  const requestsRef = collection(db, 'doctors', doctorId, 'patient_requests');
+  const q = query(requestsRef, where('status', '==', 'pending'));
+
+  const unsubscribe = onSnapshot(
+    q,
+    async (snapshot: QuerySnapshot<DocumentData>) => {
+      try {
+        const requests: PatientRequest[] = [];
+
+        for (const docSnapshot of snapshot.docs) {
+          const data = docSnapshot.data();
+
+          try {
+            const patientId = data.patientId;
+            const patientDocRef = doc(db, 'Users', patientId);
+            const patientSnap = await getDoc(patientDocRef);
+
+            let patientInfo: Patient | undefined;
+            if (patientSnap.exists()) {
+              const userData = patientSnap.data() as any;
+              patientInfo = {
+                id: patientId,
+                email: userData.email || '',
+                displayName: userData.displayName || 'Patient',
+                role: 'patient',
+                dateOfBirth: userData.dateOfBirth?.toDate?.() || undefined,
+                gender: userData.gender || undefined,
+                maritalStatus: userData.maritalStatus || undefined,
+                language: userData.language || undefined,
+                address: userData.address || undefined,
+                phoneNumber: userData.phoneNumber || undefined,
+                assignedDoctorId: userData.assignedDoctorId,
+                emergencyContact: userData.emergencyContact || undefined,
+                medicalAid: userData.medicalAid || undefined,
+                chronicDiseases: userData.chronicDiseases || [],
+                allergies: userData.allergies || [],
+                currentTreatments: userData.currentTreatments || [],
+                createdAt: userData.createdAt?.toDate?.() || new Date(),
+                updatedAt: userData.updatedAt?.toDate?.() || new Date(),
+              } as Patient;
+            }
+
+            requests.push({
+              id: docSnapshot.id,
+              patientId,
+              doctorId,
+              status: 'pending',
+              requestedAt: data.requestedAt?.toDate?.() || new Date(),
+              respondedAt: data.respondedAt?.toDate?.() || undefined,
+              patientInfo,
+            });
+          } catch (error) {
+            // Skip this request if patient info cannot be fetched
           }
         }
 

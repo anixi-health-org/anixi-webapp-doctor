@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { AppointmentContextBanner } from '../components/patients/AppointmentContextBanner';
 import { recordPatientVisit } from '../services/recentPatientsService';
 import { logPatientActivity } from '../services/patientActivityService';
@@ -11,6 +11,7 @@ import { useAuth } from '../hooks/useAuth';
 import { getDoctorPatients } from '../services/doctorService';
 import { Appointment, Patient } from '../types';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
+import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import {
   calculateAge,
   formatDate,
@@ -23,6 +24,7 @@ import {
 } from '../utils/dataFormatter';
 
 export const PatientProfile: React.FC = () => {
+  const { navigateBack } = useNavigateWithFallback();
   const navigate = useNavigate();
   const location = useLocation();
   const { patientId } = useParams<{ patientId: string }>();
@@ -234,7 +236,7 @@ export const PatientProfile: React.FC = () => {
     return (
       <div className="px-3 py-4 sm:px-4 sm:py-6 bg-anixi-beige min-h-screen">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigateBack('/patients')}
           className="mb-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition-colors"
         >
           ← Back
@@ -276,7 +278,7 @@ export const PatientProfile: React.FC = () => {
       <AppointmentContextBanner />
       <div className="mb-6 sm:mb-8">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigateBack('/patients')}
           className="mb-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition-colors"
         >
           ← Back

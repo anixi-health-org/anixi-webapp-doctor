@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { getAppointmentById, getDoctorAppointments } from '../services/appointmentService';
 import { useAuth } from '../hooks/useAuth';
@@ -13,6 +14,7 @@ export const AppointmentSummary: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showManage, setShowManage] = useState(false);
+  const { navigateBack } = useNavigateWithFallback();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export const AppointmentSummary: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="relative mb-6">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigateBack('/appointments')}
             className="absolute left-0 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-2xl text-foreground"
             aria-label="Back"
           >
