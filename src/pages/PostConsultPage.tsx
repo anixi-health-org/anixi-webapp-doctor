@@ -71,6 +71,7 @@ const { user } = useAuth();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const [recordedChunks, setRecordedChunks] = useState<BlobPart[]>([]);
+  const [recordingMimeType, setRecordingMimeType] = useState<string>('audio/webm');
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
   const [recordingTitle, setRecordingTitle] = useState('Session recording');
   const [documentMode, setDocumentMode] = useState<DocumentMode>('scan');
@@ -301,7 +302,15 @@ const { user } = useAuth();
       setRecordedChunks([]);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
-      const options: any = {};
+      const supportedTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/ogg',
+      ];
+      const mimeType = supportedTypes.find((type) => MediaRecorder.isTypeSupported(type)) || 'audio/webm';
+      setRecordingMimeType(mimeType);
+      const options: any = mimeType ? { mimeType } : {};
       const mr = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mr;
       mr.ondataavailable = (ev: BlobEvent) => {
@@ -309,13 +318,12 @@ const { user } = useAuth();
           setRecordedChunks((prev) => [...prev, ev.data]);
         }
       };
-      mr.onstop = () => {
-
+      mr.addEventListener('stop', () => {
         if (mediaStreamRef.current) {
           mediaStreamRef.current.getTracks().forEach((t) => t.stop());
           mediaStreamRef.current = null;
         }
-      };
+      });
       mr.start();
       setIsRecording(true);
     } catch (err) {
@@ -330,8 +338,12 @@ const { user } = useAuth();
       setIsRecording(false);
       const mr = mediaRecorderRef.current;
       if (mr && mr.state !== 'inactive') {
-        await new Promise((res) => {
-          mr.onstop = res as any;
+        await new Promise<void>((resolve) => {
+          const onStop = () => {
+            mr.removeEventListener('stop', onStop);
+            resolve();
+          };
+          mr.addEventListener('stop', onStop);
           mr.stop();
         });
       }
@@ -342,8 +354,9 @@ const { user } = useAuth();
         return;
       }
 
-      const blob = new Blob(recordedChunks, { type: 'audio/webm' });
-      const filename = `${(appointment?.patientName || 'session').replace(/[^a-z0-9]+/gi, '_')}-${Date.now()}.webm`;
+      const blob = new Blob(recordedChunks, { type: recordingMimeType || 'audio/webm' });
+      const fileExtension = recordingMimeType.includes('ogg') ? 'ogg' : 'webm';
+      const filename = `${(appointment?.patientName || 'session').replace(/[^a-z0-9]+/gi, '_')}-${Date.now()}.${fileExtension}`;
       const file = new File([blob], filename, { type: blob.type });
 
       if (!appointment || !user?.id) {

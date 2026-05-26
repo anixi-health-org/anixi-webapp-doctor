@@ -194,6 +194,14 @@ export const acceptPatientRequest = async (
       assignedDoctorId: doctorId,
       updatedAt: serverTimestamp(),
     });
+    const patientRequestRef = doc(db, USERS_COLLECTION, patientId, 'doctor_requests', requestId);
+    batch.set(patientRequestRef, {
+      doctorId,
+      patientId,
+      status: 'accepted',
+      respondedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
     await batch.commit();
   } catch (error) {
     throw error;
@@ -289,11 +297,61 @@ export const addPatientManually = async (
 ): Promise<{ patientId: string }> => {
   if (!doctorId) throw new Error('Doctor ID is required');
   try {
+    const normalizedEmail = payload.email?.trim().toLowerCase() || '';
+    const normalizedPhone = payload.phoneNumber?.trim() || '';
+    let existingPatientId: string | null = null;
+    let existingPatientData: any = null;
+
     const patientsRef = collection(db, 'patients');
+
+    if (normalizedEmail) {
+      const emailQuery = query(patientsRef, where('email', '==', normalizedEmail));
+      const emailSnapshot = await getDocs(emailQuery);
+      if (!emailSnapshot.empty) {
+        existingPatientId = emailSnapshot.docs[0].id;
+        existingPatientData = emailSnapshot.docs[0].data();
+      }
+    }
+
+    if (!existingPatientId && normalizedPhone) {
+      const phoneQuery = query(patientsRef, where('phoneNumber', '==', normalizedPhone));
+      const phoneSnapshot = await getDocs(phoneQuery);
+      if (!phoneSnapshot.empty) {
+        existingPatientId = phoneSnapshot.docs[0].id;
+        existingPatientData = phoneSnapshot.docs[0].data();
+      }
+    }
+
+    if (existingPatientId) {
+      const approvedRef = doc(db, USERS_COLLECTION, doctorId, 'approved_patients', existingPatientId);
+      const approvedSnap = await getDoc(approvedRef);
+      if (!approvedSnap.exists()) {
+        await setDoc(approvedRef, {
+          patientId: existingPatientId,
+          acceptedAt: serverTimestamp(),
+          status: 'active',
+        });
+      }
+
+      if (existingPatientData && !existingPatientData.assignedDoctorId) {
+        const patientDocRef = doc(db, 'patients', existingPatientId);
+        await setDoc(
+          patientDocRef,
+          {
+            assignedDoctorId: doctorId,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      return { patientId: existingPatientId };
+    }
+
     const newPatientRef = await addDoc(patientsRef, {
       displayName: payload.displayName,
-      email: payload.email || '',
-      phoneNumber: payload.phoneNumber || '',
+      email: normalizedEmail,
+      phoneNumber: normalizedPhone,
       dateOfBirth: payload.dateOfBirth ? serverTimestamp() : null,
       notes: payload.notes || '',
       isManual: true,
@@ -439,6 +497,16 @@ export const acceptSharingRequest = async (
        acceptedAt: serverTimestamp(),
        status: 'active',
        dataAccessScope: 'all',
+     });
+ 
+     const patientSharingRequestRef = doc(db, USERS_COLLECTION, patientId, 'doctor_requests', requestId);
+     batch.set(patientSharingRequestRef, {
+       patientId,
+       doctorId,
+       status: 'approved',
+       respondedAt: serverTimestamp(),
+       dataAccessScope: 'all',
+       updatedAt: serverTimestamp(),
      });
  
      await batch.commit();

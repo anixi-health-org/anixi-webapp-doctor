@@ -29,7 +29,8 @@ export const createInvoiceRecord = async (
   patientId: string,
   appointmentId: string,
   lineItems: InvoiceLineItem[],
-  notes?: string
+  notes?: string,
+  currency: string = 'ZAR'
 ): Promise<Invoice> => {
   if (!doctorId || !patientId || !appointmentId || !lineItems.length) {
     throw new Error('Missing required invoice fields');
@@ -47,7 +48,7 @@ export const createInvoiceRecord = async (
     status: 'issued' as InvoiceStatus,
     lineItems,
     totalAmount,
-    currency: 'ZAR',
+    currency,
     issuedAt: Timestamp.fromDate(now),
     dueDate: Timestamp.fromDate(new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)), // 30 days
     createdAt: Timestamp.fromDate(now),
@@ -70,7 +71,7 @@ export const createInvoiceRecord = async (
     status: 'issued' as InvoiceStatus,
     lineItems,
     totalAmount,
-    currency: 'ZAR',
+    currency: invoiceData.currency,
     issuedAt: invoiceData.issuedAt.toDate(),
     dueDate: invoiceData.dueDate.toDate(),
     paidAt: undefined,

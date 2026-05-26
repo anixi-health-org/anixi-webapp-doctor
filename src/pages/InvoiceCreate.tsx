@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { createInvoiceLocal } from '../services/invoiceService';
+import { createInvoiceRecord } from '../services/invoiceService';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import { getAppointmentById } from '../services/appointmentService';
@@ -15,35 +15,47 @@ const InvoiceCreate: React.FC = () => {
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('ZAR');
   const [saving, setSaving] = useState(false);
+  const [patientId, setPatientId] = useState<string>('');
   const [patientName, setPatientName] = useState<string | undefined>(undefined);
 
-  const handleSave = async () => {
-    const amt = parseFloat(amount) || 0;
-    setSaving(true);
+const handleSave = async () => {
+  const amt = parseFloat(amount) || 0;
+  setSaving(true);
 
-    try {
-      const inv = createInvoiceLocal({
-        appointmentId: appointmentId || undefined,
-        patientName: patientName || undefined,
-        status: 'pending',
-        lineItems: [{ description: description || 'Item', amount: amt, currency }],
-      });
-      navigate(`/invoices/${inv.id}`);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSaving(false);
+  try {
+    if (!user?.id) {
+      throw new Error('User not authenticated');
     }
-  };
 
-  useEffect(() => {
+    const inv = await createInvoiceRecord(
+      user.id, // doctorId
+      patientId, // patientId
+      appointmentId || '', // appointmentId
+      [{ description: description || 'Item', amount: amt, quantity: 1 }], // lineItems
+      '', // notes
+      currency // currency
+    );
+    navigate(`/invoices/${inv.id}`);
+  } catch (err) {
+    console.error(err);
+    // Show error to user
+    alert('Failed to save invoice: ' + (err instanceof Error ? err.message : 'Unknown error'));
+  } finally {
+    setSaving(false);
+  }
+};
+
+useEffect(() => {
     const load = async () => {
       if (!appointmentId || !user?.id) return;
       try {
         const apt = await getAppointmentById(user.id, appointmentId);
-        if (apt) setPatientName(apt.patientName);
+        if (apt) {
+          setPatientId(apt.patientId || '');
+          setPatientName(apt.patientName);
+        }
       } catch {
-
+        
       }
     };
     load();

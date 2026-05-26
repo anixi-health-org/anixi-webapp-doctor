@@ -31,7 +31,6 @@ import PostConsultPage from './pages/PostConsultPage';
 import InvoicesPage from './pages/InvoicesPage';
 import InvoiceCreate from './pages/InvoiceCreate';
 import InvoiceDetails from './pages/InvoiceDetails';
-import InvoiceList from './pages/InvoiceList';
 import PrintDocumentsPage from './pages/PrintDocumentsPage';
 const queryClient = new QueryClient();
 
@@ -171,7 +170,6 @@ function App() {
                     <Route path="/appointments/:appointmentId/post-consult" element={<PostConsultPage />} />
                     <Route path="/invoices" element={<InvoicesPage />} />
                     <Route path="/invoices/new/:appointmentId" element={<InvoiceCreate />} />
-                    <Route path="/invoices" element={<InvoiceList />} />
                     <Route path="/invoices/:invoiceId" element={<InvoiceDetails />} />
                     <Route path="/appointments/:appointmentId/print-docs" element={<PrintDocumentsPage />} />
                     <Route path="/debug/appointments" element={<AppointmentDebug />} />

@@ -525,13 +525,13 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 >
                   Cancel
                 </button>
-<button
-  type="submit"
-  className="flex-1 px-4 py-2 bg-[#2d5a52] text-white rounded-md hover:bg-[#2d5a52] transition-colors disabled:opacity-50"
-  disabled={isSubmitting || !can('manageAppointments')}
->
-  {isSubmitting ? 'Creating…' : 'Create Appointment'}
-</button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-anixi-green text-white rounded-md hover:bg-anixi-green/90 transition-colors disabled:opacity-50"
+                  disabled={isSubmitting || !can('manageAppointments')}
+                >
+                  {isSubmitting ? 'Creating…' : 'Create Appointment'}
+                </button>
               </div>
               {!can('manageAppointments') && (
                 <p className="text-xs text-red-500 text-center">
