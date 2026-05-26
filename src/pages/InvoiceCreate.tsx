@@ -17,29 +17,52 @@ const InvoiceCreate: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [patientId, setPatientId] = useState<string>('');
   const [patientName, setPatientName] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
 
 const handleSave = async () => {
-  const amt = parseFloat(amount) || 0;
+  const amt = parseFloat(amount);
+  setError(null);
+
+  if (!user?.id) {
+    setError('User not authenticated');
+    return;
+  }
+
+  if (!appointmentId) {
+    setError('Appointment is required to create an invoice.');
+    return;
+  }
+
+  if (!patientId) {
+    setError('Could not determine the patient for this appointment.');
+    return;
+  }
+
+  if (!description.trim()) {
+    setError('Please enter an invoice description.');
+    return;
+  }
+
+  if (Number.isNaN(amt) || amt <= 0) {
+    setError('Please enter a valid invoice amount.');
+    return;
+  }
+
   setSaving(true);
 
   try {
-    if (!user?.id) {
-      throw new Error('User not authenticated');
-    }
-
     const inv = await createInvoiceRecord(
-      user.id, // doctorId
-      patientId, // patientId
-      appointmentId || '', // appointmentId
-      [{ description: description || 'Item', amount: amt, quantity: 1 }], // lineItems
-      '', // notes
-      currency // currency
+      user.id,
+      patientId,
+      appointmentId,
+      [{ description: description.trim(), amount: amt, quantity: 1 }],
+      '',
+      currency
     );
     navigate(`/invoices/${inv.id}`);
   } catch (err) {
     console.error(err);
-    // Show error to user
-    alert('Failed to save invoice: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    setError('Failed to save invoice: ' + (err instanceof Error ? err.message : 'Unknown error'));
   } finally {
     setSaving(false);
   }
@@ -97,6 +120,7 @@ useEffect(() => {
                 <CardTitle>Invoice</CardTitle>
               </CardHeader>
               <CardContent>
+                {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
                 <div className="space-y-3">
                   <div>
                     <label className="block text-sm text-gray-700">Description</label>
