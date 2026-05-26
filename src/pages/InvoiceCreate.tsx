@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { createInvoiceLocal } from '../services/invoiceService';
 import { useAuth } from '../hooks/useAuth';
+import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import { getAppointmentById } from '../services/appointmentService';
 
 const InvoiceCreate: React.FC = () => {
   const { appointmentId } = useParams<{ appointmentId?: string }>();
   const { user } = useAuth();
+  const { navigateBack } = useNavigateWithFallback();
   const navigate = useNavigate();
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -52,7 +54,7 @@ const InvoiceCreate: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="relative mb-6">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigateBack('/invoices')}
             className="absolute left-0 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-2xl text-foreground"
             aria-label="Back"
           >

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import {
   Download,
@@ -13,6 +13,7 @@ import {
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { Toast } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
+import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import {
   addAppointmentDocument,
   getAppointmentById,
@@ -41,10 +42,11 @@ const formatFileSize = (bytes: number): string => {
 };
 
 const PostConsultPage: React.FC = () => {
-  const { appointmentId } = useParams<{ appointmentId: string }>();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { user } = useAuth();
+const { appointmentId } = useParams<{ appointmentId: string }>();
+const location = useLocation();
+const { navigateBack } = useNavigateWithFallback();
+const navigate = useNavigate();
+const { user } = useAuth();
 
   const [appointment, setAppointment] = useState<Appointment | null>(
     (location.state as LocationState | undefined)?.appointment ?? null
@@ -926,7 +928,7 @@ const PostConsultPage: React.FC = () => {
     return (
       <div className="min-h-screen bg-background px-4 py-8">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigateBack('/appointments')}
           className="mb-4 rounded-lg border border-border bg-card px-4 py-2 text-foreground"
         >
           Back
@@ -981,7 +983,7 @@ const PostConsultPage: React.FC = () => {
         <div className="rounded-[30px] border border-[#D8DEE5] bg-white shadow-sm p-6 space-y-6">
           <div className="mb-8 relative">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigateBack('/appointments')}
             className="absolute left-0 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-2xl text-foreground"
           >
             ←
