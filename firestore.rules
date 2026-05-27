@@ -71,6 +71,37 @@ service cloud.firestore {
       allow write: if isSignedIn() && uid() == doctorId;
     }
 
+    // ─── Patients (manual creation by doctors) ─────────────────────────────────
+    // Doctors may create manual patient records that are linked to them.
+    // Patients themselves (mobile app) should use the legacy `Users/{uid}` docs.
+    match /patients/{patientId} {
+      allow create: if isSignedIn()
+        && request.resource.data.isManual == true
+        && request.resource.data.assignedDoctorId == uid();
+      // Doctors can read/update patient docs only if linked to them
+      allow read, update: if isSignedIn()
+        && resource.data.assignedDoctorId == uid();
+      // Allow doctors to delete ONLY manual patients they created
+      allow delete: if isSignedIn()
+        && resource.data.assignedDoctorId == uid()
+        && resource.data.isManual == true;
+    }
+
+    // ─── Email queue (Firebase Extension: Trigger Email) ───────────────────────
+    // Allow signed-in users to enqueue emails, but never read/update them.
+    // This enables client-side email sends without Cloud Functions.
+    match /mail/{mailId} {
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(['to', 'message'])
+        && request.resource.data.to is list
+        && request.resource.data.to.size() == 1
+        && request.resource.data.to[0] is string
+        && request.resource.data.message is map
+        && request.resource.data.message.keys().hasAny(['html', 'text'])
+        && request.resource.data.message.subject is string;
+      allow read, update, delete: if false;
+    }
+
     // ─── Practices ──────────────────────────────────────────────────────────────
 
     match /practices/{practiceId} {

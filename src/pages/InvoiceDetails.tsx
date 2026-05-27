@@ -157,9 +157,9 @@ const InvoiceDetails: React.FC = () => {
     const totalY = itemsStartY + 8 + invoice.lineItems.length * itemLineGap + 8;
     doc.setFontSize(14);
     try {
-      (doc as any).text(`Total: ${invoice.total} ${invoice.currency || 'ZAR'}`, amountX, totalY, { align: 'right' });
+      (doc as any).text(`Total: ${invoice.totalAmount} ${invoice.currency || 'ZAR'}`, amountX, totalY, { align: 'right' });
     } catch {
-      doc.text(`Total: ${invoice.total} ${invoice.currency || 'ZAR'}`, amountX - 4, totalY);
+      doc.text(`Total: ${invoice.totalAmount} ${invoice.currency || 'ZAR'}`, amountX - 4, totalY);
     }
     doc.setFontSize(12);
 
@@ -220,7 +220,7 @@ const InvoiceDetails: React.FC = () => {
                   )}
                 </div>
 
-                <div className="mt-4 text-right font-bold">Total: {invoice.total.toFixed(2)} {invoice.currency || 'ZAR'}</div>
+                <div className="mt-4 text-right font-bold">Total: {invoice.totalAmount.toFixed(2)} {invoice.currency || 'ZAR'}</div>
 
                 <p className="mt-4 text-sm text-gray-600">Anixi does not process payments. This invoice is for tracking only.</p>
 

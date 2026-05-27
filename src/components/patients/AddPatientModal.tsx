@@ -17,6 +17,7 @@ export const AddPatientModal: React.FC<Props> = ({ isOpen, onClose, onAdded }) =
   const [sending, setSending] = useState(false);
   const [sendInvite, setSendInvite] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -29,22 +30,30 @@ export const AddPatientModal: React.FC<Props> = ({ isOpen, onClose, onAdded }) =
       setError('Please enter a name');
       return;
     }
+    if (sendInvite && !email.trim()) {
+      setInviteError('Please enter an email address to send the invitation.');
+      return;
+    }
     setSending(true);
     setError(null);
+    setInviteError(null);
     try {
-      const { patientId } = await addPatientManually(user.id, {
-        displayName: name.trim(),
-        email: email.trim() || undefined,
-        phoneNumber: phone.trim() || undefined,
-      });
-
-      if (sendInvite && email.trim()) {
-        try {
-          await logInvitation(user.id, email.trim(), 'email');
-        } catch (e) {
-          // non-fatal: we created the patient but invite logging failed
-          console.warn('Failed to log invitation', e);
+      const { patientId, inviteQueued, inviteError: inviteErr } = await addPatientManually(
+        user.id,
+        {
+          displayName: name.trim(),
+          email: email.trim() || undefined,
+          phoneNumber: phone.trim() || undefined,
+        },
+        {
+          sendInvite: sendInvite,
+          inviteEmail: email.trim() || undefined,
         }
+      );
+
+      if (sendInvite && inviteQueued === false) {
+        setInviteError(inviteErr || 'Invitation email could not be queued.');
+        return;
       }
 
       onAdded?.(patientId);
@@ -61,6 +70,7 @@ export const AddPatientModal: React.FC<Props> = ({ isOpen, onClose, onAdded }) =
       <div className="bg-white rounded-lg p-6 max-w-md w-full">
         <h2 className="text-lg font-bold mb-4">Add Patient</h2>
         {error && <div className="text-sm text-red-600 mb-2">{error}</div>}
+        {inviteError && <div className="text-sm text-orange-600 mb-2">{inviteError}</div>}
         <div className="space-y-2">
           <input
             value={name}
