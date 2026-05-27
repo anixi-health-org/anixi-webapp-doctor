@@ -18,6 +18,7 @@ interface ImprovedDashboardProps {
   actionRequiredCount?: number;
   stableCount?: number;
   inactiveCount?: number;
+  onAddPatient?: () => void;
 }
 
 export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
@@ -27,6 +28,7 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
   actionRequiredCount = 0,
   stableCount = 0,
   inactiveCount = 0,
+  onAddPatient,
 }) => {
   const navigate = useNavigate();
 
@@ -137,7 +139,13 @@ export const ImprovedDashboard: React.FC<ImprovedDashboardProps> = ({
               Medical Dashboard
             </h1>
             <button
-              onClick={() => navigate('/patients')}
+              onClick={() => {
+                if (onAddPatient) {
+                  onAddPatient();
+                  return;
+                }
+                navigate('/patients');
+              }}
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#2d5a52] hover:bg-[#1f3d38] text-white font-semibold text-xl px-7 py-4 shadow-lg shadow-[#2d5a52]/30 transition-colors"
             >
               <span className="text-3xl leading-none">+</span>

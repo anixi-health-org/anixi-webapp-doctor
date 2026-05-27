@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { ImprovedDashboard } from '../components/dashboard';
+import { AddPatientModal } from '../components/patients/AddPatientModal';
 import {
   listenToDoctorPatients,
 } from '../services/patientManagementService';
@@ -12,6 +13,7 @@ export const Dashboard: React.FC = () => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientsLoading, setIsLoading] = useState(true);
   const [patientsError, setPatientsError] = useState<string | null>(null);
+  const [showAddPatient, setShowAddPatient] = useState(false);
 
   const actionRequiredCount = patients.filter((p) =>
     p.chronicDiseases && p.chronicDiseases.length > 0
@@ -99,14 +101,21 @@ export const Dashboard: React.FC = () => {
   }, [user?.id, user]);
 
   return (
-    <ImprovedDashboard
-      patients={patients}
-      patientsLoading={patientsLoading}
-      patientsError={patientsError}
-      actionRequiredCount={actionRequiredCount}
-      stableCount={stableCount}
-      inactiveCount={inactiveCount}
-    />
+    <>
+      <ImprovedDashboard
+        patients={patients}
+        patientsLoading={patientsLoading}
+        patientsError={patientsError}
+        actionRequiredCount={actionRequiredCount}
+        stableCount={stableCount}
+        inactiveCount={inactiveCount}
+        onAddPatient={() => setShowAddPatient(true)}
+      />
+      <AddPatientModal
+        isOpen={showAddPatient}
+        onClose={() => setShowAddPatient(false)}
+      />
+    </>
   );
 };
 

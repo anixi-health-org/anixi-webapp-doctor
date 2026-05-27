@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Card, CardContent } from '../components/ui/Card';
-import { getLocalInvoice, updateLocalInvoice } from '../services/invoiceService';
+import { getInvoiceById, updateInvoiceRecord, updateInvoiceStatus } from '../services/invoiceService';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
@@ -14,15 +14,32 @@ const InvoiceDetails: React.FC = () => {
   const [editing, setEditing] = useState(false);
   const [desc, setDesc] = useState('');
   const [amt, setAmt] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!invoiceId) return;
-    const inv = getLocalInvoice(invoiceId);
-    setInvoice(inv);
-    if (inv && inv.lineItems && inv.lineItems[0]) {
-      setDesc(inv.lineItems[0].description || '');
-      setAmt(String(inv.lineItems[0].amount || ''));
-    }
+    const loadInvoice = async () => {
+      if (!invoiceId) return;
+      setLoading(true);
+      try {
+        const inv = await getInvoiceById(invoiceId);
+        if (!inv) {
+          setError('Invoice not found');
+          setInvoice(null);
+          return;
+        }
+        setInvoice(inv);
+        if (inv.lineItems && inv.lineItems[0]) {
+          setDesc(inv.lineItems[0].description || '');
+          setAmt(String(inv.lineItems[0].amount || ''));
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load invoice');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadInvoice();
   }, [invoiceId]);
 
   const { user } = useAuth();
@@ -33,28 +50,40 @@ const InvoiceDetails: React.FC = () => {
       try {
         const apt = await getAppointmentById(user.id, invoice.appointmentId);
         if (apt?.patientName) {
-          const updated = updateLocalInvoice(invoice.id, { patientName: apt.patientName });
-          setInvoice(updated || { ...invoice, patientName: apt.patientName });
+          setInvoice({ ...invoice, patientName: apt.patientName });
         }
       } catch {
-
       }
     };
     enrich();
   }, [invoice, user?.id]);
 
+  if (loading) return <div className="p-6">Loading invoice...</div>;
+  if (error) return <div className="p-6 text-red-600">{error}</div>;
   if (!invoice) return <div className="p-6">Invoice not found.</div>;
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
+    if (!invoice) return;
     const amount = parseFloat(amt) || 0;
-    const updated = updateLocalInvoice(invoice.id, { lineItems: [{ description: desc, amount, currency: invoice.lineItems?.[0]?.currency || 'ZAR' }] });
-    setInvoice(updated);
-    setEditing(false);
+    try {
+      const updated = await updateInvoiceRecord(invoice.id, {
+        lineItems: [{ description: desc, quantity: invoice.lineItems?.[0]?.quantity || 1, amount }],
+      });
+      setInvoice(updated);
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save invoice');
+    }
   };
 
-  const handleMarkPaid = () => {
-    const updated = updateLocalInvoice(invoice.id, { status: 'paid' });
-    setInvoice(updated);
+  const handleMarkPaid = async () => {
+    if (!invoice) return;
+    try {
+      await updateInvoiceStatus(invoice.id, 'paid');
+      setInvoice({ ...invoice, status: 'paid', paidAt: new Date() });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to mark invoice as paid');
+    }
   };
 
   const generatePdf = async (download = false) => {
@@ -115,7 +144,7 @@ const InvoiceDetails: React.FC = () => {
       const y = itemsStartY + 8 + idx * itemLineGap;
 
       doc.text(String(li.description || ''), headerX, y);
-      const amtText = `${Number(li.amount).toFixed(2)} ${li.currency}`;
+      const amtText = `${Number(li.amount).toFixed(2)} ${invoice.currency || 'ZAR'}`;
 
       try {
 
@@ -128,9 +157,9 @@ const InvoiceDetails: React.FC = () => {
     const totalY = itemsStartY + 8 + invoice.lineItems.length * itemLineGap + 8;
     doc.setFontSize(14);
     try {
-      (doc as any).text(`Total: ${invoice.total} ${invoice.lineItems?.[0]?.currency || 'ZAR'}`, amountX, totalY, { align: 'right' });
+      (doc as any).text(`Total: ${invoice.totalAmount} ${invoice.currency || 'ZAR'}`, amountX, totalY, { align: 'right' });
     } catch {
-      doc.text(`Total: ${invoice.total} ${invoice.lineItems?.[0]?.currency || 'ZAR'}`, amountX - 4, totalY);
+      doc.text(`Total: ${invoice.totalAmount} ${invoice.currency || 'ZAR'}`, amountX - 4, totalY);
     }
     doc.setFontSize(12);
 
@@ -178,7 +207,7 @@ const InvoiceDetails: React.FC = () => {
                       {invoice.lineItems.map((li: any, idx: number) => (
                         <div key={idx} className="flex justify-between py-2 border-b">
                           <div>{li.description}</div>
-                          <div>{li.amount.toFixed(2)} {li.currency}</div>
+                          <div>{li.amount.toFixed(2)} {invoice.currency || 'ZAR'}</div>
                         </div>
                       ))}
                     </div>
@@ -191,7 +220,7 @@ const InvoiceDetails: React.FC = () => {
                   )}
                 </div>
 
-                <div className="mt-4 text-right font-bold">Total: {invoice.total.toFixed(2)} {invoice.lineItems?.[0]?.currency || 'ZAR'}</div>
+                <div className="mt-4 text-right font-bold">Total: {invoice.totalAmount.toFixed(2)} {invoice.currency || 'ZAR'}</div>
 
                 <p className="mt-4 text-sm text-gray-600">Anixi does not process payments. This invoice is for tracking only.</p>
 

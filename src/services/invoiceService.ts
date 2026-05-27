@@ -3,6 +3,7 @@ import {
   collection,
   addDoc,
   getDocs,
+  getDoc,
   updateDoc,
   doc,
   query,
@@ -29,7 +30,8 @@ export const createInvoiceRecord = async (
   patientId: string,
   appointmentId: string,
   lineItems: InvoiceLineItem[],
-  notes?: string
+  notes?: string,
+  currency: string = 'ZAR'
 ): Promise<Invoice> => {
   if (!doctorId || !patientId || !appointmentId || !lineItems.length) {
     throw new Error('Missing required invoice fields');
@@ -47,7 +49,7 @@ export const createInvoiceRecord = async (
     status: 'issued' as InvoiceStatus,
     lineItems,
     totalAmount,
-    currency: 'ZAR',
+    currency,
     issuedAt: Timestamp.fromDate(now),
     dueDate: Timestamp.fromDate(new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)), // 30 days
     createdAt: Timestamp.fromDate(now),
@@ -70,7 +72,7 @@ export const createInvoiceRecord = async (
     status: 'issued' as InvoiceStatus,
     lineItems,
     totalAmount,
-    currency: 'ZAR',
+    currency: invoiceData.currency,
     issuedAt: invoiceData.issuedAt.toDate(),
     dueDate: invoiceData.dueDate.toDate(),
     paidAt: undefined,
@@ -138,21 +140,20 @@ export const getInvoicesByDoctor = async (
 export const getInvoiceById = async (invoiceId: string): Promise<Invoice | null> => {
   if (!invoiceId) throw new Error('Invoice ID is required');
 
-  const docSnap = await getDocs(
-    query(collection(db, INVOICES_COLLECTION), where('id', '==', invoiceId))
-  );
+  const invoiceRef = doc(db, INVOICES_COLLECTION, invoiceId);
+  const docSnap = await getDoc(invoiceRef);
 
-  if (docSnap.empty) return null;
+  if (!docSnap.exists()) return null;
 
-  const d = docSnap.docs[0];
+  const data = docSnap.data();
   return {
-    id: d.id,
-    ...(d.data() as Omit<Invoice, 'id'>),
-    issuedAt: d.data().issuedAt?.toDate() || new Date(),
-    dueDate: d.data().dueDate?.toDate(),
-    paidAt: d.data().paidAt?.toDate(),
-    createdAt: d.data().createdAt?.toDate() || new Date(),
-    updatedAt: d.data().updatedAt?.toDate() || new Date(),
+    id: docSnap.id,
+    ...(data as Omit<Invoice, 'id'>),
+    issuedAt: data.issuedAt?.toDate() || new Date(),
+    dueDate: data.dueDate?.toDate(),
+    paidAt: data.paidAt?.toDate(),
+    createdAt: data.createdAt?.toDate() || new Date(),
+    updatedAt: data.updatedAt?.toDate() || new Date(),
   };
 };
 
@@ -176,6 +177,64 @@ export const updateInvoiceStatus = async (
   }
 
   await updateDoc(invoiceRef, updates);
+};
+
+export const updateInvoiceRecord = async (
+  invoiceId: string,
+  patch: Partial<{
+    lineItems: InvoiceLineItem[];
+    notes: string;
+    currency: string;
+    dueDate: Date;
+    status: InvoiceStatus;
+  }>
+): Promise<Invoice> => {
+  if (!invoiceId) throw new Error('Invoice ID is required');
+  const invoiceRef = doc(db, INVOICES_COLLECTION, invoiceId);
+  const updateData: Record<string, any> = {
+    updatedAt: Timestamp.fromDate(new Date()),
+  };
+
+  if (patch.lineItems) {
+    updateData.lineItems = patch.lineItems;
+    updateData.totalAmount = patch.lineItems.reduce(
+      (sum, item) => sum + item.amount * item.quantity,
+      0
+    );
+  }
+
+  if (patch.notes !== undefined) {
+    updateData.notes = patch.notes;
+  }
+
+  if (patch.currency) {
+    updateData.currency = patch.currency;
+  }
+
+  if (patch.dueDate) {
+    updateData.dueDate = Timestamp.fromDate(patch.dueDate);
+  }
+
+  if (patch.status) {
+    updateData.status = patch.status;
+    if (patch.status === 'paid') {
+      updateData.paidAt = Timestamp.fromDate(new Date());
+    }
+  }
+
+  await updateDoc(invoiceRef, updateData);
+  const updatedDoc = await getDoc(invoiceRef);
+  if (!updatedDoc.exists()) throw new Error('Invoice not found after update');
+  const data = updatedDoc.data();
+  return {
+    id: updatedDoc.id,
+    ...(data as Omit<Invoice, 'id'>),
+    issuedAt: data.issuedAt?.toDate() || new Date(),
+    dueDate: data.dueDate?.toDate(),
+    paidAt: data.paidAt?.toDate(),
+    createdAt: data.createdAt?.toDate() || new Date(),
+    updatedAt: data.updatedAt?.toDate() || new Date(),
+  };
 };
 
 /**

@@ -10,7 +10,9 @@ import { AppointmentList } from '../components/appointments/AppointmentList';
 import { useAuth } from '../hooks/useAuth';
 import { getDoctorPatients } from '../services/doctorService';
 import { Appointment, Patient } from '../types';
+import { updatePatient, removePatientFromDoctor } from '../services/patientManagementService';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
+import { EditPatientModal } from '../components/patients/EditPatientModal';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import {
   calculateAge,
@@ -50,6 +52,10 @@ export const PatientProfile: React.FC = () => {
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [showEditPatientModal, setShowEditPatientModal] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
 
   const logActivity = (
     actionType: string,
@@ -71,6 +77,36 @@ export const PatientProfile: React.FC = () => {
         ...(metadata || {}),
       },
     });
+  };
+
+  const handlePatientUpdate = async (updates: Partial<Patient>) => {
+    if (!user?.id || !patient?.id) return;
+    try {
+      setActionError(null);
+      await updatePatient(patient.id, updates);
+      setPatient({ ...patient, ...updates });
+      setActionSuccess('Patient details updated successfully.');
+    } catch (error: any) {
+      setActionError(error?.message || 'Failed to update patient');
+    }
+  };
+
+  const handlePatientRemove = async () => {
+    if (!user?.id || !patient?.id) return;
+    const confirmed = window.confirm(
+      'Are you sure you want to remove this patient from your practice? This will delete the patient record only if it was manually created by you.'
+    );
+    if (!confirmed) return;
+    setIsRemoving(true);
+    setActionError(null);
+    try {
+      await removePatientFromDoctor(user.id, patient.id);
+      navigate('/patients');
+    } catch (error: any) {
+      setActionError(error?.message || 'Failed to remove patient');
+    } finally {
+      setIsRemoving(false);
+    }
   };
 
   useEffect(() => {
@@ -290,6 +326,31 @@ export const PatientProfile: React.FC = () => {
           <p className="mt-2 text-gray-600">
             {age} {age === 1 ? 'year' : 'years'} old
           </p>
+        )}
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            onClick={() => setShowEditPatientModal(true)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          >
+            Edit Patient
+          </button>
+          <button
+            onClick={handlePatientRemove}
+            disabled={isRemoving}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
+          >
+            {isRemoving ? 'Removing…' : 'Remove Patient'}
+          </button>
+        </div>
+        {actionSuccess && (
+          <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg">
+            {actionSuccess}
+          </div>
+        )}
+        {actionError && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+            {actionError}
+          </div>
         )}
       </div>
 
@@ -520,6 +581,13 @@ export const PatientProfile: React.FC = () => {
           consultTypeDefault="follow-up"
         />
       )}
+
+      <EditPatientModal
+        isOpen={showEditPatientModal}
+        patient={patient}
+        onClose={() => setShowEditPatientModal(false)}
+        onSave={handlePatientUpdate}
+      />
 
       {selectedAppointment && (
         <AppointmentDetails

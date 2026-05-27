@@ -91,13 +91,29 @@ export const logInvitation = async (
   doctorId: string,
   targetEmail?: string,
   method: 'link' | 'email' = 'link'
-): Promise<void> => {
+): Promise<string> => {
   try {
     const ref = doc(db, 'referrals', doctorId);
-    await updateDoc(ref, {
-      invitationsSent: increment(1),
-      lastInvitedAt: serverTimestamp(),
-    });
+    const referralDoc = await getDoc(ref);
+
+    if (!referralDoc.exists()) {
+      const referralCode = generateReferralCode(doctorId);
+      await setDoc(ref, {
+        doctorId,
+        referralCode,
+        referralLink: generateReferralLink(referralCode),
+        createdAt: serverTimestamp(),
+        invitationsSent: 1,
+        invitationsAccepted: 0,
+        lastInvitedAt: serverTimestamp(),
+      }, { merge: true });
+    } else {
+      await setDoc(ref, {
+        invitationsSent: increment(1),
+        lastInvitedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+
     const invitationRef = doc(collection(db, 'referrals', doctorId, 'invitations'));
     await setDoc(invitationRef, {
       doctorId,
@@ -106,6 +122,7 @@ export const logInvitation = async (
       status: 'pending',
       createdAt: serverTimestamp(),
     });
+    return invitationRef.id;
   } catch (error) {
     ;
     throw error;
