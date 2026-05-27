@@ -3,13 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PatientCard } from '../components/PatientCard';
 import { useAuth } from '../hooks/useAuth';
 import { Patient, PatientStatus } from '../types';
-import { getDoctorPatients } from '../services/patientManagementService';
+import { getDoctorPatients, removePatientFromDoctor, updatePatient } from '../services/patientManagementService';
 import { getDashboardStats } from '../services/doctorService';
 import { DashboardStats } from '../types';
 import {
   getDoctorPatientsAdherenceSummary,
   type PatientAdherenceListSummary,
 } from '../services/adherenceService';
+import { EditPatientModal } from '../components/patients/EditPatientModal';
 export const PatientList: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -19,35 +20,42 @@ export const PatientList: React.FC = () => {
   const [adherenceByPatient, setAdherenceByPatient] = useState<Map<string, PatientAdherenceListSummary>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [showEditPatientModal, setShowEditPatientModal] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const loadPatients = async () => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+      const [patientsData, statsData] = await Promise.all([
+        getDoctorPatients(user.id),
+        getDashboardStats(user.id),
+      ]);
+
+      const adherenceSummary = await getDoctorPatientsAdherenceSummary(
+        user.id,
+        patientsData.map((patient) => patient.id)
+      );
+
+      setAdherenceByPatient(adherenceSummary);
+      applyFilter(patientsData, filterParam, statsData);
+    } catch (err) {
+      setError('Failed to load patients. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      if (!user) {
-        setIsLoading(false);
-        return;
-      }
-      try {
-        setIsLoading(true);
-        setError(null);
-        const [patientsData, statsData] = await Promise.all([
-          getDoctorPatients(user.id),
-          getDashboardStats(user.id),
-        ]);
-
-        const adherenceSummary = await getDoctorPatientsAdherenceSummary(
-          user.id,
-          patientsData.map((patient) => patient.id)
-        );
-
-        setAdherenceByPatient(adherenceSummary);
-        applyFilter(patientsData, filterParam, statsData);
-      } catch (err) {
-        ;
-        setError('Failed to load patients. Please try again.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchData();
+    void loadPatients();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, filterParam]);
   const applyFilter = (allPatients: Patient[], filter: PatientStatus | 'total' | 'all', dashboardStats: DashboardStats) => {
     let filtered: Patient[] = [];
@@ -103,6 +111,49 @@ export const PatientList: React.FC = () => {
         return 'All Patients';
     }
   };
+
+  const handleEditClick = (patient: Patient) => {
+    setSelectedPatient(patient);
+    setActionError(null);
+    setActionMessage(null);
+    setShowEditPatientModal(true);
+  };
+
+  const handleRemoveClick = async (patient: Patient) => {
+    if (!user) return;
+    const confirmed = window.confirm(
+      `Remove ${patient.displayName || patient.email || 'this patient'} from your practice?`
+    );
+    if (!confirmed) return;
+
+    setActionError(null);
+    setActionMessage(null);
+
+    try {
+      await removePatientFromDoctor(user.id, patient.id);
+      setActionMessage('Patient removed successfully.');
+      await loadPatients();
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to remove patient');
+    }
+  };
+
+  const handleSavePatient = async (updates: Partial<Patient>) => {
+    if (!selectedPatient) return;
+    setActionError(null);
+    setActionMessage(null);
+
+    try {
+      await updatePatient(selectedPatient.id, updates);
+      setActionMessage('Patient updated successfully.');
+      setShowEditPatientModal(false);
+      setSelectedPatient(null);
+      await loadPatients();
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to update patient');
+      throw err;
+    }
+  };
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -145,25 +196,53 @@ export const PatientList: React.FC = () => {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredPatients.map((patient) => (
-            <PatientCard
-              key={patient.id}
-              patient={patient}
-              status={getPatientStatus(patient)}
-              adherenceRate={adherenceByPatient.get(patient.id)?.adherenceRate}
-              adherenceLabel={adherenceByPatient.get(patient.id)?.statusLabel}
-              onOpenAdherenceCalendar={() =>
-                navigate(`/patient-profile/${patient.id}/adherence-calendar`)
-              }
-              onOpenAdherenceLogs={() =>
-                navigate(`/patient-profile/${patient.id}/adherence-logs`)
-              }
-              onClick={() => navigate(`/patient-profile/${patient.id}`)}
-            />
-          ))}
-        </div>
+        <>
+          {(actionMessage || actionError) && (
+            <div className="mb-4 space-y-2">
+              {actionMessage && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700">
+                  {actionMessage}
+                </div>
+              )}
+              {actionError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700">
+                  {actionError}
+                </div>
+              )}
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredPatients.map((patient) => (
+              <PatientCard
+                key={patient.id}
+                patient={patient}
+                status={getPatientStatus(patient)}
+                adherenceRate={adherenceByPatient.get(patient.id)?.adherenceRate}
+                adherenceLabel={adherenceByPatient.get(patient.id)?.statusLabel}
+                onOpenAdherenceCalendar={() =>
+                  navigate(`/patient-profile/${patient.id}/adherence-calendar`)
+                }
+                onOpenAdherenceLogs={() =>
+                  navigate(`/patient-profile/${patient.id}/adherence-logs`)
+                }
+                onEdit={() => handleEditClick(patient)}
+                onRemove={() => handleRemoveClick(patient)}
+                onClick={() => navigate(`/patient-profile/${patient.id}`)}
+              />
+            ))}
+          </div>
+        </>
       )}
+
+      <EditPatientModal
+        isOpen={showEditPatientModal}
+        patient={selectedPatient || ({} as Patient)}
+        onClose={() => {
+          setShowEditPatientModal(false);
+          setSelectedPatient(null);
+        }}
+        onSave={handleSavePatient}
+      />
     </div>
   );
 };

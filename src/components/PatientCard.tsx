@@ -10,6 +10,8 @@ interface PatientCardProps {
   adherenceLabel?: string;
   onOpenAdherenceCalendar?: () => void;
   onOpenAdherenceLogs?: () => void;
+  onEdit?: () => void;
+  onRemove?: () => void;
   onClick: () => void;
 }
 
@@ -52,6 +54,8 @@ export const PatientCard: React.FC<PatientCardProps> = ({
   adherenceLabel,
   onOpenAdherenceCalendar,
   onOpenAdherenceLogs,
+  onEdit,
+  onRemove,
   onClick,
 }) => {
   const age = calculateAge(patient.dateOfBirth);
@@ -122,8 +126,8 @@ export const PatientCard: React.FC<PatientCardProps> = ({
             </div>
           )}
 
-          {(onOpenAdherenceCalendar || onOpenAdherenceLogs) && (
-            <div className="mt-4 flex gap-2">
+          {(onOpenAdherenceCalendar || onOpenAdherenceLogs || onEdit || onRemove) && (
+            <div className="mt-4 flex flex-wrap gap-2">
               {onOpenAdherenceCalendar && (
                 <button
                   onClick={(event) => {
@@ -144,6 +148,28 @@ export const PatientCard: React.FC<PatientCardProps> = ({
                   className="px-3 py-1.5 text-xs font-semibold rounded-md bg-green-50 text-green-700 hover:bg-green-100"
                 >
                   Logs
+                </button>
+              )}
+              {onEdit && (
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onEdit();
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-md bg-sky-50 text-sky-700 hover:bg-sky-100"
+                >
+                  Edit
+                </button>
+              )}
+              {onRemove && (
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRemove();
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-md bg-red-50 text-red-700 hover:bg-red-100"
+                >
+                  Remove
                 </button>
               )}
             </div>

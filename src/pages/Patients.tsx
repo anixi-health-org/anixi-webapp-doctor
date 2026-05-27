@@ -175,7 +175,7 @@ export const Patients: React.FC = () => {
           <button
             type="button"
             onClick={() => setShowAddPatient(true)}
-            className="inline-flex items-center justify-center gap-3 rounded-2xl px-6 py-4 text-base font-semibold shadow-lg shadow-[#425950]/15"
+            className="inline-flex items-center justify-center gap-3 rounded-2xl bg-anixi-green text-white px-6 py-4 text-base font-semibold shadow-lg shadow-[#425950]/15 hover:bg-anixi-green/90"
           >
             <span className="text-2xl leading-none">+</span>
             <span>New Patient Record</span>
