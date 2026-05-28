@@ -1,21 +1,47 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Patient } from '../../types';
-import { calculateAge } from '../../services/patientManagementService';
+import { calculateAge, updatePatient } from '../../services/patientManagementService';
 import { formatTimestamp } from '../../utils/dateFormatter';
+import { EditMedicalInfoModal } from './EditMedicalInfoModal';
+
 interface PatientDetailModalProps {
   patient: Patient | null;
   isOpen: boolean;
   onClose: () => void;
+  onPatientUpdated?: (patient: Patient) => void;
 }
+
 export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
   patient,
   isOpen,
   onClose,
+  onPatientUpdated,
 }) => {
+  const [showEditMedical, setShowEditMedical] = useState(false);
+  const [localPatient, setLocalPatient] = useState<Patient | null>(patient);
+
+  React.useEffect(() => {
+    setLocalPatient(patient);
+  }, [patient]);
+
+  if (!isOpen || !localPatient) return null;
+
+  const displayPatient = localPatient;
   
-  if (!isOpen || !patient) return null;
-  
-  const age = calculateAge(patient.dateOfBirth);
+  const age = calculateAge(displayPatient.dateOfBirth);
+
+  const hasMedicalData =
+    displayPatient.medicalAid ||
+    (displayPatient.chronicDiseases && displayPatient.chronicDiseases.length > 0) ||
+    (displayPatient.allergies && displayPatient.allergies.length > 0) ||
+    (displayPatient.currentTreatments && displayPatient.currentTreatments.length > 0);
+
+  const handleSaveMedical = async (updates: Partial<Patient>) => {
+    await updatePatient(displayPatient.id, updates);
+    const updated: Patient = { ...displayPatient, ...updates };
+    setLocalPatient(updated);
+    onPatientUpdated?.(updated);
+  };
   
   const formatDate = (date: any): string => {
     if (!date) return 'Not available';
@@ -27,7 +53,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
       <div className="bg-white rounded-t-[28px] sm:rounded-[28px] shadow-2xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto border border-[#E4EAF2]">
         <div className="sticky top-0 bg-[#425950] px-5 sm:px-6 py-4 sm:py-5 flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl sm:text-2xl font-bold text-white break-words">{patient.displayName}</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-white break-words">{displayPatient.displayName}</h2>
             <p className="text-white/75 text-sm mt-1">Patient Profile</p>
           </div>
           <button
@@ -52,7 +78,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-white rounded-2xl p-4 border border-[#E7EDF4] shadow-sm">
                 <p className="text-xs font-semibold text-gray-500 mb-1">EMAIL</p>
-                <p className="text-gray-900 font-medium break-all">{patient.email}</p>
+                <p className="text-gray-900 font-medium break-all">{displayPatient.email}</p>
               </div>
               {age !== undefined && (
                 <div className="bg-white rounded-2xl p-4 border border-[#E7EDF4] shadow-sm">
@@ -60,44 +86,44 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                   <p className="text-gray-900 font-medium">{age} years</p>
                 </div>
               )}
-              {patient.dateOfBirth && (
+              {displayPatient.dateOfBirth && (
                 <div className="bg-white rounded-2xl p-4 border border-[#E7EDF4] shadow-sm">
                   <p className="text-xs font-semibold text-gray-500 mb-1">DATE OF BIRTH</p>
-                  <p className="text-gray-900 font-medium">{formatDate(patient.dateOfBirth)}</p>
+                  <p className="text-gray-900 font-medium">{formatDate(displayPatient.dateOfBirth)}</p>
                 </div>
               )}
-              {patient.gender && (
+              {displayPatient.gender && (
                 <div className="bg-white rounded-2xl p-4 border border-[#E7EDF4] shadow-sm">
                   <p className="text-xs font-semibold text-gray-500 mb-1">GENDER</p>
                   <p className="text-gray-900 font-medium">
-                    {patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)}
+                    {displayPatient.gender.charAt(0).toUpperCase() + displayPatient.gender.slice(1)}
                   </p>
                 </div>
               )}
-              {patient.maritalStatus && (
+              {displayPatient.maritalStatus && (
                 <div className="bg-white rounded-2xl p-4 border border-[#E7EDF4] shadow-sm">
                   <p className="text-xs font-semibold text-gray-500 mb-1">MARITAL STATUS</p>
                   <p className="text-gray-900 font-medium">
-                    {patient.maritalStatus.charAt(0).toUpperCase() + patient.maritalStatus.slice(1)}
+                    {displayPatient.maritalStatus.charAt(0).toUpperCase() + displayPatient.maritalStatus.slice(1)}
                   </p>
                 </div>
               )}
-              {patient.language && (
+              {displayPatient.language && (
                 <div className="bg-white rounded-2xl p-4 border border-[#E7EDF4] shadow-sm">
                   <p className="text-xs font-semibold text-gray-500 mb-1">LANGUAGE</p>
-                  <p className="text-gray-900 font-medium">{patient.language}</p>
+                  <p className="text-gray-900 font-medium">{displayPatient.language}</p>
                 </div>
               )}
-              {patient.phoneNumber && (
+              {displayPatient.phoneNumber && (
                 <div className="bg-white rounded-2xl p-4 border border-[#E7EDF4] shadow-sm">
                   <p className="text-xs font-semibold text-gray-500 mb-1">PHONE NUMBER</p>
-                  <p className="text-gray-900 font-medium">{patient.phoneNumber}</p>
+                  <p className="text-gray-900 font-medium">{displayPatient.phoneNumber}</p>
                 </div>
               )}
-              {patient.address && (
+              {displayPatient.address && (
                 <div className="bg-white rounded-2xl p-4 border border-[#E7EDF4] shadow-sm sm:col-span-2">
                   <p className="text-xs font-semibold text-gray-500 mb-1">ADDRESS</p>
-                  <p className="text-gray-900 font-medium">{patient.address}</p>
+                  <p className="text-gray-900 font-medium">{displayPatient.address}</p>
                 </div>
               )}
             </div>
@@ -105,21 +131,30 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
 
           
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Medical Information
-            </h3>
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Medical Information
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowEditMedical(true)}
+                className="text-sm font-medium text-[#425950] px-3 py-1.5 rounded-lg border border-[#D7E0DC] hover:bg-[#F3F7F5] transition-colors shrink-0"
+              >
+                {hasMedicalData ? 'Edit' : 'Add'}
+              </button>
+            </div>
             <div className="space-y-4">
-              {patient.medicalAid ? (
+              {displayPatient.medicalAid ? (
                 <div className="bg-[#F3F7F5] rounded-2xl p-4 border border-[#D7E0DC] shadow-sm">
                   <p className="text-xs font-semibold text-[#425950] mb-2">MEDICAL AID</p>
                   <div className="space-y-1 text-gray-900">
-                    <p className="font-medium">Provider: {patient.medicalAid.provider}</p>
-                    <p className="text-sm">Member #: {patient.medicalAid.memberNumber}</p>
-                    {patient.medicalAid.groupNumber && (
-                      <p className="text-sm">Group #: {patient.medicalAid.groupNumber}</p>
+                    <p className="font-medium">Provider: {displayPatient.medicalAid.provider}</p>
+                    <p className="text-sm">Member #: {displayPatient.medicalAid.memberNumber}</p>
+                    {displayPatient.medicalAid.groupNumber && (
+                      <p className="text-sm">Group #: {displayPatient.medicalAid.groupNumber}</p>
                     )}
                   </div>
                 </div>
@@ -131,10 +166,10 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
               )}
               <div>
                 <p className="text-xs font-semibold text-gray-500 mb-2">MEDICAL HISTORY</p>
-                {patient.chronicDiseases && patient.chronicDiseases.length > 0 ? (
+                {displayPatient.chronicDiseases && displayPatient.chronicDiseases.length > 0 ? (
                   <div className="bg-[#FFF8E7] rounded-2xl p-4 border border-[#F3D9A5] shadow-sm">
                     <ul className="space-y-1">
-                      {patient.chronicDiseases.map((disease, idx) => (
+                      {displayPatient.chronicDiseases.map((disease, idx) => (
                         <li key={idx} className="text-gray-900 font-medium">• {disease}</li>
                       ))}
                     </ul>
@@ -145,23 +180,23 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                   </div>
                 )}
               </div>
-              {patient.allergies && patient.allergies.length > 0 && (
+              {displayPatient.allergies && displayPatient.allergies.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-gray-500 mb-2">ALLERGIES</p>
                   <div className="bg-[#FFF5F5] rounded-2xl p-4 border border-[#F1C9CE] shadow-sm">
                     <ul className="space-y-1">
-                      {patient.allergies.map((allergy, idx) => (
+                      {displayPatient.allergies.map((allergy, idx) => (
                         <li key={idx} className="text-gray-900 font-medium">⚠️ {allergy}</li>
                       ))}
                     </ul>
                   </div>
                 </div>
               )}
-              {patient.currentTreatments && patient.currentTreatments.length > 0 && (
+              {displayPatient.currentTreatments && displayPatient.currentTreatments.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-gray-500 mb-2">CURRENT TREATMENTS</p>
                   <div className="bg-[#F2FBF6] rounded-2xl p-4 border border-[#CDEBD9] shadow-sm space-y-3">
-                    {patient.currentTreatments.map((treatment, idx) => (
+                    {displayPatient.currentTreatments.map((treatment, idx) => (
                       <div key={idx} className="text-gray-900">
                         <p className="font-medium">💊 {treatment.name}</p>
                         <p className="text-sm text-gray-600">Dosage: {treatment.dosage}</p>
@@ -189,6 +224,13 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
           </button>
         </div>
       </div>
+
+      <EditMedicalInfoModal
+        isOpen={showEditMedical}
+        patient={displayPatient}
+        onClose={() => setShowEditMedical(false)}
+        onSave={handleSaveMedical}
+      />
     </div>
   );
 };

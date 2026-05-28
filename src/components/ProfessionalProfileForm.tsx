@@ -4,6 +4,7 @@ import { storage } from '../lib/firebase';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { TabPill } from '../components/ui/TabPill';
+import { LogoCropModal } from './LogoCropModal';
 import { useAuth } from '../hooks/useAuth';
 import { updateDoctorProfile } from '../services/doctorService';
 import { Doctor } from '../types';
@@ -44,6 +45,8 @@ const ProfessionalProfileForm: React.FC = () => {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string>(user?.logoUrl ?? '');
   const [logoUploading, setLogoUploading] = useState(false);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<ProfessionalProfileFormData>({
     title: '',
@@ -550,17 +553,40 @@ const ProfessionalProfileForm: React.FC = () => {
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0] ?? null;
+                  e.target.value = '';
                   if (file) {
-                    setLogoFile(file);
-                    setLogoPreview(URL.createObjectURL(file));
+                    const src = URL.createObjectURL(file);
+                    setCropImageSrc(src);
+                    setCropModalOpen(true);
                   }
                 }}
               />
             </label>
           </div>
-          <p className="mt-1 text-xs text-gray-500">Recommended: square image, min 200×200 px.</p>
+          <p className="mt-1 text-xs text-gray-500">Square crop recommended. Min 200×200 px for invoices.</p>
         </div>
       </div>
+
+      {cropImageSrc && (
+        <LogoCropModal
+          isOpen={cropModalOpen}
+          imageSrc={cropImageSrc}
+          onClose={() => {
+            setCropModalOpen(false);
+            URL.revokeObjectURL(cropImageSrc);
+            setCropImageSrc(null);
+          }}
+          onCropComplete={(file, previewUrl) => {
+            if (logoPreview.startsWith('blob:')) {
+              URL.revokeObjectURL(logoPreview);
+            }
+            setLogoFile(file);
+            setLogoPreview(previewUrl);
+            URL.revokeObjectURL(cropImageSrc);
+            setCropImageSrc(null);
+          }}
+        />
+      )}
     </div>
   );
 

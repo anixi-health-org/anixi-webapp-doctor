@@ -314,6 +314,12 @@ export const Patients: React.FC = () => {
           setShowModal(false);
           setSelectedPatient(null);
         }}
+        onPatientUpdated={(updated) => {
+          setSelectedPatient(updated);
+          setPatients((prev) =>
+            prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
+          );
+        }}
       />
       <AddPatientModal
         isOpen={showAddPatient}
