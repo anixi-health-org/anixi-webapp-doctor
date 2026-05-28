@@ -87,10 +87,33 @@ service cloud.firestore {
         && resource.data.isManual == true;
     }
 
+    // ─── Referrals / invitations (doctor-owned) ────────────────────────────────
+    // Used to generate a signup link and to log invitation attempts.
+    match /referrals/{doctorId} {
+      allow read, write: if isSignedIn() && uid() == doctorId;
+
+      match /invitations/{invitationId} {
+        allow read, write: if isSignedIn() && uid() == doctorId;
+      }
+    }
+
     // ─── Email queue (Firebase Extension: Trigger Email) ───────────────────────
     // Allow signed-in users to enqueue emails, but never read/update them.
     // This enables client-side email sends without Cloud Functions.
     match /mail/{mailId} {
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(['to', 'message'])
+        && request.resource.data.to is list
+        && request.resource.data.to.size() == 1
+        && request.resource.data.to[0] is string
+        && request.resource.data.message is map
+        && request.resource.data.message.keys().hasAny(['html', 'text'])
+        && request.resource.data.message.subject is string;
+      allow read, update, delete: if false;
+    }
+
+    // Some projects configure Trigger Email to use `emails` instead of `mail`.
+    match /emails/{mailId} {
       allow create: if isSignedIn()
         && request.resource.data.keys().hasAll(['to', 'message'])
         && request.resource.data.to is list
