@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { getAppointmentById, getDoctorAppointments } from '../services/appointmentService';
+import { getAppointmentById, getDoctorAppointments, updateAppointment } from '../services/appointmentService';
 import { useAuth } from '../hooks/useAuth';
 import { Appointment } from '../types';
 import ManageAppointmentModal from '../components/appointments/ManageAppointmentModal';
@@ -14,6 +14,7 @@ export const AppointmentSummary: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showManage, setShowManage] = useState(false);
+  const [loadingComplete, setLoadingComplete] = useState(false);
   const { navigateBack } = useNavigateWithFallback();
   const navigate = useNavigate();
 
@@ -50,12 +51,25 @@ export const AppointmentSummary: React.FC = () => {
     setAppointment((prev) => (prev ? { ...prev, ...u } : prev));
   };
 
+  const markCompleted = async () => {
+    if (!user?.id || !appointment) return;
+    try {
+      setLoadingComplete(true);
+      await updateAppointment(user.id, appointment.id, { status: 'completed' });
+      setAppointment({ ...appointment, status: 'completed' });
+    } catch (err) {
+      setError('Failed to mark appointment completed');
+    } finally {
+      setLoadingComplete(false);
+    }
+  };
+
   return (
     <div className="bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="relative mb-6">
           <button
-            onClick={() => navigateBack('/appointments')}
+            onClick={() => navigate('/appointments')}
             className="absolute left-0 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-2xl text-foreground"
             aria-label="Back"
           >
@@ -117,6 +131,13 @@ export const AppointmentSummary: React.FC = () => {
                 className="w-full md:w-auto border px-4 py-3 rounded-2xl font-semibold"
               >
                 Manage Appointment
+              </button>
+              <button
+                onClick={markCompleted}
+                disabled={loadingComplete || appointment.status === 'completed'}
+                className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-2xl font-semibold disabled:opacity-50"
+              >
+                COMPLETED
               </button>
             </div>
           </div>

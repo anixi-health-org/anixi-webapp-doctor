@@ -154,3 +154,113 @@ export const sendReferralInvitationTest = functions.https.onRequest(async (req, 
     res.status(500).json({ error: err?.message || String(err) });
   }
 });
+
+/**
+ * Scheduled Cloud Function to apply auto-cancellation rule to pending appointments
+ * Runs every hour to catch appointments whose time has passed
+ */
+export const applyAutoCancellationRules = functions.pubsub
+  .schedule('every 1 hours')
+  .onRun(async (context) => {
+    try {
+      console.log('Starting auto-cancellation process for pending appointments');
+      
+      const now = new Date();
+      let processedCount = 0;
+      let cancelledCount = 0;
+      let errorCount = 0;
+
+      // Query all pending appointments from global collection
+      const appointmentsRef = db.collection('appointments');
+      const query = appointmentsRef.where('status', '==', 'pending');
+      const snapshot = await query.get();
+
+      console.log(`Found ${snapshot.size} pending appointments to process`);
+
+      for (const doc of snapshot.docs) {
+        processedCount++;
+        try {
+          const data = doc.data();
+          const appointmentId = doc.id;
+          const doctorId = data.doctorId as string;
+
+          // Parse appointment date and time
+          let appointmentDateTime = new Date();
+          
+          // Handle date field (could be Timestamp or string)
+          if (data.date) {
+            if (data.date instanceof admin.firestore.Timestamp) {
+              appointmentDateTime = data.date.toDate();
+            } else if (typeof data.date === 'string') {
+              appointmentDateTime = new Date(data.date);
+            }
+          }
+
+          // Parse time string to set hours and minutes
+          const timeString = data.time as string;
+          if (timeString && typeof timeString === 'string') {
+            const timeMatch = timeString.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+            if (timeMatch) {
+              let hours = parseInt(timeMatch[1], 10);
+              const minutes = parseInt(timeMatch[2], 10);
+              const period = timeMatch[3];
+
+              // Convert to 24-hour format if AM/PM is present
+              if (period) {
+                if (period.toUpperCase() === 'PM' && hours !== 12) {
+                  hours += 12;
+                } else if (period.toUpperCase() === 'AM' && hours === 12) {
+                  hours = 0;
+                }
+              }
+
+              appointmentDateTime.setHours(hours, minutes, 0, 0);
+            }
+          }
+
+          // Check if appointment time has passed
+          if (appointmentDateTime <= now) {
+            // Auto-cancel the appointment
+            await doc.ref.update({
+              status: 'cancelled',
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              autoCancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            // Also update in doctor's subcollection if it exists
+            if (doctorId) {
+              const doctorRef = db.collection('users').doc(doctorId).collection('appointments').doc(appointmentId);
+              const doctorDoc = await doctorRef.get();
+              if (doctorDoc.exists) {
+                await doctorRef.update({
+                  status: 'cancelled',
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                  autoCancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+              }
+            }
+
+            cancelledCount++;
+            console.log(`Auto-cancelled appointment ${appointmentId} (Doctor: ${doctorId})`);
+          }
+        } catch (error: any) {
+          errorCount++;
+          console.error(`Error processing appointment ${doc.id}:`, error?.message || error);
+        }
+      }
+
+      console.log(
+        `Auto-cancellation process completed. Processed: ${processedCount}, Cancelled: ${cancelledCount}, Errors: ${errorCount}`
+      );
+
+      return {
+        processed: processedCount,
+        cancelled: cancelledCount,
+        errors: errorCount,
+      };
+    } catch (error: any) {
+      console.error('Error in applyAutoCancellationRules:', error?.message || error);
+      throw error;
+    }
+  });
+

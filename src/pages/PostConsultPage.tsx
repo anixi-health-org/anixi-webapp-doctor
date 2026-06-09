@@ -302,72 +302,268 @@ const { user } = useAuth();
       setRecordedChunks([]);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
+      
+      // Test supported MIME types in order of preference
+      // Order: Best codecs first, with Windows fallbacks
       const supportedTypes = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/ogg;codecs=opus',
-        'audio/ogg',
+        'audio/webm;codecs=opus',      // Chrome/Firefox (Best quality)
+        'audio/webm',                   // Chrome/Firefox fallback
+        'audio/ogg;codecs=opus',       // Firefox
+        'audio/ogg',                    // Firefox fallback
+        'audio/mp4',                    // Safari/Windows fallback
+        'audio/wav',                    // Windows/Universal fallback
       ];
-      const mimeType = supportedTypes.find((type) => MediaRecorder.isTypeSupported(type)) || 'audio/webm';
-      setRecordingMimeType(mimeType);
+      
+      let mimeType = '';
+      for (const type of supportedTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          mimeType = type;
+          break;
+        }
+      }
+      
+      // Fallback to empty string if none supported (browser will use default)
+      if (!mimeType) {
+        console.warn('No MIME type supported by MediaRecorder, using browser default');
+        mimeType = '';
+      }
+      
+      setRecordingMimeType(mimeType || 'audio/webm');
       const options: any = mimeType ? { mimeType } : {};
+      
       const mr = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mr;
+      
       mr.ondataavailable = (ev: BlobEvent) => {
         if (ev.data && ev.data.size > 0) {
           setRecordedChunks((prev) => [...prev, ev.data]);
         }
       };
+      
       mr.addEventListener('stop', () => {
         if (mediaStreamRef.current) {
           mediaStreamRef.current.getTracks().forEach((t) => t.stop());
           mediaStreamRef.current = null;
         }
       });
+      
       mr.start();
       setIsRecording(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to start recording';
-      setToast({ visible: true, message, type: 'error' });
+      
+      // Provide specific guidance based on error
+      if (message.includes('Permission denied') || message.includes('NotAllowedError')) {
+        setToast({
+          visible: true,
+          message: '🔒 Microphone permission denied. Please allow microphone access in your browser settings.',
+          type: 'error',
+        });
+      } else if (message.includes('NotFoundError') || message.includes('no audio input')) {
+        setToast({
+          visible: true,
+          message: '🎙️ No microphone found. Please check your audio device.',
+          type: 'error',
+        });
+      } else {
+        setToast({ visible: true, message, type: 'error' });
+      }
     }
   };
+
+  // const stopAndUploadRecording = async () => {
+  //   try {
+  //     setIsUploadingRecording(true);
+  //     setIsRecording(false);
+  //     const mr = mediaRecorderRef.current;
+  //     if (mr && mr.state !== 'inactive') {
+  //       await new Promise<void>((resolve) => {
+  //         const onStop = () => {
+  //           mr.removeEventListener('stop', onStop);
+  //           resolve();
+  //         };
+  //         mr.addEventListener('stop', onStop);
+  //         mr.stop();
+  //       });
+  //     }
+
+  //     if (recordedChunks.length === 0) {
+  //       setToast({ visible: true, message: 'No audio recorded.', type: 'error' });
+  //       setIsUploadingRecording(false);
+  //       return;
+  //     }
+
+  //     const blob = new Blob(recordedChunks, { type: recordingMimeType || 'audio/webm' });
+      
+  //     // Determine file extension based on MIME type
+  //     let fileExtension = 'webm';
+  //     if (recordingMimeType.includes('ogg')) {
+  //       fileExtension = 'ogg';
+  //     } else if (recordingMimeType.includes('mp4')) {
+  //       fileExtension = 'mp4';
+  //     } else if (recordingMimeType.includes('wav')) {
+  //       fileExtension = 'wav';
+  //     } else if (recordingMimeType.includes('mpeg')) {
+  //       fileExtension = 'mp3';
+  //     }
+      
+  //     const filename = `${(appointment?.patientName || 'session').replace(/[^a-z0-9]+/gi, '_')}-${Date.now()}.${fileExtension}`;
+  //     const file = new File([blob], filename, { type: blob.type });
+
+  //     if (!appointment || !user?.id) {
+  //       setToast({ visible: true, message: 'Appointment not loaded', type: 'error' });
+  //       setIsUploadingRecording(false);
+  //       return;
+  //     }
+
+  //     const saved = await addAppointmentDocument(appointment.doctorId, appointment.id, file, user.id, recordingTitle || undefined);
+
+  //     const now = new Date();
+  //     const newAction: PostConsultAction = {
+  //       id: `session_recording-${now.getTime()}`,
+  //       type: 'session_recording',
+  //       title: recordingTitle || 'Session recording',
+  //       content: `Audio recording saved: ${saved.fileName}`,
+  //       status: 'finalized',
+  //       metadata: {
+  //         fileName: saved.fileName,
+  //         downloadURL: saved.downloadURL,
+  //       },
+  //       createdBy: user.id,
+  //       createdAt: now,
+  //       updatedAt: now,
+  //     };
+
+  //     const currentActions = appointment.postConsultActions ?? [];
+  //     const nextActions = [newAction, ...currentActions];
+  //     const nextDocuments = [saved, ...(appointment.documents ?? [])];
+
+  //     await persistActions(nextActions, { documents: nextDocuments });
+
+  //     setToast({ visible: true, message: 'Recording saved to appointment.', type: 'success' });
+  //     setShowRecorder(false);
+  //     setRecordedChunks([]);
+  //   } catch (err) {
+  //     const message = err instanceof Error ? err.message : 'Failed to upload recording';
+  //     setToast({ visible: true, message, type: 'error' });
+  //   } finally {
+  //     setIsUploadingRecording(false);
+  //   }
+  // };
+
+  //     if (!appointment || !user?.id) {
+  //       setToast({ visible: true, message: 'Appointment not loaded', type: 'error' });
+  //       setIsUploadingRecording(false);
+  //       return;
+  //     }
+
+  // //     const saved = await addAppointmentDocument(appointment.doctorId, appointment.id, file, user.id, recordingTitle || undefined);
+
+  // //     const now = new Date();
+  // //     const newAction: PostConsultAction = {
+  // //       id: `session_recording-${now.getTime()}`,
+  // //       type: 'session_recording',
+  // //       title: recordingTitle || 'Session recording',
+  // //       content: `Audio recording saved: ${saved.fileName}`,
+  // //       status: 'finalized',
+  // //       metadata: {
+  // //         fileName: saved.fileName,
+  // //         downloadURL: saved.downloadURL,
+  // //       },
+  // //       createdBy: user.id,
+  // //       createdAt: now,
+  // //       updatedAt: now,
+  // //     };
+
+  // //     const currentActions = appointment.postConsultActions ?? [];
+  // //     const nextActions = [newAction, ...currentActions];
+  // //     const nextDocuments = [saved, ...(appointment.documents ?? [])];
+
+  // //     await persistActions(nextActions, { documents: nextDocuments });
+
+  // //     setToast({ visible: true, message: 'Recording saved to appointment.', type: 'success' });
+  // //     setShowRecorder(false);
+  // //     setRecordedChunks([]);
+  //   } catch (err) {
+  //     const message = err instanceof Error ? err.message : 'Failed to upload recording';
+  //     setToast({ visible: true, message, type: 'error' });
+  //   } finally {
+  //     setIsUploadingRecording(false);
+  //   }
+  // };
 
   const stopAndUploadRecording = async () => {
     try {
       setIsUploadingRecording(true);
       setIsRecording(false);
+  
       const mr = mediaRecorderRef.current;
+  
       if (mr && mr.state !== 'inactive') {
         await new Promise<void>((resolve) => {
           const onStop = () => {
             mr.removeEventListener('stop', onStop);
             resolve();
           };
+  
           mr.addEventListener('stop', onStop);
           mr.stop();
         });
       }
-
+  
       if (recordedChunks.length === 0) {
-        setToast({ visible: true, message: 'No audio recorded.', type: 'error' });
-        setIsUploadingRecording(false);
+        setToast({
+          visible: true,
+          message: 'No audio recorded.',
+          type: 'error',
+        });
         return;
       }
-
-      const blob = new Blob(recordedChunks, { type: recordingMimeType || 'audio/webm' });
-      const fileExtension = recordingMimeType.includes('ogg') ? 'ogg' : 'webm';
-      const filename = `${(appointment?.patientName || 'session').replace(/[^a-z0-9]+/gi, '_')}-${Date.now()}.${fileExtension}`;
-      const file = new File([blob], filename, { type: blob.type });
-
+  
+      const blob = new Blob(recordedChunks, {
+        type: recordingMimeType || 'audio/webm',
+      });
+  
+      let fileExtension = 'webm';
+  
+      if (recordingMimeType.includes('ogg')) {
+        fileExtension = 'ogg';
+      } else if (recordingMimeType.includes('mp4')) {
+        fileExtension = 'mp4';
+      } else if (recordingMimeType.includes('wav')) {
+        fileExtension = 'wav';
+      } else if (recordingMimeType.includes('mpeg')) {
+        fileExtension = 'mp3';
+      }
+  
+      const filename = `${
+        (appointment?.patientName || 'session')
+          .replace(/[^a-z0-9]+/gi, '_')
+      }-${Date.now()}.${fileExtension}`;
+  
+      const file = new File([blob], filename, {
+        type: blob.type,
+      });
+  
       if (!appointment || !user?.id) {
-        setToast({ visible: true, message: 'Appointment not loaded', type: 'error' });
-        setIsUploadingRecording(false);
+        setToast({
+          visible: true,
+          message: 'Appointment not loaded',
+          type: 'error',
+        });
         return;
       }
-
-      const saved = await addAppointmentDocument(appointment.doctorId, appointment.id, file, user.id, recordingTitle || undefined);
-
+  
+      const saved = await addAppointmentDocument(
+        appointment.doctorId,
+        appointment.id,
+        file,
+        user.id,
+        recordingTitle || undefined
+      );
+  
       const now = new Date();
+  
       const newAction: PostConsultAction = {
         id: `session_recording-${now.getTime()}`,
         type: 'session_recording',
@@ -382,25 +578,48 @@ const { user } = useAuth();
         createdAt: now,
         updatedAt: now,
       };
-
+  
       const currentActions = appointment.postConsultActions ?? [];
-      const nextActions = [newAction, ...currentActions];
-      const nextDocuments = [saved, ...(appointment.documents ?? [])];
-
-      await persistActions(nextActions, { documents: nextDocuments });
-
-      setToast({ visible: true, message: 'Recording saved to appointment.', type: 'success' });
+  
+      const nextActions = [
+        newAction,
+        ...currentActions,
+      ];
+  
+      const nextDocuments = [
+        saved,
+        ...(appointment.documents ?? []),
+      ];
+  
+      await persistActions(nextActions, {
+        documents: nextDocuments,
+      });
+  
+      setToast({
+        visible: true,
+        message: 'Recording saved to appointment.',
+        type: 'success',
+      });
+  
       setShowRecorder(false);
       setRecordedChunks([]);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to upload recording';
-      setToast({ visible: true, message, type: 'error' });
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Failed to upload recording';
+  
+      setToast({
+        visible: true,
+        message,
+        type: 'error',
+      });
     } finally {
       setIsUploadingRecording(false);
     }
   };
 
-  const cancelRecording = () => {
+   const cancelRecording = () => {
     try {
       const mr = mediaRecorderRef.current;
       if (mr && mr.state !== 'inactive') {

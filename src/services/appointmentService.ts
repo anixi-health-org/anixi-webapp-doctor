@@ -197,6 +197,118 @@ const normalizePostConsultActions = (value: any): PostConsultAction[] => {
     .filter((item): item is PostConsultAction => item !== null)
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 };
+
+/**
+ * Applies auto-cancellation rule to pending appointments whose date/time has passed
+ * Updates Firestore for both global collection and doctor's subcollection
+ */
+const applyAutoCancellationToAppointment = async (
+  appointmentId: string,
+  doctorId: string,
+  appointmentDate: Date,
+  appointmentTime: string,
+  currentStatus: Appointment['status']
+): Promise<boolean> => {
+  try {
+    // Only apply auto-cancellation to pending appointments
+    if (currentStatus !== 'pending') {
+      return false;
+    }
+
+    // Parse appointment time to create a complete datetime
+    let appointmentDateTime = new Date(appointmentDate);
+    
+    // Parse time string (e.g., "10:00 AM", "14:30")
+    const timeMatch = appointmentTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (timeMatch) {
+      let hours = parseInt(timeMatch[1], 10);
+      const minutes = parseInt(timeMatch[2], 10);
+      const period = timeMatch[3];
+
+      // Convert to 24-hour format if AM/PM is present
+      if (period) {
+        if (period.toUpperCase() === 'PM' && hours !== 12) {
+          hours += 12;
+        } else if (period.toUpperCase() === 'AM' && hours === 12) {
+          hours = 0;
+        }
+      }
+
+      appointmentDateTime.setHours(hours, minutes, 0, 0);
+    }
+
+    // Check if appointment time has passed
+    const now = new Date();
+    console.log(`[Auto-Cancel Check] Appointment ${appointmentId}: Time=${appointmentTime}, DateTime=${appointmentDateTime.toISOString()}, Now=${now.toISOString()}, Passed=${appointmentDateTime <= now}`);
+    
+    if (appointmentDateTime > now) {
+      return false; // Appointment is in the future, no auto-cancellation needed
+    }
+
+    console.log(`[Auto-Cancel Triggered] Appointment ${appointmentId} will be auto-cancelled`);
+
+    // Auto-cancel: update Firestore
+    // 1. Try to update/create in global collection
+    const globalRef = doc(db, APPOINTMENTS_COLLECTION, appointmentId);
+    try {
+      // Use setDoc with merge to create or update
+      await setDoc(globalRef, {
+        status: 'cancelled',
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      console.log(`[Global Collection] Updated appointment ${appointmentId} in global collection`);
+    } catch (globalError) {
+      console.warn(`[Global Collection] Could not update appointment ${appointmentId} in global collection:`, globalError);
+    }
+
+    // 2. Update doctor's subcollection
+    const doctorRef = doc(db, USERS_COLLECTION, doctorId, 'appointments', appointmentId);
+    try {
+      await setDoc(doctorRef, {
+        status: 'cancelled',
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      console.log(`[Doctor Subcollection] Updated appointment ${appointmentId} in doctor subcollection`);
+    } catch (doctorError) {
+      console.warn(`[Doctor Subcollection] Could not update appointment ${appointmentId} in doctor subcollection:`, doctorError);
+    }
+
+    console.log(`✅ Auto-cancelled appointment ${appointmentId} (was pending and time has passed)`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Error applying auto-cancellation to appointment ${appointmentId}:`, error);
+    return false;
+  }
+};
+
+/**
+ * Processes a batch of appointments to apply auto-cancellation rules
+ */
+const applyAutoCancellationBatch = async (
+  appointments: Appointment[],
+  doctorId: string
+): Promise<Appointment[]> => {
+  console.log(`[Batch Processing] Starting auto-cancellation check for ${appointments.length} appointments`);
+  
+  const cancellationPromises = appointments.map((apt) =>
+    applyAutoCancellationToAppointment(apt.id, doctorId, apt.date, apt.time, apt.status)
+  );
+
+  const results = await Promise.allSettled(cancellationPromises);
+
+  // Create updated appointments list with cancelled status where applicable
+  const updatedAppointments = appointments.map((apt, index) => {
+    const result = results[index];
+    const wasUpdated = result?.status === 'fulfilled' && (result as PromiseFulfilledResult<boolean>).value === true;
+    if (wasUpdated) {
+      return { ...apt, status: 'cancelled' as const };
+    }
+    return apt;
+  });
+
+  return updatedAppointments;
+};
+
 export const getDoctorAppointments = async (doctorId: string): Promise<Appointment[]> => {
   try {
     const appointments: Appointment[] = [];
@@ -276,7 +388,10 @@ export const getDoctorAppointments = async (doctorId: string): Promise<Appointme
     } catch (error) {
     }
 
-    const sorted = appointments.sort((a, b) => b.date.getTime() - a.date.getTime());
+    // Apply auto-cancellation rule to pending appointments whose time has passed
+    const appointmentsWithAutoCancellation = await applyAutoCancellationBatch(appointments, doctorId);
+
+    const sorted = appointmentsWithAutoCancellation.sort((a, b) => b.date.getTime() - a.date.getTime());
     return sorted;
   } catch (error) {
     console.error('Error in getDoctorAppointments:', error);
@@ -308,9 +423,27 @@ export const getAppointmentById = async (
       notes: data.notes || '',
       documents: normalizeAppointmentDocuments(data.documents),
       postConsultActions: normalizePostConsultActions(data.postConsultActions),
+      isManual: data.isManual ?? false,
+      startAt: convertTimestamp(data.startAt) || undefined,
+      endAt: convertTimestamp(data.endAt) || undefined,
       createdAt: convertTimestamp(data.createdAt) || convertTimestamp(data.date) || new Date(),
       updatedAt: convertTimestamp(data.updatedAt) || convertTimestamp(data.date) || new Date(),
     };
+
+    // Apply auto-cancellation rule if applicable
+    const wasAutoCancelled = await applyAutoCancellationToAppointment(
+      appointment.id,
+      doctorId,
+      appointment.date,
+      appointment.time,
+      appointment.status
+    );
+
+    // Update local appointment object if auto-cancelled
+    if (wasAutoCancelled) {
+      appointment.status = 'cancelled';
+    }
+
     return appointment;
   } catch (error) {
     ;
@@ -331,7 +464,7 @@ export const createAppointment = async (data: Omit<Appointment, 'id' | 'createdA
       patientName: data.patientName,
       patientEmail: data.patientEmail,
       type: normalizeType(data.type),
-      status: normalizeStatus(data.status),
+      status: data.requestedByRole === 'doctor' ? 'confirmed' : normalizeStatus(data.status),
       date: Timestamp.fromDate(data.date),
       time: data.time,
       notes: data.notes || '',
