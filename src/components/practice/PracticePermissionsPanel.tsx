@@ -137,7 +137,7 @@ export const PracticePermissionsPanel: React.FC<Props> = ({
                 onChange={(e) =>
                   setInviteForm((prev) => ({ ...prev, displayName: e.target.value }))
                 }
-                placeholder="Display name (optional)"
+                placeholder="Display name"
                 className="text-sm border border-gray-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#B7A06A]"
               />
             </div>
