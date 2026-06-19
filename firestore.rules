@@ -232,6 +232,11 @@ service cloud.firestore {
             uid() == memberId &&
             get(/databases/$(database)/documents/practices/$(practiceId)).data.ownerId == uid() &&
             request.resource.data.role == 'owner'
+          ) ||
+          (
+            uid() == memberId &&
+            request.resource.data.role == 'delegate' &&
+            request.resource.data.status == 'active'
           )
         );
         // Practice owner may repair their own membership record
