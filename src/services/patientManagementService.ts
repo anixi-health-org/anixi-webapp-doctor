@@ -90,6 +90,58 @@ function escapeHtml(input: string): string {
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
 }
+
+/** Keeps doctor portal + mobile permission models in sync for health data reads. */
+export const linkDoctorPatientAccess = async (
+  doctorId: string,
+  patientId: string
+): Promise<void> => {
+  if (!doctorId || !patientId) return;
+
+  const approvedPatientRef = doc(db, USERS_COLLECTION, doctorId, 'approved_patients', patientId);
+  await setDoc(
+    approvedPatientRef,
+    {
+      patientId,
+      acceptedAt: serverTimestamp(),
+      status: 'active',
+    },
+    { merge: true }
+  );
+
+  const approvedDoctorRef = doc(db, USERS_COLLECTION, patientId, 'approved_doctors', doctorId);
+  await setDoc(
+    approvedDoctorRef,
+    {
+      doctorId,
+      patientId,
+      status: 'active',
+      acceptedAt: serverTimestamp(),
+      dataAccessScope: 'all',
+    },
+    { merge: true }
+  );
+
+  const doctorProfileRef = doc(db, 'doctors', doctorId);
+  const doctorSnap = await getDoc(doctorProfileRef);
+  const doctorData = doctorSnap.exists() ? doctorSnap.data() : {};
+  const doctorName =
+    doctorData.displayName || doctorData.fullName || doctorData.name || 'Doctor';
+  const doctorSpecialty = doctorData.medicalSpecialty || doctorData.specialty;
+
+  const approvedShareRef = doc(db, USERS_COLLECTION, patientId, 'approved_shares', doctorId);
+  await setDoc(
+    approvedShareRef,
+    {
+      doctorId,
+      doctorName,
+      ...(doctorSpecialty ? { doctorSpecialty } : {}),
+      approvedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+};
+
 export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> => {
   try {
     if (!doctorId || doctorId.trim() === '') {
@@ -419,14 +471,10 @@ export const addPatientManually = async (
     }
 
     if (existingPatientId) {
-      const approvedRef = doc(db, USERS_COLLECTION, doctorId, 'approved_patients', existingPatientId);
-      const approvedSnap = await getDoc(approvedRef);
-      if (!approvedSnap.exists()) {
-        await setDoc(approvedRef, {
-          patientId: existingPatientId,
-          acceptedAt: serverTimestamp(),
-          status: 'active',
-        });
+      try {
+        await linkDoctorPatientAccess(doctorId, existingPatientId);
+      } catch (e: any) {
+        throw new Error(`Permission denied linking patient to doctor. (${e?.code || 'unknown'})`);
       }
 
       if (existingPatientData && !existingPatientData.assignedDoctorId) {
@@ -487,14 +535,8 @@ export const addPatientManually = async (
       throw new Error(`Permission denied creating patient record. (${e?.code || 'unknown'})`);
     }
 
-    // add reference under doctor's approved_patients so doctor immediately sees the patient
-    const approvedRef = doc(db, USERS_COLLECTION, doctorId, 'approved_patients', newPatientRef.id);
     try {
-      await setDoc(approvedRef, {
-        patientId: newPatientRef.id,
-        acceptedAt: serverTimestamp(),
-        status: 'active',
-      });
+      await linkDoctorPatientAccess(doctorId, newPatientRef.id);
     } catch (e: any) {
       throw new Error(`Permission denied linking patient to doctor. (${e?.code || 'unknown'})`);
     }

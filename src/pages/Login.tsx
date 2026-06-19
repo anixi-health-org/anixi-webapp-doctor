@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Toast } from '../components/ui';
 import { useAuth } from '../hooks/AuthContext';
@@ -20,6 +20,9 @@ export const Login: React.FC = () => {
     }
   }, [toast.visible]);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnUrl = searchParams.get('returnUrl');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -30,7 +33,11 @@ export const Login: React.FC = () => {
         setToast({ message: 'Access denied. This portal is for doctors only. Please use the Anixi patient app.', visible: true });
         return;
       }
-      navigate('/dashboard');
+      if (returnUrl && returnUrl.startsWith('/')) {
+        navigate(returnUrl);
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
       const msg: string = err?.message || '';
       if (msg.toLowerCase().includes('access denied') || msg.toLowerCase().includes('patient app')) {
