@@ -1,35 +1,35 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { auth } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
-import { useAcceptDelegateInvitation } from '../hooks/usePracticePermissions';
+import { acceptDelegateInvitation } from '../services/permissions/practicePermissionsService';
 
 export const DelegateAccept: React.FC = () => {
   const [searchParams] = useSearchParams();
   const doctorId = searchParams.get('doctorId') || '';
   const delegateId = searchParams.get('delegateId') || '';
-  const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+  const { user, isLoading: authLoading, isAuthenticated, refreshPracticeSession } = useAuth();
   const navigate = useNavigate();
-  const acceptMutation = useAcceptDelegateInvitation();
+  const acceptStartedRef = useRef(false);
 
   const [status, setStatus] = useState<'idle' | 'accepting' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState<string>('');
 
   useEffect(() => {
     if (authLoading || !isAuthenticated || !user || !doctorId || !delegateId) return;
-    if (status !== 'idle') return;
+    if (acceptStartedRef.current) return;
+    acceptStartedRef.current = true;
 
     const run = async () => {
       setStatus('accepting');
       try {
-        await acceptMutation.mutateAsync({
-          doctorId,
-          delegateId,
-          user: {
-            uid: user.id,
-            email: user.email,
-            displayName: user.displayName,
-          },
+        const authEmail = auth.currentUser?.email ?? user.email;
+        await acceptDelegateInvitation(doctorId, delegateId, {
+          uid: user.id,
+          email: authEmail,
+          displayName: user.displayName,
         });
+        await refreshPracticeSession();
         setStatus('success');
         setMessage('Invitation accepted. You now have delegate access.');
         setTimeout(() => navigate('/practice-settings'), 2000);
@@ -46,8 +46,7 @@ export const DelegateAccept: React.FC = () => {
     user,
     doctorId,
     delegateId,
-    status,
-    acceptMutation,
+    refreshPracticeSession,
     navigate,
   ]);
 
@@ -115,7 +114,18 @@ export const DelegateAccept: React.FC = () => {
           <>
             <h1 className="text-xl font-semibold text-red-800">Could not accept invitation</h1>
             <p className="mt-2 text-sm text-gray-600">{message}</p>
-            <Link to="/practice-settings" className="mt-4 inline-block text-sm underline">
+            <button
+              type="button"
+              onClick={async () => {
+                acceptStartedRef.current = false;
+                setStatus('idle');
+                window.location.reload();
+              }}
+              className="mt-4 block w-full text-sm text-[#516059] underline"
+            >
+              Try again
+            </button>
+            <Link to="/practice-settings" className="mt-2 inline-block text-sm underline">
               Go to practice settings
             </Link>
           </>

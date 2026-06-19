@@ -2,11 +2,18 @@ import {
   arrayUnion,
   doc,
   getDoc,
+  serverTimestamp,
   setDoc,
   updateDoc,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { DOCTORS_COLLECTION, USERS_COLLECTION } from '../../shared/constants';
+import {
+  DOCTORS_COLLECTION,
+  PRACTICES_COLLECTION,
+  PRACTICE_MEMBERS_SUBCOLLECTION,
+  USERS_COLLECTION,
+} from '../../shared/constants';
+import { getPracticeByOwnerId } from '../practiceSettingsService';
 import {
   PRACTICE_PERMISSIONS_DOC_ID,
   PRACTICE_PERMISSIONS_SUBCOLLECTION,
@@ -121,46 +128,97 @@ export const acceptDelegateInvitation = async (
     throw new Error('Invalid invitation link');
   }
 
-  const snap = await getDoc(permissionsDocRef(doctorId));
-  if (!snap.exists()) {
+  const permissions = await getPracticePermissions(doctorId);
+  if (!permissions) {
     throw new Error('Practice permissions not found');
   }
 
-  const data = snap.data();
-  const delegates: DelegateUser[] = Array.isArray(data.delegates) ? data.delegates : [];
-  const acceptingEmail = (acceptingUser.email || '').trim().toLowerCase();
+  const delegates = permissions.delegates ?? [];
+  const acceptingEmail = normalizeEmail(acceptingUser.email);
 
-  const index = delegates.findIndex(
+  const alreadyAccepted = delegates.find(
     (d) =>
       d.id === delegateId &&
-      d.status === 'pending' &&
-      (!acceptingEmail || d.email.toLowerCase() === acceptingEmail)
+      d.status === 'active' &&
+      d.userId === acceptingUser.uid
   );
+  if (alreadyAccepted) {
+    await linkDelegateToDoctor(acceptingUser.uid, doctorId, alreadyAccepted);
+    return;
+  }
 
-  if (index === -1) {
+  const pendingInvite = delegates.find((d) => d.id === delegateId && d.status === 'pending');
+
+  if (!pendingInvite) {
     throw new Error('Invitation not found or already accepted');
   }
 
-  const updated = [...delegates];
-  updated[index] = {
-    ...updated[index],
-    userId: acceptingUser.uid,
-    displayName: acceptingUser.displayName?.trim() || updated[index].displayName,
-    status: 'active',
-    acceptedAt: new Date().toISOString(),
-  };
+  if (acceptingEmail && normalizeEmail(pendingInvite.email) !== acceptingEmail) {
+    throw new Error(
+      `This invitation was sent to ${pendingInvite.email}. Please sign in with that email address.`
+    );
+  }
+
+  const updated = delegates.map((d) =>
+    d.id === delegateId
+      ? {
+          ...d,
+          userId: acceptingUser.uid,
+          displayName: acceptingUser.displayName?.trim() || d.displayName,
+          status: 'active' as const,
+          acceptedAt: new Date().toISOString(),
+        }
+      : d
+  );
 
   await updateDoc(permissionsDocRef(doctorId), { delegates: updated });
+  await linkDelegateToDoctor(acceptingUser.uid, doctorId, pendingInvite);
+};
 
+async function linkDelegateToDoctor(
+  delegateUid: string,
+  doctorId: string,
+  delegate?: DelegateUser
+): Promise<void> {
   await setDoc(
-    doc(db, USERS_COLLECTION, acceptingUser.uid),
+    doc(db, USERS_COLLECTION, delegateUid),
     {
       delegatingForDoctorId: doctorId,
       updatedAt: new Date(),
     },
     { merge: true }
   );
-};
+
+  if (!delegate) return;
+
+  const doctorUserSnap = await getDoc(doc(db, USERS_COLLECTION, doctorId));
+  let practiceId = doctorUserSnap.data()?.primaryPracticeId as string | undefined;
+  if (!practiceId) {
+    const practice = await getPracticeByOwnerId(doctorId);
+    practiceId = practice?.id;
+  }
+  if (!practiceId) return;
+
+  await setDoc(
+    doc(db, PRACTICES_COLLECTION, practiceId, PRACTICE_MEMBERS_SUBCOLLECTION, delegateUid),
+    {
+      uid: delegateUid,
+      practiceId,
+      role: 'delegate',
+      permissions: delegate.permissions,
+      status: 'active',
+      email: delegate.email,
+      displayName: delegate.displayName || '',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+function normalizeEmail(email?: string | null): string {
+  return (email || '').trim().toLowerCase();
+}
 
 export const deactivateDelegate = async (
   doctorId: string,
