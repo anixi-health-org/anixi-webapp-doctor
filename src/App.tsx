@@ -15,6 +15,8 @@ import { PatientList } from './pages/PatientList';
 import { PatientProfile } from './pages/PatientProfile';
 import { Patients } from './pages/Patients';
 import { DoctorSearch } from './pages/DoctorSearch';
+import MyDoctors from './pages/MyDoctors';
+import DelegateAccept from './pages/DelegateAccept';
 import ProfessionalProfile from './pages/Profile';
 import PracticeSettingsPage from './pages/PracticeSettingsPage';
 import PracticeCalendarPage from './pages/PracticeCalendarPage';
@@ -120,16 +122,9 @@ const debugSharingRequestsData = async () => {
 
     const doctorId = currentUser.uid;
 
-    const { getDoctorSharingRequests } = await import('./services/patientManagementService');
-    
-    const requests = await getDoctorSharingRequests(doctorId);
-    
-    requests.forEach((req, idx) => {
-      
-      if (req.patientInfo) {
-      } else {
-      }
-    });
+    const { getIncomingSharingRequests } = await import('./services/sharing');
+    const requests = await getIncomingSharingRequests(doctorId);
+    requests.forEach(() => {});
 
   } catch (error) {
     ;
@@ -148,6 +143,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/delegate/accept" element={<DelegateAccept />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route
             path="/*"
@@ -165,6 +161,7 @@ function App() {
                     <Route path="/patient-profile/:patientId/vitals-history" element={<VitalsHistoryPage />} />
                     <Route path="/patients" element={<Patients />} />
                     <Route path="/find-doctor" element={<DoctorSearch />} />
+                    <Route path="/my-doctors" element={<MyDoctors />} />
                     <Route path="/appointments" element={<AppointmentsPage />} />
                     <Route path="/appointments/:appointmentId" element={<AppointmentSummary />} />
                     <Route path="/appointments/:appointmentId/post-consult" element={<PostConsultPage />} />
