@@ -711,91 +711,157 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
         </div>
         {}
         
-        <div className="w-full flex flex-col items-center justify-center px-2 py-4 border-t border-gray-200 bg-gray-50 mt-4">
-          <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-lg p-5 flex flex-col items-center">
-            <h2 className="text-2xl font-semibold text-gray-800 mb-1">Manage appointment</h2>
-            <p className="text-base text-gray-600 mb-5">Choose an action for this appointment.</p>
+        <div className="w-full px-2 py-6 border-t border-gray-200 bg-gradient-to-b from-gray-50 to-white mt-6">
+          <div className="w-full max-w-2xl mx-auto">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Manage appointment</h2>
+              <p className="text-base text-gray-600 mb-6">Choose an action for this appointment</p>
 
-            {!canManage && (
-              <p className="w-full mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                You have read-only access to appointments.
-              </p>
-            )}
+              {!canManage && (
+                <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-sm font-medium text-amber-900">
+                    ℹ️ You have read-only access to appointments.
+                  </p>
+                </div>
+              )}
 
-            {canManage && (
-              <button
-                onClick={handleAccept}
-                disabled={isProcessing || !isPendingAppointment}
-                className="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-4 mb-3 text-lg font-semibold bg-[#3F544D] text-white shadow-sm hover:bg-[#2d3c36] transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span className="text-xl">✔️</span> Accept appointment
-              </button>
-            )}
-            {canManage && (
-              <button
-                onClick={handleCancel}
-                disabled={isProcessing || !isPendingAppointment}
-                className="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-4 mb-3 text-lg font-semibold bg-red-500 text-white shadow-sm hover:bg-red-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span className="text-xl">✖️</span> Decline appointment
-              </button>
-            )}
+              {/* Primary Actions */}
+              {canManage && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+                  <button
+                    onClick={handleAccept}
+                    disabled={isProcessing || !isPendingAppointment}
+                    className="group relative overflow-hidden rounded-xl border-2 border-green-200 bg-green-50 p-4 text-left transition-all duration-200 hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="relative z-10 flex items-center gap-3">
+                      <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center text-2xl font-bold text-green-600">
+                        ✓
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-green-900">Accept appointment</h3>
+                        <p className="text-sm text-green-700 mt-0.5">Confirm and schedule</p>
+                      </div>
+                    </div>
+                  </button>
 
-            <div className="w-full flex flex-col gap-2 mt-2">
-              {canStartConsultation && (
+                  <button
+                    onClick={handleCancel}
+                    disabled={isProcessing || !isPendingAppointment}
+                    className="group relative overflow-hidden rounded-xl border-2 border-red-200 bg-red-50 p-4 text-left transition-all duration-200 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="relative z-10 flex items-center gap-3">
+                      <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center text-2xl font-bold text-red-600">
+                        ✕
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-red-900">Decline appointment</h3>
+                        <p className="text-sm text-red-700 mt-0.5">Reject request</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              )}
+
+              {/* Secondary Actions */}
+              <div className="space-y-3">
+                {canStartConsultation && (
+                  <button
+                    onClick={handleOpenPostConsult}
+                    disabled={isProcessing || isGeneratingInvoice}
+                    className="w-full flex items-center justify-between gap-3 rounded-xl py-3 px-4 bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="text-lg">🩺</span>
+                      {isGeneratingInvoice ? 'Starting...' : 'Start consultation'}
+                    </span>
+                    <span className="text-lg">→</span>
+                  </button>
+                )}
+
                 <button
                   onClick={handleOpenPostConsult}
-                  disabled={isProcessing || isGeneratingInvoice}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 bg-green-600 text-white font-medium text-base hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isProcessing || isPendingAppointment || isGeneratingInvoice}
+                  className="w-full flex items-center justify-between gap-3 rounded-xl py-3 px-4 border-2 border-gray-200 bg-white text-gray-900 font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <span className="text-lg">🩺</span> {isGeneratingInvoice ? 'Starting...' : 'Start consultation'}
+                  <span className="flex items-center gap-2">
+                    <span className="text-lg">📝</span>
+                    {isGeneratingInvoice ? 'Starting...' : 'Post-consult workflow'}
+                  </span>
+                  <span>→</span>
                 </button>
+
+                <button
+                  onClick={() => setShowRescheduleModal(true)}
+                  disabled={!canRescheduleAppointment || isProcessing}
+                  className="w-full flex items-center justify-between gap-3 rounded-xl py-3 px-4 border-2 border-gray-200 bg-white text-gray-900 font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-lg">📅</span>
+                    Move / reschedule
+                  </span>
+                  <span>→</span>
+                </button>
+
+                <button
+                  onClick={handleCancel}
+                  disabled={!canCancelAppointment || isProcessing}
+                  className="w-full flex items-center justify-between gap-3 rounded-xl py-3 px-4 border-2 border-gray-200 bg-white text-gray-900 font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-lg">⊘</span>
+                    Cancel
+                  </span>
+                  <span>→</span>
+                </button>
+
+                <button
+                  onClick={handleNoShow}
+                  disabled={!canNoShowAppointment || isProcessing}
+                  className="w-full flex items-center justify-between gap-3 rounded-xl py-3 px-4 border-2 border-gray-200 bg-white text-gray-900 font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-lg">⊗</span>
+                    No-show
+                  </span>
+                  <span>→</span>
+                </button>
+
+                <button
+                  onClick={handleOpenInvoiceModal}
+                  disabled={!canGenerateInvoice || isProcessing}
+                  className="w-full flex items-center justify-between gap-3 rounded-xl py-3 px-4 border-2 border-gray-200 bg-white text-gray-900 font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-lg">💰</span>
+                    Create Invoice
+                  </span>
+                  <span>→</span>
+                </button>
+              </div>
+
+              {/* Info Messages */}
+              <div className="mt-6 space-y-2">
+                <p className="text-xs font-medium text-gray-500">
+                  ℹ️ Cancellations require at least 1 hour before the appointment.
+                </p>
+                {canManage && !canCancelAppointment && appointment.status !== 'pending' && !isTerminal && (
+                  <p className="text-xs font-medium text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                    ⚠️ Cancellation is disabled because less than 1 hour remains.
+                  </p>
+                )}
+              </div>
+
+              {/* Error State */}
+              {error && (
+                <div className="mt-4 rounded-xl border-2 border-red-200 bg-red-50 px-4 py-3">
+                  <p className="text-sm font-medium text-red-800">
+                    ❌ {error}
+                  </p>
+                </div>
               )}
-              <button
-                onClick={handleOpenPostConsult}
-                disabled={isProcessing || isPendingAppointment || isGeneratingInvoice}
-                className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 border border-gray-300 bg-white text-[#3F544D] font-medium text-base hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span className="text-lg">🩺</span> {isGeneratingInvoice ? 'Starting...' : 'Post-consult workflow'}
-              </button>
-              <button
-                onClick={() => setShowRescheduleModal(true)}
-                disabled={!canRescheduleAppointment || isProcessing}
-                className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 border border-gray-300 bg-white text-[#3F544D] font-medium text-base hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span className="text-lg">📅</span> Move / reschedule
-              </button>
-              <button
-                onClick={handleCancel}
-                disabled={!canCancelAppointment || isProcessing}
-                className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 border border-gray-300 bg-white text-[#3F544D] font-medium text-base hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span className="text-lg">✖️</span> Cancel
-              </button>
-              <button
-                onClick={handleNoShow}
-                disabled={!canNoShowAppointment || isProcessing}
-                className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 border border-gray-300 bg-white text-[#3F544D] font-medium text-base hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span className="text-lg">👤✖️</span> No-show
-              </button>
-              <button
-                onClick={handleOpenInvoiceModal}
-                disabled={!canGenerateInvoice || isProcessing}
-                className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 border border-gray-300 bg-white text-[#3F544D] font-medium text-base hover:bg-gray-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <span className="text-lg">🧾</span> Complete & Create Invoice
-              </button>
             </div>
-            <p className="text-xs text-gray-500 mt-5">Cancellations require at least 1 hour before the visit.</p>
-            {canManage && !canCancelAppointment && appointment.status !== 'pending' && !isTerminal && (
-              <p className="text-xs text-amber-700 mt-1">Cancellation is disabled because less than 1 hour remains.</p>
-            )}
-            {error && (
-              <p className="mt-3 w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {error}
-              </p>
-            )}
           </div>
         </div>
       </div>
