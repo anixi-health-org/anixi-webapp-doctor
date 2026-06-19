@@ -13,10 +13,33 @@ service cloud.firestore {
       return request.auth.uid;
     }
 
+    // Patient approved doctor (mobile app flow)
     function isApprovedDoctorForPatient(patientId) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/Users/$(patientId)/approved_doctors/$(uid()))
         && get(/databases/$(database)/documents/Users/$(patientId)/approved_doctors/$(uid())).data.status == 'active';
+    }
+
+    // Doctor added patient manually (doctor portal flow)
+    function isDoctorWithApprovedPatient(patientId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/Users/$(uid())/approved_patients/$(patientId));
+    }
+
+    function isApprovedShareDoctorForPatient(patientId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/Users/$(patientId)/approved_shares/$(uid()));
+    }
+
+    function canDoctorReadPatientHealthData(patientId) {
+      return isApprovedDoctorForPatient(patientId)
+        || isDoctorWithApprovedPatient(patientId)
+        || isApprovedShareDoctorForPatient(patientId);
+    }
+
+    function isPracticeOwner(practiceId) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/practices/$(practiceId)).data.ownerId == uid();
     }
 
     // Fetch the caller's membership document for a practice
@@ -40,18 +63,67 @@ service cloud.firestore {
     // ─── Legacy collections (unchanged for mobile compatibility) ────────────────
 
     match /Users/{userId}/adherence_records/{recordId} {
-      allow read: if isSignedIn() && (uid() == userId || isApprovedDoctorForPatient(userId));
+      allow read: if isSignedIn() && (uid() == userId || canDoctorReadPatientHealthData(userId));
       allow write: if isSignedIn() && uid() == userId;
     }
 
     match /Users/{userId}/mood_entries/{entryId} {
-      allow read: if isSignedIn() && (uid() == userId || isApprovedDoctorForPatient(userId));
+      allow read: if isSignedIn() && (uid() == userId || canDoctorReadPatientHealthData(userId));
       allow write: if isSignedIn() && uid() == userId;
     }
 
     match /Users/{userId}/vitals_records/{recordId} {
-      allow read: if isSignedIn() && (uid() == userId || isApprovedDoctorForPatient(userId));
+      allow read: if isSignedIn() && (uid() == userId || canDoctorReadPatientHealthData(userId));
       allow write: if isSignedIn() && uid() == userId;
+    }
+
+    // Doctor portal: link patient to doctor (mirrors approved_patients on doctor doc)
+    match /Users/{patientId}/approved_doctors/{doctorId} {
+      allow read: if isSignedIn() && (uid() == patientId || uid() == doctorId);
+      allow create, update: if isSignedIn()
+        && uid() == doctorId
+        && exists(/databases/$(database)/documents/Users/$(doctorId)/approved_patients/$(patientId));
+    }
+
+    // Doctor can read/write their approved_patients list
+    match /Users/{doctorId}/approved_patients/{patientId} {
+      allow read, write: if isSignedIn() && uid() == doctorId;
+    }
+
+    // ─── Sharing requests (mobile parity) ─────────────────────────────────────
+
+    match /Users/{patientId}/sharing_requests/{requestId} {
+      allow read: if isSignedIn() && uid() == patientId;
+      allow create: if isSignedIn()
+        && uid() == patientId
+        && request.resource.data.status == 'pending'
+        && request.resource.data.doctorId is string;
+      allow update: if isSignedIn() && (
+        uid() == patientId ||
+        resource.data.doctorId == uid()
+      );
+    }
+
+    match /Users/{doctorId}/incoming_sharing_requests/{requestId} {
+      allow read: if isSignedIn() && uid() == doctorId;
+      allow create: if isSignedIn()
+        && request.resource.data.patientId == uid()
+        && request.resource.data.status == 'pending';
+      allow update: if isSignedIn() && uid() == doctorId;
+    }
+
+    match /Users/{patientId}/approved_shares/{doctorId} {
+      allow read: if isSignedIn() && (uid() == patientId || uid() == doctorId);
+      allow create, update: if isSignedIn() && uid() == doctorId;
+    }
+
+    match /Users/{doctorId}/practice_permissions/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && uid() == doctorId;
+      allow update: if isSignedIn() && (
+        uid() == doctorId ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['delegates'])
+      );
     }
 
     match /Users/{userId}/{document=**} {
@@ -64,6 +136,19 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.resource.data.doctorId == uid();
       allow update: if isSignedIn() &&
         (resource.data.doctorId == uid() || resource.data.patientId == uid());
+    }
+
+    // ─── Invoices (doctor portal financial tracking) ───────────────────────────
+
+    match /invoices/{invoiceId} {
+      allow read: if isSignedIn() &&
+        (resource.data.doctorId == uid() || resource.data.patientId == uid());
+      allow create: if isSignedIn()
+        && request.resource.data.doctorId == uid()
+        && request.resource.data.patientId is string
+        && request.resource.data.appointmentId is string;
+      allow update: if isSignedIn() && resource.data.doctorId == uid();
+      allow delete: if isSignedIn() && resource.data.doctorId == uid();
     }
 
     match /doctors/{doctorId} {
@@ -128,11 +213,11 @@ service cloud.firestore {
     // ─── Practices ──────────────────────────────────────────────────────────────
 
     match /practices/{practiceId} {
-      // Any signed-in member may read practice context
-      allow read: if isSignedIn() && isMember(practiceId);
+      // Members and practice owners may read practice context
+      allow read: if isSignedIn() && (isMember(practiceId) || isPracticeOwner(practiceId));
       // Only owners can create or update practice metadata
       allow create: if isSignedIn();   // owner auto-provisioned on first login
-      allow update: if isSignedIn() && isOwner(practiceId);
+      allow update: if isSignedIn() && (isOwner(practiceId) || isPracticeOwner(practiceId));
 
       // ─── Members ──────────────────────────────────────────────────────────────
 
@@ -149,8 +234,15 @@ service cloud.firestore {
             request.resource.data.role == 'owner'
           )
         );
-        // Only owners can update/delete member permissions and role assignments
-        allow update, delete: if isSignedIn() && isOwner(practiceId);
+        // Practice owner may repair their own membership record
+        allow update: if isSignedIn() && (
+          isOwner(practiceId) ||
+          (
+            uid() == memberId &&
+            get(/databases/$(database)/documents/practices/$(practiceId)).data.ownerId == uid()
+          )
+        );
+        allow delete: if isSignedIn() && isOwner(practiceId);
       }
 
       // ─── Bookable Blocks ───────────────────────────────────────────────────────
@@ -207,9 +299,11 @@ service cloud.firestore {
       // ─── Booking Policy ────────────────────────────────────────────────────────
 
       match /config/bookingPolicy {
-        allow read: if isSignedIn() && isMember(practiceId);
-        allow write: if isSignedIn() &&
-          hasPerm(practiceId, 'editBookingPolicies');
+        allow read: if isSignedIn() && (isMember(practiceId) || isPracticeOwner(practiceId));
+        allow write: if isSignedIn() && (
+          hasPerm(practiceId, 'editBookingPolicies') ||
+          isPracticeOwner(practiceId)
+        );
       }
 
       // ─── Daily Schedule ────────────────────────────────────────────────────────

@@ -20,6 +20,7 @@ import {
   SOFT_BLOCKS_SUBCOLLECTION,
   BOOKING_POLICIES_SUBCOLLECTION,
   BOOKING_POLICIES_DOC_ID,
+  USERS_COLLECTION,
 } from '../shared/constants';
 import type {
   BookableBlock,
@@ -54,6 +55,169 @@ export const getPractice = async (practiceId: string): Promise<Practice | null> 
     createdAt: toDate(d.createdAt),
     updatedAt: toDate(d.updatedAt),
   };
+};
+
+const OWNER_PERMISSIONS: PracticePermissions = {
+  manageAppointments: true,
+  manageSoftBlocks: true,
+  overrideConflicts: true,
+  editBookingPolicies: true,
+};
+
+const practiceFromSnapshot = (
+  practiceDoc: { id: string; data: () => Record<string, unknown> }
+): Practice => {
+  const d = practiceDoc.data();
+  return {
+    id: practiceDoc.id,
+    name: String(d.name ?? 'My Practice'),
+    timezone: String(d.timezone ?? 'UTC'),
+    ownerId: String(d.ownerId ?? ''),
+    locations: (d.locations as PracticeLocation[]) ?? [],
+    consultTypes: (d.consultTypes as ConsultType[]) ?? [],
+    createdAt: toDate(d.createdAt),
+    updatedAt: toDate(d.updatedAt),
+  };
+};
+
+export const linkUserToPractice = async (uid: string, practiceId: string): Promise<void> => {
+  await setDoc(
+    doc(db, USERS_COLLECTION, uid),
+    { primaryPracticeId: practiceId, updatedAt: serverTimestamp() },
+    { merge: true }
+  );
+};
+
+export const getPracticeByOwnerId = async (ownerId: string): Promise<Practice | null> => {
+  if (!ownerId) return null;
+  try {
+    const q = query(collection(db, PRACTICES_COLLECTION), where('ownerId', '==', ownerId));
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    return practiceFromSnapshot(snap.docs[0]);
+  } catch (error) {
+    console.warn('[practiceSettings] getPracticeByOwnerId failed:', error);
+    return null;
+  }
+};
+
+export const ensureOwnerMembership = async (
+  practiceId: string,
+  ownerId: string
+): Promise<PracticeMember> => {
+  const memberRef = doc(
+    db,
+    PRACTICES_COLLECTION,
+    practiceId,
+    PRACTICE_MEMBERS_SUBCOLLECTION,
+    ownerId
+  );
+  const memberSnap = await getDoc(memberRef);
+  if (memberSnap.exists() && memberSnap.data().status === 'active') {
+    return (await getPracticeMember(practiceId, ownerId))!;
+  }
+
+  await setDoc(
+    memberRef,
+    {
+      uid: ownerId,
+      practiceId,
+      role: 'owner',
+      permissions: OWNER_PERMISSIONS,
+      status: 'active',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  const member = await getPracticeMember(practiceId, ownerId);
+  if (!member) {
+    throw new Error('Failed to provision practice owner membership');
+  }
+  await linkUserToPractice(ownerId, practiceId);
+  return member;
+};
+
+export const ensureBookingPolicy = async (practiceId: string): Promise<BookingPolicy> => {
+  const existing = await getBookingPolicy(practiceId);
+  if (existing) return existing;
+
+  await setDoc(
+    doc(
+      db,
+      PRACTICES_COLLECTION,
+      practiceId,
+      BOOKING_POLICIES_SUBCOLLECTION,
+      BOOKING_POLICIES_DOC_ID
+    ),
+    {
+      practiceId,
+      patientCancellationWindowHours: 24,
+      doctorCancellationWindowHours: 1,
+      noShowPolicyText:
+        'Patients who do not attend without 24-hour notice may be charged a no-show fee.',
+      confirmationMode: 'doctor_confirms',
+      updatedAt: serverTimestamp(),
+    }
+  );
+
+  const policy = await getBookingPolicy(practiceId);
+  if (!policy) {
+    throw new Error('Failed to provision booking policy');
+  }
+  return policy;
+};
+
+/** Resolve the practice a user belongs to (owner or member). */
+export const resolvePracticeForUser = async (uid: string): Promise<Practice | null> => {
+  if (!uid) return null;
+
+  const owned = await getPracticeByOwnerId(uid);
+  if (owned) {
+    await ensureOwnerMembership(owned.id, uid);
+    return owned;
+  }
+
+  return getPracticeForUser(uid);
+};
+
+export const provisionPracticeForDoctor = async (
+  ownerId: string,
+  data?: Pick<Practice, 'name' | 'timezone'>
+): Promise<PracticeSessionBundle> => {
+  try {
+    const existing = await resolvePracticeForUser(ownerId);
+    if (existing) {
+      const member = await ensureOwnerMembership(existing.id, ownerId);
+      const bookingPolicy = await ensureBookingPolicy(existing.id);
+      return { practice: existing, member, bookingPolicy };
+    }
+  } catch (error) {
+    console.warn('[practiceSettings] resolvePracticeForUser failed, creating new practice:', error);
+  }
+
+  const practiceId = await createPractice(ownerId, {
+    name: data?.name ?? 'My Practice',
+    timezone: data?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC',
+  });
+
+  await linkUserToPractice(ownerId, practiceId);
+
+  const practice = await getPractice(practiceId);
+  if (!practice) {
+    throw new Error('Practice was created but could not be loaded');
+  }
+
+  const member = await ensureOwnerMembership(practiceId, ownerId);
+  const bookingPolicy = await ensureBookingPolicy(practiceId);
+  return { practice, member, bookingPolicy };
+};
+
+export type PracticeSessionBundle = {
+  practice: Practice;
+  member: PracticeMember;
+  bookingPolicy: BookingPolicy;
 };
 
 export const createPractice = async (
@@ -102,6 +266,8 @@ export const createPractice = async (
       updatedAt: serverTimestamp(),
     }
   );
+
+  await linkUserToPractice(ownerId, docRef.id);
   return docRef.id;
 };
 
@@ -115,32 +281,24 @@ export const updatePractice = async (
   });
 };
 
+/** Find practice via stored user link or active membership (never scans all practices). */
 export const getPracticeForUser = async (uid: string): Promise<Practice | null> => {
-  
-  const practicesSnap = await getDocs(collection(db, PRACTICES_COLLECTION));
-  for (const practiceDoc of practicesSnap.docs) {
-    const memberRef = doc(
-      db,
-      PRACTICES_COLLECTION,
-      practiceDoc.id,
-      PRACTICE_MEMBERS_SUBCOLLECTION,
-      uid
-    );
-    const memberSnap = await getDoc(memberRef);
-    if (memberSnap.exists() && memberSnap.data().status === 'active') {
-      const d = practiceDoc.data();
-      return {
-        id: practiceDoc.id,
-        name: d.name,
-        timezone: d.timezone,
-        ownerId: d.ownerId,
-        locations: d.locations ?? [],
-        consultTypes: d.consultTypes ?? [],
-        createdAt: toDate(d.createdAt),
-        updatedAt: toDate(d.updatedAt),
-      };
+  if (!uid) return null;
+
+  try {
+    const userSnap = await getDoc(doc(db, USERS_COLLECTION, uid));
+    const primaryPracticeId = userSnap.data()?.primaryPracticeId as string | undefined;
+
+    if (primaryPracticeId) {
+      const member = await getPracticeMember(primaryPracticeId, uid);
+      if (member?.status === 'active') {
+        return getPractice(primaryPracticeId);
+      }
     }
+  } catch (error) {
+    console.warn('[practiceSettings] getPracticeForUser via primaryPracticeId failed:', error);
   }
+
   return null;
 };
 

@@ -1,14 +1,18 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import { loginDoctor, logoutDoctor, getCurrentDoctor } from '../services/authService';
 import {
   getPracticeForUser,
   getPracticeMember,
-  getBookingPolicy,
-  createPractice,
-  updateBookingPolicy,
+  ensureOwnerMembership,
+  ensureBookingPolicy,
+  resolvePracticeForUser,
+  provisionPracticeForDoctor,
 } from '../services/practiceSettingsService';
+import { resolveEffectivePermissions } from '../services/permissions/practicePermissionsService';
+import { USERS_COLLECTION } from '../shared/constants';
 import { Doctor, PracticeSession } from '../types';
 
 export type AuthContextType = {
@@ -25,36 +29,56 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const loadPracticeSession = async (uid: string): Promise<PracticeSession | null> => {
   try {
-    let practice = await getPracticeForUser(uid);
-    
-    if (!practice) {
-      const practiceId = await createPractice(uid, {
-        name: 'My Practice',
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-      });
-      practice = await getPracticeForUser(uid);
-      if (!practice) return null;
+    const ownedPractice = await resolvePracticeForUser(uid);
+    if (ownedPractice && ownedPractice.ownerId === uid) {
+      const member = await ensureOwnerMembership(ownedPractice.id, uid);
+      const bookingPolicy = await ensureBookingPolicy(ownedPractice.id);
+      return { practice: ownedPractice, member, bookingPolicy };
     }
-    const [member, existingPolicy] = await Promise.all([
-      getPracticeMember(practice.id, uid),
-      getBookingPolicy(practice.id),
-    ]);
-    if (!member) return null;
-    let bookingPolicy = existingPolicy;
-    if (!bookingPolicy) {
-      
-      await updateBookingPolicy(practice.id, {
-        patientCancellationWindowHours: 24,
-        doctorCancellationWindowHours: 1,
-        noShowPolicyText:
-          'Patients who do not attend without 24-hour notice may be charged a no-show fee.',
-        confirmationMode: 'doctor_confirms',
-      });
-      bookingPolicy = await getBookingPolicy(practice.id);
-      if (!bookingPolicy) return null;
+
+    const memberPractice = ownedPractice ?? (await getPracticeForUser(uid));
+    if (memberPractice) {
+      const member = await getPracticeMember(memberPractice.id, uid);
+      if (member) {
+        const bookingPolicy = await ensureBookingPolicy(memberPractice.id);
+        return { practice: memberPractice, member, bookingPolicy };
+      }
     }
-    return { practice, member, bookingPolicy };
-  } catch {
+
+    const userSnap = await getDoc(doc(db, USERS_COLLECTION, uid));
+    const delegatingForDoctorId = userSnap.data()?.delegatingForDoctorId as string | undefined;
+    if (delegatingForDoctorId) {
+      const doctorPractice = await resolvePracticeForUser(delegatingForDoctorId);
+      if (doctorPractice) {
+        const { permissions, isOwner } = await resolveEffectivePermissions(
+          delegatingForDoctorId,
+          uid
+        );
+        const bookingPolicy = await ensureBookingPolicy(doctorPractice.id);
+        return {
+          practice: doctorPractice,
+          member: {
+            uid,
+            practiceId: doctorPractice.id,
+            role: isOwner ? 'owner' : 'delegate',
+            permissions,
+            status: 'active',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          bookingPolicy,
+        };
+      }
+    }
+
+    const provisioned = await provisionPracticeForDoctor(uid);
+    return {
+      practice: provisioned.practice,
+      member: provisioned.member,
+      bookingPolicy: provisioned.bookingPolicy,
+    };
+  } catch (error) {
+    console.error('[AuthContext] loadPracticeSession failed:', error);
     return null;
   }
 };
@@ -80,6 +104,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setPracticeSession(null);
         }
       } catch (err) {
+        console.error('[AuthContext] auth state error:', err);
         setUser(null);
         setPracticeSession(null);
       } finally {

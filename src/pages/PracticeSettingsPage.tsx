@@ -8,7 +8,7 @@ import { BookingPoliciesForm } from '../components/practice/BookingPoliciesForm'
 import { PracticePermissionsPanel } from '../components/practice/PracticePermissionsPanel';
 import { Toast } from '../components/ui';
 import { TabPill } from '../components/ui/TabPill';
-import { updatePractice } from '../services/practiceSettingsService';
+import { updatePractice, provisionPracticeForDoctor } from '../services/practiceSettingsService';
 import type { ConsultType, PracticeLocation } from '../types';
 
 type Tab = 'overview' | 'availability' | 'soft-blocks' | 'policies' | 'permissions';
@@ -29,7 +29,7 @@ const TAB_CONFIG: { id: Tab; label: string; icon: string }[] = [
 ];
 
 const PracticeSettingsPage: React.FC = () => {
-  const { practiceSession, refreshPracticeSession } = useAuth();
+  const { user, practiceSession, refreshPracticeSession, isLoading: authLoading } = useAuth();
   const { can, isOwner, role } = usePermissions();
   const { bookableBlocks, softBlocks, bookingPolicy, isLoading, error, reload } =
     usePracticeSettings();
@@ -56,6 +56,8 @@ const PracticeSettingsPage: React.FC = () => {
     type: 'success',
   });
 
+  const [provisioning, setProvisioning] = useState(false);
+
   const practice = practiceSession?.practice;
   const member = practiceSession?.member;
 
@@ -71,10 +73,59 @@ const PracticeSettingsPage: React.FC = () => {
     if (practice) setConsultTypesDraft(practice.consultTypes ?? []);
   }, [practice]);
 
-  if (!practice) {
+  const handleProvisionPractice = async () => {
+    if (!user?.id) return;
+    setProvisioning(true);
+    try {
+      await provisionPracticeForDoctor(user.id, {
+        name: user.displayName ? `${user.displayName}'s Practice` : 'My Practice',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      });
+      await refreshPracticeSession();
+      setToast({ visible: true, message: 'Practice set up successfully.', type: 'success' });
+    } catch (e: unknown) {
+      setToast({
+        visible: true,
+        message: e instanceof Error ? e.message : 'Failed to set up practice.',
+        type: 'error',
+      });
+    } finally {
+      setProvisioning(false);
+    }
+  };
+
+  if (authLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-gray-500">No practice found. Contact support.</p>
+        <div className="animate-spin w-8 h-8 border-4 border-gray-200 border-t-[#516059] rounded-full" />
+      </div>
+    );
+  }
+
+  if (!practice) {
+    return (
+      <div className="min-h-screen bg-gray-50 px-4 py-12 max-w-lg mx-auto text-center">
+        <h1 className="text-xl font-semibold text-gray-900 mb-2">Set up your practice</h1>
+        <p className="text-gray-600 text-sm mb-6">
+          We couldn&apos;t load a practice for your account yet. This usually happens on first login
+          or when Firestore rules haven&apos;t been deployed. You can create your practice now.
+        </p>
+        <button
+          type="button"
+          onClick={handleProvisionPractice}
+          disabled={provisioning || !user?.id}
+          className="px-6 py-3 rounded-xl text-white text-sm font-semibold disabled:opacity-50"
+          style={{ backgroundColor: '#516059' }}
+        >
+          {provisioning ? 'Setting up…' : 'Create My Practice'}
+        </button>
+        <button
+          type="button"
+          onClick={() => refreshPracticeSession()}
+          className="block mx-auto mt-4 text-sm text-[#516059] underline"
+        >
+          Retry loading
+        </button>
       </div>
     );
   }
@@ -490,7 +541,8 @@ const PracticeSettingsPage: React.FC = () => {
           {}
           {activeTab === 'permissions' && (
             <PracticePermissionsPanel
-              practiceId={practice.id}
+              doctorId={user?.id ?? practice.ownerId}
+              doctorName={user?.displayName ?? practice.name}
               isOwner={isOwner}
             />
           )}
