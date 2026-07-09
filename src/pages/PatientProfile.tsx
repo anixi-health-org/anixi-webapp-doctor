@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { ArrowLeftIcon, CalendarDaysIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { AppointmentContextBanner } from '../components/patients/AppointmentContextBanner';
+import { PatientCareQuickLinks } from '../components/patients/PatientCareQuickLinks';
+import { PatientProfileIdentityCard, usePatientHealthSnapshot } from '../components/patients/PatientProfileIdentityCard';
 import { recordPatientVisit } from '../services/recentPatientsService';
 import { logPatientActivity } from '../services/patientActivityService';
 import { getPatientAppointments } from '../services/appointmentService';
@@ -10,23 +13,13 @@ import { AppointmentList } from '../components/appointments/AppointmentList';
 import { useAuth } from '../hooks/useAuth';
 import { getDoctorPatients } from '../services/doctorService';
 import { Appointment, Patient } from '../types';
-import { updatePatient, removePatientFromDoctor } from '../services/patientManagementService';
+import { updatePatient } from '../services/patientManagementService';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { EditPatientModal } from '../components/patients/EditPatientModal';
-import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
-import {
-  calculateAge,
-  formatDate,
-  formatName,
-  formatGender,
-  formatPhone,
-  formatAddress,
-  formatEmail,
-  isEmpty,
-} from '../utils/dataFormatter';
+import { convertTimestamp } from '../utils/dateFormatter';
+import { formatName } from '../utils/dataFormatter';
 
 export const PatientProfile: React.FC = () => {
-  const { navigateBack } = useNavigateWithFallback();
   const navigate = useNavigate();
   const location = useLocation();
   const { patientId } = useParams<{ patientId: string }>();
@@ -55,7 +48,6 @@ export const PatientProfile: React.FC = () => {
   const [showEditPatientModal, setShowEditPatientModal] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
-  const [isRemoving, setIsRemoving] = useState(false);
 
   const logActivity = (
     actionType: string,
@@ -88,24 +80,6 @@ export const PatientProfile: React.FC = () => {
       setActionSuccess('Patient details updated successfully.');
     } catch (error: any) {
       setActionError(error?.message || 'Failed to update patient');
-    }
-  };
-
-  const handlePatientRemove = async () => {
-    if (!user?.id || !patient?.id) return;
-    const confirmed = window.confirm(
-      'Are you sure you want to remove this patient from your practice? This will delete the patient record only if it was manually created by you.'
-    );
-    if (!confirmed) return;
-    setIsRemoving(true);
-    setActionError(null);
-    try {
-      await removePatientFromDoctor(user.id, patient.id);
-      navigate('/patients');
-    } catch (error: any) {
-      setActionError(error?.message || 'Failed to remove patient');
-    } finally {
-      setIsRemoving(false);
     }
   };
 
@@ -229,33 +203,40 @@ export const PatientProfile: React.FC = () => {
     await refreshPatientAppointments();
   };
 
-  const renderField = (label: string, value: string | null | undefined): React.ReactNode => {
-    if (isEmpty(value)) return null;
-    return (
-      <div className="mb-3">
-        <p className="text-sm text-gray-900">
-          <span className="font-semibold">{label}</span> : {value}
-        </p>
-      </div>
-    );
-  };
+  const { snapshot: healthSnapshot, loading: snapshotLoading } = usePatientHealthSnapshot(
+    patient?.id,
+    user?.id
+  );
 
-  const renderListField = (label: string, items?: string[]): React.ReactNode => {
-    if (!items || items.length === 0) return null;
-    const filteredItems = items.filter((item) => !isEmpty(item));
-    if (filteredItems.length === 0) return null;
+  const appointmentStats = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    return (
-      <div className="mb-4">
-        <label className="text-sm font-semibold text-gray-700">{label}</label>
-        <ul className="mt-2 list-disc list-inside space-y-1 text-sm text-gray-900">
-          {filteredItems.map((item, idx) => (
-            <li key={idx}>{item}</li>
-          ))}
-        </ul>
-      </div>
-    );
-  };
+    const upcoming = patientAppointments.filter((apt) => {
+      const date = convertTimestamp(apt.date) ?? new Date();
+      const day = new Date(date);
+      day.setHours(0, 0, 0, 0);
+      return (
+        day >= today &&
+        (apt.status === 'confirmed' || apt.status === 'pending')
+      );
+    });
+
+    const completed = patientAppointments.filter((apt) => apt.status === 'completed');
+
+    const nextAppointment = [...upcoming].sort((a, b) => {
+      const aDate = convertTimestamp(a.date)?.getTime() ?? 0;
+      const bDate = convertTimestamp(b.date)?.getTime() ?? 0;
+      return aDate - bDate;
+    })[0];
+
+    return {
+      total: patientAppointments.length,
+      upcoming: upcoming.length,
+      completed: completed.length,
+      nextAppointment,
+    };
+  }, [patientAppointments]);
 
   if (isLoading) {
     return (
@@ -272,7 +253,7 @@ export const PatientProfile: React.FC = () => {
     return (
       <div className="px-3 py-4 sm:px-4 sm:py-6 bg-anixi-beige min-h-screen">
         <button
-          onClick={() => navigateBack('/patients')}
+          onClick={() => navigate('/patients')}
           className="mb-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition-colors"
         >
           ← Back
@@ -285,174 +266,161 @@ export const PatientProfile: React.FC = () => {
     );
   }
 
-  const hasMedicalAid =
-    patient.medicalAid &&
-    Object.keys(patient.medicalAid).some(
-      (key) => patient.medicalAid?.[key as keyof typeof patient.medicalAid]
-    );
-  const hasChronicDiseases =
-    patient.chronicDiseases &&
-    patient.chronicDiseases.length > 0 &&
-    patient.chronicDiseases.some((d) => !isEmpty(d));
-  const hasAllergies =
-    patient.allergies && patient.allergies.length > 0 && patient.allergies.some((a) => !isEmpty(a));
-  const hasTreatments =
-    patient.currentTreatments &&
-    patient.currentTreatments.length > 0 &&
-    patient.currentTreatments.some((t) => t.name && !isEmpty(t.name));
-  const hasMedicalData = hasMedicalAid || hasChronicDiseases || hasAllergies || hasTreatments;
-
-  const age = calculateAge(patient.dateOfBirth);
   const formattedName = formatName(patient.displayName);
-  const formattedGender = formatGender(patient.gender);
-  const formattedPhone = formatPhone(patient.phoneNumber);
-  const formattedAddress = formatAddress(patient.address);
-  const formattedEmail = formatEmail(patient.email);
+
+  const openFollowUp = () => {
+    logActivity('open_follow_up_modal', 'Opened follow-up booking from patient profile.');
+    setShowFollowUpModal(true);
+  };
 
   return (
-    <div className="px-3 py-4 sm:px-4 sm:py-6 lg:px-6 bg-anixi-beige min-h-screen">
+    <div className="min-h-screen bg-anixi-beige px-4 py-6 sm:px-6 lg:px-8">
       <AppointmentContextBanner />
-      <div className="mb-6 sm:mb-8">
+
+      <div className="mx-auto max-w-7xl">
         <button
-          onClick={() => navigateBack('/patients')}
-          className="mb-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition-colors"
+          type="button"
+          onClick={() => navigate('/patients')}
+          className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition-colors hover:text-anixi-green"
         >
-          ← Back
+          <ArrowLeftIcon className="h-4 w-4" />
+          Back to patients
         </button>
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 break-words">
-          {formattedName || 'Patient Profile'}
-        </h1>
-        {age !== null && (
-          <p className="mt-2 text-gray-600">
-            {age} {age === 1 ? 'year' : 'years'} old
-          </p>
-        )}
-        <div className="mt-4 flex flex-wrap gap-3">
-          <button
-            onClick={() => setShowEditPatientModal(true)}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-          >
-            Edit Patient
-          </button>
-          <button
-            onClick={handlePatientRemove}
-            disabled={isRemoving}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
-          >
-            {isRemoving ? 'Removing…' : 'Remove Patient'}
-          </button>
-        </div>
+
         {actionSuccess && (
-          <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg">
+          <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
             {actionSuccess}
           </div>
         )}
         {actionError && (
-          <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {actionError}
           </div>
         )}
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <CardTitle>Appointment Management</CardTitle>
-            <button
-              onClick={() => {
-                logActivity('open_follow_up_modal', 'Opened follow-up booking from patient profile.');
-                setShowFollowUpModal(true);
-              }}
-              className="px-3 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
-            >
-              + New Appointment
-            </button>
-          </CardHeader>
-          <CardContent>
-            {appointmentsError && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                {appointmentsError}
-              </div>
-            )}
-            <AppointmentList
-              appointments={patientAppointments}
-              onSelectAppointment={(appointment) => {
-                logActivity('open_appointment_details', 'Opened appointment details from patient profile.', {
-                  selectedAppointmentId: appointment.id,
-                  selectedAppointmentStatus: appointment.status,
-                });
-                setSelectedAppointment(appointment);
-              }}
-              isLoading={appointmentsLoading}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
+          <div className="lg:col-span-5 xl:col-span-4 lg:sticky lg:top-6">
+            <PatientProfileIdentityCard
+              patient={patient}
+              onEdit={() => setShowEditPatientModal(true)}
+              onViewAllDetails={() => navigate(`/patient-profile/${patient.id}/details`)}
+              upcomingAppointments={appointmentStats.upcoming}
+              healthSnapshot={healthSnapshot}
+              snapshotLoading={snapshotLoading}
             />
-          </CardContent>
-        </Card>
+          </div>
 
-        <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <button
-            onClick={() => {
-              logActivity('open_mood_checker', 'Opened mood checker from patient profile.');
-              navigate(`/patient-profile/${patient.id}/mood-checker`);
-            }}
-            className="p-4 sm:p-6 bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-lg hover:shadow-lg transition-all text-left group"
-          >
-            <p className="text-3xl mb-2">🎭</p>
-            <h3 className="text-lg font-semibold text-gray-900 group-hover:text-purple-700">Mood Checker</h3>
-            <p className="text-sm text-gray-600 mt-1">Track patient's emotional well-being</p>
-            <p className="text-xs text-purple-600 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">View Details →</p>
-          </button>
+          <div className="space-y-6 lg:col-span-7 xl:col-span-8">
+            <Card className="overflow-hidden border-gray-200 shadow-sm">
+              <CardHeader className="flex flex-col gap-4 border-b border-gray-100 bg-white sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 font-heading text-xl">
+                    <CalendarDaysIcon className="h-5 w-5 text-anixi-green" />
+                    Appointment management
+                  </CardTitle>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Schedule and review visits for {formattedName || 'this patient'}.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openFollowUp}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-anixi-green px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                >
+                  <PlusIcon className="h-4 w-4" />
+                  New appointment
+                </button>
+              </CardHeader>
 
-          <button
-            onClick={() => {
-              logActivity('open_adherence_calendar', 'Opened adherence calendar from patient profile.');
-              navigate(`/patient-profile/${patient.id}/adherence-calendar`);
-            }}
-            className="p-4 sm:p-6 bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-lg hover:shadow-lg transition-all text-left group"
-          >
-            <p className="text-3xl mb-2">📅</p>
-            <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-700">Adherence Calendar</h3>
-            <p className="text-sm text-gray-600 mt-1">View medication adherence by date</p>
-            <p className="text-xs text-blue-600 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">View Details →</p>
-          </button>
+              <CardContent className="space-y-4 p-4 sm:p-5">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-center">
+                    <p className="text-lg font-bold text-sky-900">{appointmentStats.upcoming}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+                      Upcoming
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-center">
+                    <p className="text-lg font-bold text-gray-900">{appointmentStats.completed}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                      Completed
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-anixi-green/20 bg-anixi-green/5 px-3 py-2 text-center">
+                    <p className="text-lg font-bold text-anixi-green">{appointmentStats.total}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-anixi-green/80">
+                      Total
+                    </p>
+                  </div>
+                </div>
 
-          <button
-            onClick={() => {
-              logActivity('open_adherence_logs', 'Opened adherence logs from patient profile.');
-              navigate(`/patient-profile/${patient.id}/adherence-logs`);
-            }}
-            className="p-4 sm:p-6 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg hover:shadow-lg transition-all text-left group"
-          >
-            <p className="text-3xl mb-2">📋</p>
-            <h3 className="text-lg font-semibold text-gray-900 group-hover:text-green-700">Adherence Logs</h3>
-            <p className="text-sm text-gray-600 mt-1">View medication adherence history</p>
-            <p className="text-xs text-green-600 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">View Details →</p>
-          </button>
+                {appointmentStats.nextAppointment && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      logActivity('open_appointment_details', 'Opened next appointment from patient profile.', {
+                        selectedAppointmentId: appointmentStats.nextAppointment!.id,
+                      });
+                      setSelectedAppointment(appointmentStats.nextAppointment!);
+                    }}
+                    className="w-full rounded-xl border border-anixi-green/25 bg-gradient-to-r from-anixi-green/5 to-white p-4 text-left transition-shadow hover:shadow-md"
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-anixi-green">
+                      Next appointment
+                    </p>
+                    <p className="mt-1 font-semibold text-gray-900">
+                      {(convertTimestamp(appointmentStats.nextAppointment.date) ?? new Date()).toLocaleDateString(
+                        'en-US',
+                        { weekday: 'long', month: 'long', day: 'numeric' }
+                      )}{' '}
+                      · {appointmentStats.nextAppointment.time}
+                    </p>
+                    <p className="mt-0.5 text-sm capitalize text-gray-500">
+                      {appointmentStats.nextAppointment.type} · {appointmentStats.nextAppointment.status}
+                    </p>
+                  </button>
+                )}
 
-          <button
-            onClick={() => {
-              logActivity('open_vitals_history', 'Opened vitals history from patient profile.');
-              navigate(`/patient-profile/${patient.id}/vitals-history`);
-            }}
-            className="p-4 sm:p-6 bg-gradient-to-br from-red-50 to-orange-50 border border-red-200 rounded-lg hover:shadow-lg transition-all text-left group"
-          >
-            <p className="text-3xl mb-2">❤️</p>
-            <h3 className="text-lg font-semibold text-gray-900 group-hover:text-red-700">Vitals History</h3>
-            <p className="text-sm text-gray-600 mt-1">View vital signs and measurements</p>
-            <p className="text-xs text-red-600 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">View Details →</p>
-          </button>
+                {appointmentsError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                    {appointmentsError}
+                  </div>
+                )}
 
-          <button
-            onClick={() => {
-              logActivity('open_schedule_follow_up', 'Opened schedule follow-up action from patient profile.');
-              setShowFollowUpModal(true);
-            }}
-            className="p-4 sm:p-6 bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg hover:shadow-lg transition-all text-left group"
-          >
-            <p className="text-3xl mb-2">🔄</p>
-            <h3 className="text-lg font-semibold text-gray-900 group-hover:text-indigo-700">Schedule Follow-Up</h3>
-            <p className="text-sm text-gray-600 mt-1">Book a follow-up appointment</p>
-            <p className="text-xs text-indigo-600 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Book Now →</p>
-          </button>
+                <AppointmentList
+                  appointments={patientAppointments}
+                  onSelectAppointment={(appointment) => {
+                    logActivity('open_appointment_details', 'Opened appointment details from patient profile.', {
+                      selectedAppointmentId: appointment.id,
+                      selectedAppointmentStatus: appointment.status,
+                    });
+                    setSelectedAppointment(appointment);
+                  }}
+                  isLoading={appointmentsLoading}
+                />
+              </CardContent>
+            </Card>
+
+            <PatientCareQuickLinks
+              onMoodChecker={() => {
+                logActivity('open_mood_checker', 'Opened mood checker from patient profile.');
+                navigate(`/patient-profile/${patient.id}/mood-checker`);
+              }}
+              onAdherenceCalendar={() => {
+                logActivity('open_adherence_calendar', 'Opened adherence calendar from patient profile.');
+                navigate(`/patient-profile/${patient.id}/adherence-calendar`);
+              }}
+              onAdherenceLogs={() => {
+                logActivity('open_adherence_logs', 'Opened adherence logs from patient profile.');
+                navigate(`/patient-profile/${patient.id}/adherence-logs`);
+              }}
+              onVitalsHistory={() => {
+                logActivity('open_vitals_history', 'Opened vitals history from patient profile.');
+                navigate(`/patient-profile/${patient.id}/vitals-history`);
+              }}
+              onScheduleFollowUp={openFollowUp}
+            />
+          </div>
         </div>
       </div>
 

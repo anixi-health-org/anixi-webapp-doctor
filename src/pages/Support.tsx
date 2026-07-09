@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import { submitSupportRequest } from '../services/supportService';
 
 export const Support: React.FC = () => {
+  const { user } = useAuth();
   const [activeAccordion, setActiveAccordion] = useState<number | null>(null);
   const [formStatus, setFormStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -20,7 +23,7 @@ export const Support: React.FC = () => {
     },
     {
       question: 'How do I update my professional profile?',
-      answer: 'Go to "Professional Profile" to edit your specialty, license number, office address, and other details. These changes are saved immediately.',
+      answer: 'Go to "Professional Profile" to edit your specialty, license number, office address, and other details. Click Save Profile when you are done.',
     },
     {
       question: 'How do I share Anixi with colleagues?',
@@ -32,20 +35,41 @@ export const Support: React.FC = () => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     setErrorMessage('');
+    if (formStatus === 'error') {
+      setFormStatus('idle');
+    }
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user?.id) {
+      setErrorMessage('You must be signed in to contact support.');
+      setFormStatus('error');
+      return;
+    }
     if (!formData.subject.trim() || !formData.message.trim()) {
       setErrorMessage('Please fill in all fields');
       setFormStatus('error');
       return;
     }
-    setFormStatus('success');
-    setFormData({ subject: '', message: '' });
-    setTimeout(() => {
-      setFormStatus('idle');
-    }, 5000);
+    if (formData.message.trim().length < 10) {
+      setErrorMessage('Message must be at least 10 characters');
+      setFormStatus('error');
+      return;
+    }
+
+    setFormStatus('submitting');
+    setErrorMessage('');
+
+    try {
+      await submitSupportRequest(user.id, formData.subject, formData.message);
+      setFormStatus('success');
+      setFormData({ subject: '', message: '' });
+      setTimeout(() => setFormStatus('idle'), 5000);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to send message');
+      setFormStatus('error');
+    }
   };
 
   return (

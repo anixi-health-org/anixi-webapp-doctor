@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { getAppointmentById, getDoctorAppointments, updateAppointment } from '../services/appointmentService';
 import { useAuth } from '../hooks/useAuth';
@@ -15,7 +14,6 @@ export const AppointmentSummary: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showManage, setShowManage] = useState(false);
   const [loadingComplete, setLoadingComplete] = useState(false);
-  const { navigateBack } = useNavigateWithFallback();
   const navigate = useNavigate();
 
   useEffect(() => {

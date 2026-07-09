@@ -6,10 +6,18 @@ import { getDoctorAppointments } from '../services/appointmentService';
 import { Appointment } from '../types';
 import { AppointmentList } from '../components/appointments/AppointmentList';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
+import {
+  Calendar,
+  CheckCircle2,
+  ClipboardList,
+  Clock,
+  XCircle,
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { DashboardStatsCard } from '../components/dashboard/DashboardStatsCard';
-import { Toast } from '../components/ui';
-import { customColors } from '../lib/customColors';
+import { Toast, AppointmentsPageSkeleton } from '../components/ui';
+import { PageHeader, PageShell } from '../components/page-layout';
+import { PrimaryButton } from '../components/ui/PrimaryButton';
 type FilterType = Appointment['status'] | 'All' | 'Today';
 export const AppointmentsPage: React.FC = () => {
   const { user } = useAuth();
@@ -18,7 +26,7 @@ export const AppointmentsPage: React.FC = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [, setSelectedAppointment] = useState<Appointment | null>(null);
   const [filterStatus, setFilterStatus] = useState<Appointment['status'] | 'All'>('All');
   const [selectedCard, setSelectedCard] = useState<FilterType | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -55,39 +63,7 @@ export const AppointmentsPage: React.FC = () => {
   useEffect(() => {
     fetchAppointments();
   }, [fetchAppointments]);
-  const handleStatusChange = (appointmentId: string, newStatus: Appointment['status']) => {
-    setAppointments(prev =>
-      prev.map(apt =>
-        apt.id === appointmentId
-          ? { ...apt, status: newStatus, updatedAt: new Date() }
-          : apt
-      )
-    );
-    const msg =
-      newStatus === 'confirmed'
-        ? 'Appointment accepted successfully.'
-        : newStatus === 'cancelled'
-        ? 'Appointment cancelled successfully.'
-        : newStatus === 'no_show'
-        ? 'Appointment marked as no-show.'
-        : `Appointment updated to ${newStatus}.`;
-    setToast({ visible: true, message: msg, type: 'success' });
-  };
 
-  const handleReschedule = async (appointmentId: string, newDate: Date, newTime: string) => {
-    setAppointments(prev =>
-      prev.map(apt =>
-        apt.id === appointmentId
-          ? { ...apt, date: newDate, time: newTime, status: 'confirmed', updatedAt: new Date() }
-          : apt
-      )
-    );
-    
-    await fetchAppointments();
-    setToast({ visible: true, message: 'Appointment rescheduled successfully.', type: 'success' });
-  };
-
-  
   const handleAppointmentClick = (apt: Appointment) => {
     const isAnixiPatient = !apt.isManual && apt.patientId && apt.patientId !== 'manual' && apt.patientId !== 'unknown';
     if (isAnixiPatient) {
@@ -162,11 +138,17 @@ export const AppointmentsPage: React.FC = () => {
   } else {
     filteredAppointments = baseAppointments.filter((a) => a.status === filterStatus);
   }
+
+  if (isLoading && appointments.length === 0) {
+    return (
+      <PageShell>
+        <AppointmentsPageSkeleton />
+      </PageShell>
+    );
+  }
+
   return (
-    <div
-      className="min-h-screen max-w-7xl mx-auto px-3 py-4 sm:px-4 sm:py-6 lg:px-6"
-      style={{ backgroundColor: customColors.backgroundLight }}
-    >
+    <PageShell>
       {toast.visible && (
         <Toast
           message={toast.message}
@@ -174,36 +156,18 @@ export const AppointmentsPage: React.FC = () => {
           onClose={() => setToast({ visible: false, message: '', type: 'success' })}
         />
       )}
-      {}
-      <div className="mb-6 sm:mb-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">Appointments</h1>
-            <p className="mt-2 text-gray-600">Manage and view all patient appointments</p>
-          </div>
-          <div className="flex items-center gap-3 sm:gap-4">
-            {can('manageAppointments') && (
-              <button
-                onClick={() => {
-                  setShowCreateModal(true);
-                }}
-                className="w-full sm:w-auto px-4 py-2 rounded-lg text-white transition-colors flex items-center justify-center gap-2 shadow-sm"
-                style={{
-                  backgroundColor: customColors.primary,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = customColors.primaryDark;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = customColors.primary;
-                }}
-              >
-                ➕ New Appointment
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+
+      <PageHeader
+        title="Appointments"
+        description="Manage and view all patient appointments"
+        actions={
+          can('manageAppointments') ? (
+            <PrimaryButton onClick={() => setShowCreateModal(true)} icon={<span className="text-lg leading-none">+</span>}>
+              New Appointment
+            </PrimaryButton>
+          ) : undefined
+        }
+      />
       {}
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -217,13 +181,13 @@ export const AppointmentsPage: React.FC = () => {
         </div>
       )}
       {!isLoading && !error && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
-          <DashboardStatsCard label="Total" value={stats.total} icon={'📋'} color="blue" onClick={() => handleCardClick('All')} isActive={selectedCard === 'All'} />
-          <DashboardStatsCard label="Confirmed" value={stats.confirmed} icon={'✅'} color="green" onClick={() => handleCardClick('confirmed')} isActive={selectedCard === 'confirmed'} />
-          <DashboardStatsCard label="Pending" value={stats.pending} icon={'⏳'} color="orange" onClick={() => handleCardClick('pending')} isActive={selectedCard === 'pending'} />
-          <DashboardStatsCard label="Completed" value={stats.completed} icon={'✓'} color="blue" onClick={() => handleCardClick('completed')} isActive={selectedCard === 'completed'} />
-          <DashboardStatsCard label="Cancelled" value={stats.cancelled} icon={'✗'} color="red" onClick={() => handleCardClick('cancelled')} isActive={selectedCard === 'cancelled'} />
-          <DashboardStatsCard label="Today" value={stats.today} icon={'📅'} color="blue" onClick={() => handleCardClick('Today')} isActive={selectedCard === 'Today'} />
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+          <DashboardStatsCard label="Total" value={stats.total} icon={<ClipboardList />} color="blue" onClick={() => handleCardClick('All')} isActive={selectedCard === 'All'} />
+          <DashboardStatsCard label="Confirmed" value={stats.confirmed} icon={<CheckCircle2 />} color="green" onClick={() => handleCardClick('confirmed')} isActive={selectedCard === 'confirmed'} />
+          <DashboardStatsCard label="Pending" value={stats.pending} icon={<Clock />} color="orange" onClick={() => handleCardClick('pending')} isActive={selectedCard === 'pending'} />
+          <DashboardStatsCard label="Completed" value={stats.completed} icon={<CheckCircle2 />} color="blue" onClick={() => handleCardClick('completed')} isActive={selectedCard === 'completed'} />
+          <DashboardStatsCard label="Cancelled" value={stats.cancelled} icon={<XCircle />} color="red" onClick={() => handleCardClick('cancelled')} isActive={selectedCard === 'cancelled'} />
+          <DashboardStatsCard label="Today" value={stats.today} icon={<Calendar />} color="blue" onClick={() => handleCardClick('Today')} isActive={selectedCard === 'Today'} />
         </div>
       )}
       {}
@@ -231,12 +195,11 @@ export const AppointmentsPage: React.FC = () => {
         {selectedCard && (
           <CardHeader>
             <CardTitle>
-              {selectedCard === 'Today' && '📅 Today\'s Appointments'}
-              {selectedCard === 'confirmed' && '✅ Confirmed Appointments'}
-              {selectedCard === 'pending' && '⏳ Pending Appointments'}
-              {selectedCard === 'completed' && '✓ Completed Appointments'}
-              {selectedCard === 'cancelled' && '✗ Cancelled Appointments'}
-              
+              {selectedCard === 'Today' && "Today's Appointments"}
+              {selectedCard === 'confirmed' && 'Confirmed Appointments'}
+              {selectedCard === 'pending' && 'Pending Appointments'}
+              {selectedCard === 'completed' && 'Completed Appointments'}
+              {selectedCard === 'cancelled' && 'Cancelled Appointments'}
               {selectedCard === 'All' && 'All Appointments'}
             </CardTitle>
           </CardHeader>
@@ -267,7 +230,7 @@ export const AppointmentsPage: React.FC = () => {
           });
         }}
       />
-    </div>
+    </PageShell>
   );
 };
 export default AppointmentsPage;

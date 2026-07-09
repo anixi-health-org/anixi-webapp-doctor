@@ -1,4 +1,4 @@
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, limit, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 export interface SupportRequest {
   id: string;
@@ -49,20 +49,34 @@ export const submitSupportRequest = async (
 };
 export const getDoctorSupportRequests = async (
   doctorId: string,
-  limit: number = 50
+  maxResults: number = 50
 ): Promise<SupportRequest[]> => {
-  try {
-    const supportRef = collection(db, 'supportRequests');
-    const q = {
-      constraints: [
-        { type: 'where', fieldPath: 'doctorId', operator: '==', value: doctorId },
-        { type: 'orderBy', fieldPath: 'createdAt', direction: 'desc' },
-        { type: 'limit', limit },
-      ],
+  const supportRef = collection(db, 'supportRequests');
+  const q = query(
+    supportRef,
+    where('doctorId', '==', doctorId),
+    orderBy('createdAt', 'desc'),
+    limit(maxResults)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((docSnap) => {
+    const data = docSnap.data();
+    const toDate = (value: unknown): Date => {
+      if (value instanceof Timestamp) return value.toDate();
+      if (value instanceof Date) return value;
+      return new Date();
     };
-    return [];
-  } catch (error) {
-    ;
-    throw error;
-  }
+    return {
+      id: docSnap.id,
+      doctorId: data.doctorId,
+      subject: data.subject,
+      message: data.message,
+      status: data.status,
+      priority: data.priority,
+      createdAt: toDate(data.createdAt),
+      updatedAt: toDate(data.updatedAt),
+      response: data.response,
+      respondedAt: data.respondedAt ? toDate(data.respondedAt) : undefined,
+    };
+  });
 };

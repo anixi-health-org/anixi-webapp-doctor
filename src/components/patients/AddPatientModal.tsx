@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../hooks/AuthContext';
 import { addPatientManually } from '../../services/patientManagementService';
-import { logInvitation } from '../../services/referralService';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onAdded?: (patientId: string) => void;
+  onAdded?: (result: { patientId: string; inviteWarning?: string }) => void;
 }
 
 export const AddPatientModal: React.FC<Props> = ({ isOpen, onClose, onAdded }) => {
@@ -52,11 +51,18 @@ export const AddPatientModal: React.FC<Props> = ({ isOpen, onClose, onAdded }) =
       );
 
       if (sendInvite && inviteQueued === false) {
-        setInviteError(inviteErr || 'Invitation email could not be queued.');
+        onAdded?.({
+          patientId,
+          inviteWarning: inviteErr || 'Patient was added, but the invitation email could not be sent.',
+        });
+        onClose();
+        setName('');
+        setEmail('');
+        setPhone('');
         return;
       }
 
-      onAdded?.(patientId);
+      onAdded?.({ patientId });
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to create patient');

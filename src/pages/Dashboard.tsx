@@ -2,21 +2,32 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { ImprovedDashboard } from '../components/dashboard';
 import { AddPatientModal } from '../components/patients/AddPatientModal';
+import { PageShell } from '../components/page-layout';
 import {
   listenToDoctorPatients,
 } from '../services/patientManagementService';
+import { useIncomingSharingRequests } from '../hooks/useIncomingSharingRequests';
 import { Patient } from '../types';
 
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
+  const { requests: sharingRequests } = useIncomingSharingRequests(user?.id);
 
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientsLoading, setIsLoading] = useState(true);
   const [patientsError, setPatientsError] = useState<string | null>(null);
   const [showAddPatient, setShowAddPatient] = useState(false);
 
-  const actionRequiredCount = patients.filter((p) =>
-    p.chronicDiseases && p.chronicDiseases.length > 0
+  const pendingPatientIds = new Set(
+    sharingRequests
+      .filter((request) => request.status === 'pending')
+      .map((request) => request.patientId)
+  );
+
+  const actionRequiredCount = patients.filter(
+    (patient) =>
+      pendingPatientIds.has(patient.id) ||
+      (patient.chronicDiseases && patient.chronicDiseases.length > 0)
   ).length;
 
   const [stableCount, setStableCount] = useState(0);
@@ -101,7 +112,7 @@ export const Dashboard: React.FC = () => {
   }, [user?.id, user]);
 
   return (
-    <>
+    <PageShell>
       <ImprovedDashboard
         patients={patients}
         patientsLoading={patientsLoading}
@@ -115,7 +126,7 @@ export const Dashboard: React.FC = () => {
         isOpen={showAddPatient}
         onClose={() => setShowAddPatient(false)}
       />
-    </>
+    </PageShell>
   );
 };
 

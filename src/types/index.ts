@@ -145,9 +145,20 @@ export interface Doctor extends User {
     officeAddress?: string;
     practiceName?: string;
     logoUrl?: string;
+    /** ISO 3166-1 alpha-2 — set at registration */
+    country?: string;
+    /** ISO 4217 — derived from country at registration */
+    currency?: string;
+    nationality?: string;
 }
+export interface Caregiver extends User {
+    role: 'caregiver';
+    phoneNumber?: string;
+}
+export type ProfessionalUser = Doctor | Caregiver;
 export interface Patient extends User {
     role: 'patient';
+    photoURL?: string;
     dateOfBirth?: Date;
     gender?: 'male' | 'female' | 'other';
     maritalStatus?: string;

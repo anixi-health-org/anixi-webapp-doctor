@@ -8,6 +8,7 @@ import { BookingPoliciesForm } from '../components/practice/BookingPoliciesForm'
 import { PracticePermissionsPanel } from '../components/practice/PracticePermissionsPanel';
 import { Toast } from '../components/ui';
 import { TabPill } from '../components/ui/TabPill';
+import { PageHeader, PageShell } from '../components/page-layout';
 import { updatePractice, provisionPracticeForDoctor } from '../services/practiceSettingsService';
 import type { ConsultType, PracticeLocation } from '../types';
 
@@ -20,12 +21,12 @@ const PRACTICE_BRAND = {
   border: '#C6CFCA',
 };
 
-const TAB_CONFIG: { id: Tab; label: string; icon: string }[] = [
-  { id: 'overview', label: 'Practice Overview', icon: '🏢' },
-  { id: 'availability', label: 'Bookable Blocks', icon: '🟢' },
-  { id: 'soft-blocks', label: 'Soft Blocks', icon: '🔒' },
-  { id: 'policies', label: 'Booking Policies', icon: '📋' },
-  { id: 'permissions', label: 'Practice Permissions', icon: '🛡️' },
+const TAB_CONFIG: { id: Tab; label: string }[] = [
+  { id: 'overview', label: 'Practice Overview' },
+  { id: 'availability', label: 'Bookable Blocks' },
+  { id: 'soft-blocks', label: 'Soft Blocks' },
+  { id: 'policies', label: 'Booking Policies' },
+  { id: 'permissions', label: 'Practice Permissions' },
 ];
 
 const PracticeSettingsPage: React.FC = () => {
@@ -213,7 +214,7 @@ const PracticeSettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 px-3 py-4 sm:px-4 sm:py-6 lg:px-6 max-w-5xl mx-auto">
+    <PageShell className="max-w-5xl pb-8">
       {toast.visible && (
         <Toast
           message={toast.message}
@@ -222,34 +223,32 @@ const PracticeSettingsPage: React.FC = () => {
         />
       )}
 
-      {}
-      <div className="mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-1">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Practice Settings</h1>
+      <PageHeader
+        title="Practice Settings"
+        description="Manage your practice availability, blocked time, and booking rules."
+        badge={
           <span
-            className={`px-2.5 py-0.5 text-xs font-medium rounded-full ${
+            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
               isOwner
-                ? 'bg-[#EEF2F0] text-[#45524D] border border-[#C6CFCA]'
-                : 'bg-[#EEF2F0] text-[#516059] border border-[#C6CFCA]'
+                ? 'border border-[#C6CFCA] bg-[#EEF2F0] text-[#45524D]'
+                : 'border border-[#C6CFCA] bg-[#EEF2F0] text-[#516059]'
             }`}
           >
             {isOwner ? 'Owner' : 'Delegate'}
           </span>
-        </div>
-        <p className="text-gray-600 text-sm">
-          Manage your practice availability, blocked time, and booking rules.
-        </p>
-      </div>
+        }
+      />
 
       
-      <div className="flex gap-3 mb-6 rounded-3xl border border-[#E4EAF2] bg-white p-2 shadow-sm overflow-x-auto">
+      <div className="mb-6 flex gap-1 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-sm">
         {TAB_CONFIG.map((tab) => (
           <TabPill
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             active={activeTab === tab.id}
+            className="min-w-0 flex-1 px-2 py-2.5 text-center text-xs leading-tight sm:px-3 sm:text-sm"
           >
-            {tab.icon} {tab.label}
+            {tab.label}
           </TabPill>
         ))}
       </div>
@@ -265,7 +264,8 @@ const PracticeSettingsPage: React.FC = () => {
           <div className="animate-spin w-8 h-8 border-4 border-gray-200 border-t-[#516059] rounded-full" />
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+          <div className="p-4 sm:p-6">
           {}
           {activeTab === 'overview' && (
             <div className="space-y-6">
@@ -460,19 +460,7 @@ const PracticeSettingsPage: React.FC = () => {
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">Consult Types</label>
-                  {isOwner && (
-                    <button
-                      onClick={handleSaveConsultTypes}
-                      disabled={savingConsultTypes}
-                      className="text-xs text-white px-3 py-1 rounded-lg disabled:opacity-50"
-                      style={{ backgroundColor: PRACTICE_BRAND.primary }}
-                    >
-                      {savingConsultTypes ? 'Saving…' : 'Save'}
-                    </button>
-                  )}
-                </div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">Consult Types</label>
                 <div className="flex flex-wrap gap-2">
                   {(['initial', 'follow-up', 'urgent', 'procedure', 'teleconsult', 'other'] as ConsultType[]).map((ct) => {
                     const active = consultTypesDraft.includes(ct);
@@ -546,9 +534,32 @@ const PracticeSettingsPage: React.FC = () => {
               isOwner={isOwner}
             />
           )}
+          </div>
+
+          {activeTab === 'overview' && isOwner && (
+            <div className="flex justify-end border-t border-gray-200 bg-gray-50/60 px-4 py-4 sm:px-6">
+              <button
+                type="button"
+                onClick={handleSaveConsultTypes}
+                disabled={savingConsultTypes}
+                className="rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-50"
+                style={{ backgroundColor: PRACTICE_BRAND.primary }}
+                onMouseEnter={(e) => {
+                  if (!savingConsultTypes) {
+                    e.currentTarget.style.backgroundColor = PRACTICE_BRAND.primaryDark;
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = PRACTICE_BRAND.primary;
+                }}
+              >
+                {savingConsultTypes ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          )}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 };
 

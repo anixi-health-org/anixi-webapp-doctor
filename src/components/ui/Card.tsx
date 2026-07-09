@@ -7,10 +7,10 @@ interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 export const Card: React.FC<CardProps> = ({ children, className, variant = 'default', ...props }) => {
   const variants = {
-    default: 'bg-anixi-card rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200',
-    elevated: 'bg-anixi-card rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow duration-200',
-    alert: 'bg-red-50 rounded-lg border-l-4 border-red-500 shadow-sm',
-    success: 'bg-green-50 rounded-lg border-l-4 border-green-500 shadow-sm',
+    default: 'bg-white rounded-2xl shadow-card border border-gray-100/80',
+    elevated: 'bg-white rounded-2xl shadow-elevated border border-gray-100',
+    alert: 'bg-red-50 rounded-2xl border-l-4 border-red-500 shadow-soft',
+    success: 'bg-green-50 rounded-2xl border-l-4 border-green-500 shadow-soft',
   };
   return (
     <div className={clsx(variants[variant], className)} {...props}>
@@ -44,7 +44,7 @@ export const CardTitle: React.FC<{ children: React.ReactNode; className?: string
   className 
 }) => {
   return (
-    <h3 className={clsx('text-lg font-semibold text-gray-900', className)}>
+    <h3 className={clsx('font-heading text-lg font-semibold text-gray-900', className)}>
       {children}
     </h3>
   );

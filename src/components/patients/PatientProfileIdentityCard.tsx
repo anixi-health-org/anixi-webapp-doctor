@@ -1,0 +1,336 @@
+import React, { useEffect, useState } from 'react';
+import {
+  ArrowRightIcon,
+  BeakerIcon,
+  CalendarDaysIcon,
+  EnvelopeIcon,
+  ExclamationTriangleIcon,
+  MapPinIcon,
+  PhoneIcon,
+} from '@heroicons/react/24/outline';
+import { getDoctorMonthlyAdherenceDetails } from '../../services/adherenceService';
+import { Patient } from '../../types';
+import { getDateString } from '../../utils/dateFormatter';
+import {
+  calculateAge,
+  formatDate,
+  formatEmail,
+  formatGender,
+  formatName,
+  formatPhone,
+  isEmpty,
+} from '../../utils/dataFormatter';
+
+export interface PatientHealthSnapshot {
+  adherencePercent: number;
+  taken: number;
+  missed: number;
+  pending: number;
+  weeklyTrend: number[];
+}
+
+interface PatientProfileIdentityCardProps {
+  patient: Patient;
+  onEdit: () => void;
+  onViewAllDetails: () => void;
+  upcomingAppointments?: number;
+  healthSnapshot?: PatientHealthSnapshot | null;
+  snapshotLoading?: boolean;
+}
+
+function MiniRing({ percent }: { percent: number }) {
+  const clamped = Math.min(100, Math.max(0, percent));
+  return (
+    <div className="relative h-14 w-14 shrink-0">
+      <svg viewBox="0 0 36 36" className="h-full w-full -rotate-90">
+        <circle cx="18" cy="18" r="15.5" fill="none" stroke="#e5e7eb" strokeWidth="3" />
+        <circle
+          cx="18"
+          cy="18"
+          r="15.5"
+          fill="none"
+          stroke="#1f5c45"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeDasharray={`${(clamped / 100) * 97.4} 97.4`}
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-xs font-bold text-anixi-green">{clamped}%</span>
+      </div>
+    </div>
+  );
+}
+
+function WeeklyBars({ values }: { values: number[] }) {
+  const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  return (
+    <div className="flex items-end justify-between gap-1">
+      {values.map((value, idx) => (
+        <div key={idx} className="flex flex-1 flex-col items-center gap-1">
+          <div className="flex h-12 w-full items-end justify-center rounded-sm bg-gray-100 px-0.5">
+            <div
+              className="w-full max-w-[14px] rounded-sm bg-anixi-green/80 transition-all"
+              style={{ height: `${Math.max(value > 0 ? 12 : 4, (value / 100) * 100)}%` }}
+              title={`${value}%`}
+            />
+          </div>
+          <span className="text-[9px] font-medium text-gray-400">{labels[idx]}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export const PatientProfileIdentityCard: React.FC<PatientProfileIdentityCardProps> = ({
+  patient,
+  onEdit,
+  onViewAllDetails,
+  upcomingAppointments = 0,
+  healthSnapshot,
+  snapshotLoading = false,
+}) => {
+  const name = formatName(patient.displayName) || 'Patient';
+  const age = calculateAge(patient.dateOfBirth);
+  const gender = formatGender(patient.gender);
+  const email = formatEmail(patient.email);
+  const phone = formatPhone(patient.phoneNumber);
+  const initials = (name || patient.email || '?')
+    .split(' ')
+    .map((part) => part.charAt(0))
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  const allergies = (patient.allergies ?? []).filter((item) => !isEmpty(item));
+  const conditions = (patient.chronicDiseases ?? []).filter((item) => !isEmpty(item));
+  const treatmentCount = (patient.currentTreatments ?? []).filter((t) => t.name && !isEmpty(t.name)).length;
+  const dobLabel = patient.dateOfBirth ? formatDate(patient.dateOfBirth, 'short') : null;
+
+  const totalMeds =
+    (healthSnapshot?.taken ?? 0) +
+    (healthSnapshot?.missed ?? 0) +
+    (healthSnapshot?.pending ?? 0);
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm">
+      <div className="border-b border-gray-100 bg-gradient-to-b from-anixi-green/[0.08] to-white px-5 pb-5 pt-6">
+        <div className="flex flex-col items-center text-center">
+          {patient.photoURL ? (
+            <img
+              src={patient.photoURL}
+              alt={`${name} profile`}
+              className="h-28 w-28 shrink-0 rounded-2xl border-4 border-white object-cover shadow-lg ring-2 ring-anixi-green/25"
+            />
+          ) : (
+            <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-2xl border-4 border-white bg-anixi-green text-3xl font-bold text-white shadow-lg ring-2 ring-anixi-green/25">
+              {initials}
+            </div>
+          )}
+          <p className="mt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-anixi-green">
+            Active patient
+          </p>
+          <h2 className="font-heading mt-1 text-xl font-semibold leading-tight text-gray-900">
+            {name}
+          </h2>
+          <p className="mt-1 text-sm text-gray-500">
+            {[age !== null ? `${age} yrs` : null, gender, dobLabel ? `DOB ${dobLabel}` : null]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex-1 space-y-4 px-5 py-4">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 px-2 py-2 text-center">
+            <p className="text-lg font-bold text-gray-900">{conditions.length}</p>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Conditions</p>
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 px-2 py-2 text-center">
+            <p className="text-lg font-bold text-gray-900">{allergies.length}</p>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Allergies</p>
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 px-2 py-2 text-center">
+            <p className="text-lg font-bold text-gray-900">{treatmentCount}</p>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Meds</p>
+          </div>
+        </div>
+
+        <div className="space-y-2 text-sm text-gray-700">
+          {email && (
+            <div className="flex items-center gap-2.5">
+              <EnvelopeIcon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+              <span className="truncate text-xs">{email}</span>
+            </div>
+          )}
+          {phone && (
+            <div className="flex items-center gap-2.5">
+              <PhoneIcon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+              <span className="text-xs">{phone}</span>
+            </div>
+          )}
+          {patient.address && (
+            <div className="flex items-start gap-2.5">
+              <MapPinIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />
+              <span className="line-clamp-2 text-xs">{patient.address}</span>
+            </div>
+          )}
+          {patient.medicalAid?.provider && (
+            <div className="flex items-center gap-2.5">
+              <BeakerIcon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+              <span className="truncate text-xs">{patient.medicalAid.provider}</span>
+            </div>
+          )}
+        </div>
+
+        {allergies.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {allergies.slice(0, 3).map((item) => (
+              <span
+                key={item}
+                className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 ring-1 ring-rose-200"
+              >
+                {item}
+              </span>
+            ))}
+            {allergies.length > 3 && (
+              <span className="text-[10px] text-gray-400">+{allergies.length - 3} more</span>
+            )}
+          </div>
+        )}
+
+        <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              Medication adherence
+            </p>
+            <span className="text-[10px] text-gray-400">This month</span>
+          </div>
+          {snapshotLoading ? (
+            <div className="h-16 animate-pulse rounded-lg bg-gray-200/60" />
+          ) : healthSnapshot ? (
+            <div className="flex gap-3">
+              <MiniRing percent={healthSnapshot.adherencePercent} />
+              <div className="min-w-0 flex-1 space-y-2">
+                {totalMeds > 0 ? (
+                  <div className="flex h-2 overflow-hidden rounded-full bg-gray-200">
+                    <div
+                      className="bg-green-500"
+                      style={{ width: `${(healthSnapshot.taken / totalMeds) * 100}%` }}
+                    />
+                    <div
+                      className="bg-red-400"
+                      style={{ width: `${(healthSnapshot.missed / totalMeds) * 100}%` }}
+                    />
+                    <div
+                      className="bg-amber-400"
+                      style={{ width: `${(healthSnapshot.pending / totalMeds) * 100}%` }}
+                    />
+                  </div>
+                ) : (
+                  <div className="h-2 rounded-full bg-gray-200" />
+                )}
+                <div className="flex justify-between text-[10px] text-gray-500">
+                  <span className="text-green-700">{healthSnapshot.taken} taken</span>
+                  <span className="text-red-600">{healthSnapshot.missed} missed</span>
+                  <span className="text-amber-600">{healthSnapshot.pending} pending</span>
+                </div>
+                <WeeklyBars values={healthSnapshot.weeklyTrend} />
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">No adherence data yet this month.</p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg border border-sky-100 bg-sky-50/50 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <CalendarDaysIcon className="h-4 w-4 text-sky-600" />
+            <span className="text-xs font-medium text-gray-700">Upcoming visits</span>
+          </div>
+          <span className="text-sm font-bold text-sky-800">{upcomingAppointments}</span>
+        </div>
+
+        {conditions.length > 0 && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-100 bg-amber-50/40 px-3 py-2">
+            <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <p className="text-[11px] leading-relaxed text-amber-900">
+              {conditions.slice(0, 2).join(', ')}
+              {conditions.length > 2 ? ` +${conditions.length - 2} more` : ''}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-auto flex flex-col gap-2 border-t border-gray-100 bg-gray-50/60 px-5 py-3 sm:flex-row">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-50"
+        >
+          Edit patient
+        </button>
+        <button
+          type="button"
+          onClick={onViewAllDetails}
+          className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-anixi-green px-3 py-2 text-xs font-semibold text-white hover:opacity-90"
+        >
+          All details
+          <ArrowRightIcon className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/** Loads monthly adherence snapshot for the identity card. */
+export function usePatientHealthSnapshot(patientId: string | undefined, doctorId: string | undefined) {
+  const [snapshot, setSnapshot] = useState<PatientHealthSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!patientId || !doctorId) {
+      setLoading(false);
+      return;
+    }
+
+    const load = async () => {
+      setLoading(true);
+      try {
+        const now = new Date();
+        const details = await getDoctorMonthlyAdherenceDetails(
+          doctorId,
+          patientId,
+          now.getFullYear(),
+          now.getMonth()
+        );
+
+        const weeklyTrend: number[] = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date(now);
+          d.setDate(d.getDate() - i);
+          const key = getDateString(d);
+          const day = details.dayMap.get(key);
+          weeklyTrend.push(day?.percentage ?? 0);
+        }
+
+        setSnapshot({
+          adherencePercent: details.monthStats.adherencePercentage,
+          taken: details.monthStats.takenTotal,
+          missed: details.monthStats.missedTotal,
+          pending: details.monthStats.pendingTotal,
+          weeklyTrend,
+        });
+      } catch {
+        setSnapshot(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+  }, [patientId, doctorId]);
+
+  return { snapshot, loading };
+}

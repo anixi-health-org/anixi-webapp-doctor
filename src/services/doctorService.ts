@@ -1,43 +1,99 @@
-import { collection, doc, getDoc, getDocs, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { DOCTORS_COLLECTION } from '../shared/constants';
+import { DOCTORS_COLLECTION, USERS_COLLECTION } from '../shared/constants';
 import { DashboardStats, Doctor, Patient } from '../types';
 import { convertTimestamp } from '../utils/dateFormatter';
+import { formDataToFirestore, firestoreToFormData } from '../lib/doctorProfileMapper';
+import type { ProfessionalProfileFormData } from '../types/doctorProfile';
+
+function mapDoctorDoc(id: string, doctorData: Record<string, unknown>): Doctor {
+    return {
+        id,
+        email: String(doctorData.email ?? ''),
+        displayName:
+            (doctorData.displayName as string) ||
+            (doctorData.fullName as string) ||
+            undefined,
+        role: 'doctor',
+        specialty:
+            (doctorData.specialty as string) ||
+            (doctorData.medicalSpecialty as string) ||
+            undefined,
+        licenseNumber:
+            (doctorData.licenseNumber as string) ||
+            (doctorData.hpcsaRegistrationNumber as string) ||
+            undefined,
+        phoneNumber: doctorData.phoneNumber as string | undefined,
+        officeAddress:
+            (doctorData.officeAddress as string) ||
+            (doctorData.practiceAddress as string) ||
+            undefined,
+        practiceName: doctorData.practiceName as string | undefined,
+        logoUrl:
+            (doctorData.logoUrl as string) ||
+            (doctorData.profileImageUrl as string) ||
+            undefined,
+        country: doctorData.country as string | undefined,
+        currency: doctorData.currency as string | undefined,
+        nationality: doctorData.nationality as string | undefined,
+        createdAt:
+            (doctorData.createdAt as { toDate?: () => Date })?.toDate?.() || new Date(),
+        updatedAt:
+            (doctorData.updatedAt as { toDate?: () => Date })?.toDate?.() || new Date(),
+    };
+}
+
 export const getDoctorProfile = async (doctorId: string): Promise<Doctor | null> => {
     try {
         const doctorDoc = await getDoc(doc(db, DOCTORS_COLLECTION, doctorId));
         if (doctorDoc.exists()) {
-            const doctorData = doctorDoc.data();
-            return {
-                id: doctorDoc.id,
-                email: doctorData.email,
-                displayName: doctorData.displayName,
-                role: 'doctor',
-                specialty: doctorData.specialty,
-                licenseNumber: doctorData.licenseNumber,
-                phoneNumber: doctorData.phoneNumber,
-                officeAddress: doctorData.officeAddress,
-                practiceName: doctorData.practiceName,
-                logoUrl: doctorData.logoUrl,
-                createdAt: doctorData.createdAt?.toDate() || new Date(),
-                updatedAt: doctorData.updatedAt?.toDate() || new Date(),
-            } as Doctor;
+            return mapDoctorDoc(doctorDoc.id, doctorDoc.data());
         }
         return null;
     } catch (error) {
-        ;
         throw error;
     }
 };
+
+export const getDoctorProfileFormData = async (
+    doctorId: string
+): Promise<ProfessionalProfileFormData | null> => {
+    const doctorDoc = await getDoc(doc(db, DOCTORS_COLLECTION, doctorId));
+    if (!doctorDoc.exists()) {
+        return null;
+    }
+    return firestoreToFormData(doctorDoc.data());
+};
+
+export const saveDoctorProfileForm = async (
+    doctorId: string,
+    form: ProfessionalProfileFormData,
+    logoUrl?: string
+): Promise<void> => {
+    const doctorRef = doc(db, DOCTORS_COLLECTION, doctorId);
+    const payload = formDataToFirestore(form, logoUrl);
+    await setDoc(
+        doctorRef,
+        {
+            ...payload,
+            updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+    );
+};
+
 export const updateDoctorProfile = async (doctorId: string, updates: Partial<Doctor>): Promise<void> => {
     try {
         const doctorRef = doc(db, DOCTORS_COLLECTION, doctorId);
-        await updateDoc(doctorRef, {
-            ...updates,
-            updatedAt: serverTimestamp(),
-        });
+        await setDoc(
+            doctorRef,
+            {
+                ...updates,
+                updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+        );
     } catch (error) {
-        ;
         throw error;
     }
 };
@@ -77,6 +133,14 @@ export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> =>
                 const patientDoc = await getDoc(doc(db, 'patients', patientId));
                 if (patientDoc.exists()) {
                     const patientData = patientDoc.data();
+                    const userDoc = await getDoc(doc(db, USERS_COLLECTION, patientId));
+                    const userData = userDoc.exists() ? userDoc.data() : {};
+                    const photoURL =
+                        (typeof userData.photoURL === 'string' && userData.photoURL) ||
+                        (typeof patientData.photoURL === 'string' && patientData.photoURL) ||
+                        (typeof patientData.photoUrl === 'string' && patientData.photoUrl) ||
+                        (typeof patientData.profileImageUrl === 'string' && patientData.profileImageUrl) ||
+                        undefined;
                     const fullName = patientData.fullName || patientData.displayName || '';
                     const email = patientData.email || '';
                     const createdAtConverted = convertTimestamp(patientData.createdAt);
@@ -84,7 +148,8 @@ export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> =>
                     patients.push({
                         id: patientDoc.id,
                         email: email,
-                        displayName: fullName, 
+                        displayName: fullName,
+                        photoURL,
                         role: 'patient',
                         gender: patientData.gender,
                         phoneNumber: patientData.phoneNumber,

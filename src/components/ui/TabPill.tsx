@@ -1,4 +1,5 @@
 import React from 'react';
+import clsx from 'clsx';
 
 interface TabPillProps {
   active?: boolean;
@@ -7,16 +8,23 @@ interface TabPillProps {
   className?: string;
 }
 
-export const TabPill: React.FC<TabPillProps> = ({ active = false, children, onClick, className = '' }) => {
+export const TabPill: React.FC<TabPillProps> = ({
+  active = false,
+  children,
+  onClick,
+  className = '',
+}) => {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-2xl px-5 py-3 text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
+      className={clsx(
+        'inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200',
         active
-          ? 'bg-[#425950] text-white shadow-sm'
-          : 'text-[#8FA0B6] hover:text-[#425950] hover:bg-[#F7F9FB]'
-      } ${className}`}
+          ? 'bg-anixi-green text-white shadow-sm'
+          : 'text-gray-500 hover:bg-gray-50 hover:text-anixi-green',
+        className
+      )}
     >
       {children}
     </button>

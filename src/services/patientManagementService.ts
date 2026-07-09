@@ -16,6 +16,7 @@ import {
   DocumentData,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { buildPatientSignupLink } from '../lib/referralLinks';
 import { USERS_COLLECTION } from '../shared/constants';
 import { Patient, SharingRequest } from '../types';
 import { getDoctorReferral, logInvitation } from './referralService';
@@ -51,7 +52,7 @@ async function queuePatientAppDownloadInviteEmail(opts: {
   patientDisplayName?: string;
 }): Promise<string> {
   const referral = await getDoctorReferral(opts.doctorId);
-  const signupLink = referral?.referralLink || `${window.location.origin}/sign-up`;
+  const signupLink = referral?.referralLink || buildPatientSignupLink();
   const helloName = (opts.patientDisplayName || '').trim();
   const greeting = helloName ? `Hello ${escapeHtml(helloName)},` : 'Hello,';
 
@@ -81,6 +82,14 @@ async function queuePatientAppDownloadInviteEmail(opts: {
     },
   });
 }
+
+export const sendPatientDownloadInvite = async (opts: {
+  doctorId: string;
+  to: string;
+  patientDisplayName?: string;
+}): Promise<void> => {
+  await queuePatientAppDownloadInviteEmail(opts);
+};
 
 function escapeHtml(input: string): string {
   return input
@@ -403,6 +412,18 @@ export const calculateAge = (dateOfBirth: Date | undefined | null): number | nul
   }
 };
 export const getPatientStatus = (patient: Patient): 'stable' | 'warning' | 'inactive' => {
+  if (patient.chronicDiseases && patient.chronicDiseases.length > 0) {
+    return 'warning';
+  }
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+  const lastUpdate = patient.updatedAt
+    ? new Date(patient.updatedAt)
+    : patient.createdAt
+      ? new Date(patient.createdAt)
+      : new Date();
+  if (lastUpdate < fiveDaysAgo) {
+    return 'inactive';
+  }
   return 'stable';
 };
 

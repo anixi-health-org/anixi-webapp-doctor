@@ -96,7 +96,27 @@ export const formatDate = (timestamp: any): string => {
   return `${day}/${month}/${year} ${hours}:${minutes}`;
 };
 export const getDateString = (date: Date = new Date()): string => {
-  return date.toISOString().split('T')[0];
+  const year = date.getFullYear();
+  const month = padTwo(date.getMonth() + 1);
+  const day = padTwo(date.getDate());
+  return `${year}-${month}-${day}`;
+};
+
+export const addDays = (date: Date, days: number): Date => {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+};
+
+export const parseLocalDate = (value: string): Date | null => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const parsed = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+export const isSameLocalDay = (a: Date, b: Date): boolean => {
+  return getDateString(a) === getDateString(b);
 };
 export const formatTimeFromDate = (timestamp: any): string => {
   const date = convertTimestamp(timestamp);

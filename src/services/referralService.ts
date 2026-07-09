@@ -2,12 +2,12 @@ import {
   collection,
   doc,
   setDoc,
-  updateDoc,
   getDoc,
   serverTimestamp,
   increment,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { buildPatientSignupLink } from '../lib/referralLinks';
 export interface Referral {
   id: string;
   doctorId: string;
@@ -84,8 +84,7 @@ function generateReferralCode(doctorId: string): string {
   return `${timestamp}${random}`.substring(0, 12);
 }
 function generateReferralLink(referralCode: string): string {
-  const baseUrl = window.location.origin;
-  return `${baseUrl}/sign-up?ref=${referralCode}`;
+  return buildPatientSignupLink(referralCode);
 }
 export const logInvitation = async (
   doctorId: string,

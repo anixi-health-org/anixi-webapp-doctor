@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { formatTimestamp, getDateString, getTimeSlot } from '../utils/dateFormatter';
 import { getDailyAdherence, getDoctorDailyAdherence } from '../services/adherenceService';
 interface DailyAdherenceViewProps {
@@ -128,21 +129,25 @@ export const DailyAdherenceView: React.FC<DailyAdherenceViewProps> = ({
   };
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-blue-200">
+      <div className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <button
+          type="button"
           onClick={onPreviousDay}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center justify-center gap-1 rounded-lg bg-anixi-green px-4 py-2.5 text-sm font-medium text-white transition-colors hover:opacity-90"
         >
-          ← Previous Day
+          <ChevronLeftIcon className="h-4 w-4" />
+          Previous Day
         </button>
-        <h2 className="text-2xl font-bold text-gray-900">
+        <h2 className="text-center font-heading text-xl font-semibold text-gray-900 sm:text-2xl">
           {date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </h2>
         <button
+          type="button"
           onClick={onNextDay}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center justify-center gap-1 rounded-lg bg-anixi-green px-4 py-2.5 text-sm font-medium text-white transition-colors hover:opacity-90"
         >
-          Next Day →
+          Next Day
+          <ChevronRightIcon className="h-4 w-4" />
         </button>
       </div>
       {dailyData?.moodEntries && dailyData.moodEntries.length > 0 && (

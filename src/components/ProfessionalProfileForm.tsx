@@ -1,79 +1,91 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../lib/firebase';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { TabPill } from '../components/ui/TabPill';
+import { PageHeader } from './page-layout/PageHeader';
+import { PageShell } from './page-layout/PageShell';
 import { LogoCropModal } from './LogoCropModal';
 import { useAuth } from '../hooks/useAuth';
-import { updateDoctorProfile } from '../services/doctorService';
-import { Doctor } from '../types';
-import { customColors } from '../lib/customColors';
+import { getDoctorProfileFormData, saveDoctorProfileForm } from '../services/doctorService';
+import {
+  EMPTY_PROFILE_FORM,
+  type ProfessionalProfileFormData,
+} from '../types/doctorProfile';
+import { CardSkeleton } from './ui/Skeleton';
 
-interface ProfessionalProfileFormData {
-  title: string;
-  fullName: string;
-  gender: string;
-  idOrPassport: string;
-  nationality: string;
-
-  phoneNumber: string;
-  emailAddress: string;
-  preferredContactMethod: string;
-  websiteOrSocialLink?: string;
-
-  hpcsaRegistrationNumber: string;
-  medicalSpecialty: string;
-  yearsOfExperience: string;
-  hpcsaCertificate?: string;
-  practiceLicenceUrl?: string;
-
-  practiceType: string;
-  practiceName: string;
-  practiceNumber?: string;
-  practiceFacility: string;
-  province: string;
-  city: string;
-  practiceAddress: string;
-}
+const fieldClass =
+  'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-anixi-green focus:outline-none focus:ring-2 focus:ring-anixi-green/15';
+const labelClass = 'mb-1.5 block text-sm font-medium text-gray-700';
 
 const ProfessionalProfileForm: React.FC = () => {
   const { user } = useAuth();
+  const doctor = user?.role === 'doctor' ? user : null;
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string>(user?.logoUrl ?? '');
+  const [logoPreview, setLogoPreview] = useState('');
   const [logoUploading, setLogoUploading] = useState(false);
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<ProfessionalProfileFormData>({
-    title: '',
-    fullName: user?.displayName || '',
-    gender: '',
-    idOrPassport: '',
-    nationality: '',
-
-    phoneNumber: user?.phoneNumber || '',
-    emailAddress: user?.email || '',
-    preferredContactMethod: '',
-    websiteOrSocialLink: '',
-
-    hpcsaRegistrationNumber: user?.licenseNumber || '',
-    medicalSpecialty: user?.specialty || '',
-    yearsOfExperience: '',
-    hpcsaCertificate: '',
-    practiceLicenceUrl: '',
-
-    practiceType: '',
-    practiceName: '',
-    practiceNumber: '',
-    practiceFacility: '',
-    province: '',
-    city: '',
-    practiceAddress: '',
+    ...EMPTY_PROFILE_FORM,
+    fullName: doctor?.displayName || '',
+    phoneNumber: doctor?.phoneNumber || '',
+    emailAddress: doctor?.email || '',
+    hpcsaRegistrationNumber: doctor?.licenseNumber || '',
+    medicalSpecialty: doctor?.specialty || '',
+    practiceName: doctor?.practiceName || '',
+    practiceAddress: doctor?.officeAddress || '',
+    logoUrl: doctor?.logoUrl || '',
   });
+
+  useEffect(() => {
+    if (!doctor?.id) {
+      setIsProfileLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadProfile = async () => {
+      setIsProfileLoading(true);
+      try {
+        const saved = await getDoctorProfileFormData(doctor.id);
+        if (cancelled) return;
+
+        if (saved) {
+          setFormData((prev) => ({
+            ...prev,
+            ...saved,
+            emailAddress: saved.emailAddress || doctor.email || prev.emailAddress,
+            fullName: saved.fullName || doctor.displayName || prev.fullName,
+          }));
+          if (saved.logoUrl) {
+            setLogoPreview(saved.logoUrl);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setMessage('Could not load your saved profile. You can still edit and save.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsProfileLoading(false);
+        }
+      }
+    };
+
+    loadProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [doctor?.id, doctor?.displayName, doctor?.email]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -85,37 +97,34 @@ const ProfessionalProfileForm: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!doctor) return;
 
     setIsLoading(true);
     setMessage('');
 
     try {
-      let logoUrl: string | undefined = user?.logoUrl;
+      let logoUrl: string | undefined = formData.logoUrl || doctor?.logoUrl;
 
-      if (logoFile && user?.id) {
+      if (logoFile && doctor?.id) {
         setLogoUploading(true);
-        const storageRef = ref(storage, `doctor-logos/${user.id}`);
+        const storageRef = ref(storage, `doctor-logos/${doctor.id}`);
         const snapshot = await uploadBytes(storageRef, logoFile);
         logoUrl = await getDownloadURL(snapshot.ref);
         setLogoUploading(false);
       }
 
-      const doctorData: Partial<Doctor> = {
-        displayName: formData.fullName,
-        specialty: formData.medicalSpecialty,
-        licenseNumber: formData.hpcsaRegistrationNumber,
-        phoneNumber: formData.phoneNumber,
-        officeAddress: formData.practiceAddress,
-        practiceName: formData.practiceName,
-        ...(logoUrl !== undefined && { logoUrl }),
-      };
+      await saveDoctorProfileForm(doctor.id, formData, logoUrl);
 
-      await updateDoctorProfile(user.id, doctorData);
-      setMessage('✅ Professional profile updated successfully!');
+      if (logoUrl) {
+        setFormData((prev) => ({ ...prev, logoUrl: logoUrl as string }));
+        setLogoPreview(logoUrl);
+      }
+
+      setLogoFile(null);
+      setMessage('Professional profile saved successfully.');
     } catch (error) {
-      ;
-      setMessage('❌ Failed to update profile. Please try again.');
+      console.error('[ProfessionalProfileForm] save failed:', error);
+      setMessage('Failed to update profile. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -129,12 +138,13 @@ const ProfessionalProfileForm: React.FC = () => {
     ];
 
     return (
-      <div className="flex gap-3 mb-8 rounded-3xl border border-[#E4EAF2] bg-white p-2 shadow-sm overflow-x-auto">
+      <div className="mb-6 flex gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1.5 shadow-sm">
         {tabs.map((tab) => (
           <TabPill
             key={tab.id}
             onClick={() => setCurrentStep(tab.id)}
             active={currentStep === tab.id}
+            className="flex-1 justify-center rounded-xl px-4 py-2.5"
           >
             {tab.name}
           </TabPill>
@@ -145,21 +155,21 @@ const ProfessionalProfileForm: React.FC = () => {
 
   const renderPersonalInformation = () => (
     <div className="space-y-6">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-[#425950] mb-2">Personal Information</h2>
-        <p className="text-gray-600">Tell us about yourself and your contact details</p>
+      <div className="border-b border-gray-100 pb-4">
+        <h2 className="font-heading text-lg font-semibold text-anixi-green">Personal Information</h2>
+        <p className="mt-1 text-sm text-gray-500">Tell us about yourself and your contact details</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Title <span className="text-red-500">*</span>
           </label>
           <select
             name="title"
             value={formData.title}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           >
             <option value="">Select Title</option>
@@ -172,7 +182,7 @@ const ProfessionalProfileForm: React.FC = () => {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Full Name <span className="text-red-500">*</span>
           </label>
           <input
@@ -180,20 +190,20 @@ const ProfessionalProfileForm: React.FC = () => {
             name="fullName"
             value={formData.fullName}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Gender <span className="text-red-500">*</span>
           </label>
           <select
             name="gender"
             value={formData.gender}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           >
             <option value="">Select Gender</option>
@@ -205,7 +215,7 @@ const ProfessionalProfileForm: React.FC = () => {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             ID or Passport <span className="text-red-500">*</span>
           </label>
           <input
@@ -213,13 +223,13 @@ const ProfessionalProfileForm: React.FC = () => {
             name="idOrPassport"
             value={formData.idOrPassport}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Phone Number <span className="text-red-500">*</span>
           </label>
           <input
@@ -227,13 +237,13 @@ const ProfessionalProfileForm: React.FC = () => {
             name="phoneNumber"
             value={formData.phoneNumber}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Email Address <span className="text-red-500">*</span>
           </label>
           <input
@@ -241,20 +251,20 @@ const ProfessionalProfileForm: React.FC = () => {
             name="emailAddress"
             value={formData.emailAddress}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Preferred Contact Method <span className="text-red-500">*</span>
           </label>
           <select
             name="preferredContactMethod"
             value={formData.preferredContactMethod}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           >
             <option value="">Select Method</option>
@@ -266,7 +276,7 @@ const ProfessionalProfileForm: React.FC = () => {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Website or Social Link <span className="text-gray-500">(optional)</span>
           </label>
           <input
@@ -275,19 +285,19 @@ const ProfessionalProfileForm: React.FC = () => {
             value={formData.websiteOrSocialLink}
             onChange={handleInputChange}
             placeholder="https://example.com"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
           />
         </div>
 
         <div className="md:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Nationality <span className="text-red-500">*</span>
           </label>
           <select
             name="nationality"
             value={formData.nationality}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           >
             <option value="">Select Nationality</option>
@@ -307,14 +317,14 @@ const ProfessionalProfileForm: React.FC = () => {
 
   const renderProfessionalInformation = () => (
     <div className="space-y-6">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-[#425950] mb-2">Professional Information</h2>
-        <p className="text-gray-600">Your medical credentials and experience</p>
+      <div className="border-b border-gray-100 pb-4">
+        <h2 className="font-heading text-lg font-semibold text-anixi-green">Professional Information</h2>
+        <p className="mt-1 text-sm text-gray-500">Your medical credentials and experience</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             HPCSA Registration Number <span className="text-red-500">*</span>
           </label>
           <input
@@ -322,20 +332,20 @@ const ProfessionalProfileForm: React.FC = () => {
             name="hpcsaRegistrationNumber"
             value={formData.hpcsaRegistrationNumber}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Medical Specialty <span className="text-red-500">*</span>
           </label>
           <select
             name="medicalSpecialty"
             value={formData.medicalSpecialty}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           >
             <option value="">Select Specialty</option>
@@ -361,14 +371,14 @@ const ProfessionalProfileForm: React.FC = () => {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Years of Experience <span className="text-red-500">*</span>
           </label>
           <select
             name="yearsOfExperience"
             value={formData.yearsOfExperience}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           >
             <option value="">Select Experience</option>
@@ -383,7 +393,7 @@ const ProfessionalProfileForm: React.FC = () => {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             HPCSA Certificate <span className="text-gray-500">(optional)</span>
           </label>
           <input
@@ -392,12 +402,12 @@ const ProfessionalProfileForm: React.FC = () => {
             value={formData.hpcsaCertificate}
             onChange={handleInputChange}
             placeholder="URL to certificate or upload link"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
           />
         </div>
 
         <div className="md:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Practice Licence URL <span className="text-gray-500">(optional)</span>
           </label>
           <input
@@ -406,7 +416,7 @@ const ProfessionalProfileForm: React.FC = () => {
             value={formData.practiceLicenceUrl}
             onChange={handleInputChange}
             placeholder="URL to practice licence"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
           />
         </div>
       </div>
@@ -415,21 +425,21 @@ const ProfessionalProfileForm: React.FC = () => {
 
   const renderPracticeInformation = () => (
     <div className="space-y-6">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-[#425950] mb-2">Practice Information</h2>
-        <p className="text-gray-600">Details about your medical practice</p>
+      <div className="border-b border-gray-100 pb-4">
+        <h2 className="font-heading text-lg font-semibold text-anixi-green">Practice Information</h2>
+        <p className="mt-1 text-sm text-gray-500">Details about your medical practice</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Practice Type <span className="text-red-500">*</span>
           </label>
           <select
             name="practiceType"
             value={formData.practiceType}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           >
             <option value="">Select Practice Type</option>
@@ -442,7 +452,7 @@ const ProfessionalProfileForm: React.FC = () => {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Practice Name <span className="text-red-500">*</span>
           </label>
           <input
@@ -450,13 +460,13 @@ const ProfessionalProfileForm: React.FC = () => {
             name="practiceName"
             value={formData.practiceName}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Practice Number (BHF) <span className="text-gray-500">(optional)</span>
           </label>
           <input
@@ -464,19 +474,19 @@ const ProfessionalProfileForm: React.FC = () => {
             name="practiceNumber"
             value={formData.practiceNumber}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Practice Facility <span className="text-red-500">*</span>
           </label>
           <select
             name="practiceFacility"
             value={formData.practiceFacility}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           >
             <option value="">Select Practice Facility</option>
@@ -489,7 +499,7 @@ const ProfessionalProfileForm: React.FC = () => {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Province <span className="text-red-500">*</span>
           </label>
           <input
@@ -497,13 +507,13 @@ const ProfessionalProfileForm: React.FC = () => {
             name="province"
             value={formData.province}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             City <span className="text-red-500">*</span>
           </label>
           <input
@@ -511,13 +521,13 @@ const ProfessionalProfileForm: React.FC = () => {
             name="city"
             value={formData.city}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           />
         </div>
 
         <div className="md:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Practice Address <span className="text-red-500">*</span>
           </label>
           <input
@@ -525,14 +535,14 @@ const ProfessionalProfileForm: React.FC = () => {
             name="practiceAddress"
             value={formData.practiceAddress}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#425950] focus:border-transparent"
+            className={fieldClass}
             required
           />
         </div>
 
         {/* Practice Logo for Letterhead */}
         <div className="md:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={labelClass}>
             Practice Logo <span className="text-gray-500">(used on invoices &amp; letterhead)</span>
           </label>
           <div className="flex items-center gap-4">
@@ -603,43 +613,59 @@ const ProfessionalProfileForm: React.FC = () => {
     }
   };
 
+  if (isProfileLoading) {
+    return (
+      <PageShell>
+        <PageHeader
+          title="Professional Profile"
+          description="Keep your personal, professional, and practice details up to date."
+        />
+        <CardSkeleton rows={8} />
+      </PageShell>
+    );
+  }
+
   return (
-    <div className={`min-h-screen bg-[${customColors.backgroundMedium}] py-8`}>
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-[#425950]">Professional Profile Setup</h1>
-          <p className="mt-2 text-gray-600">Complete your professional profile</p>
-        </div>
+    <PageShell>
+      <PageHeader
+        title="Professional Profile"
+        description="Keep your personal, professional, and practice details up to date."
+      />
 
-        {renderTabNavigation()}
+      {renderTabNavigation()}
 
-        <Card>
-          <CardContent className="p-8">
-            <form onSubmit={handleSubmit}>
-              {renderCurrentStep()}
+      <Card className="border border-gray-200 shadow-sm">
+        <CardContent className="p-5 sm:p-8">
+          <form onSubmit={handleSubmit}>
+            {renderCurrentStep()}
 
-              {message && (
-                <div className={`mt-6 p-4 rounded-lg ${
-                  message.includes('✅') ? 'bg-gray-50 text-green-800' : 'bg-gray-50 text-red-800'
-                }`}>
-                  {message}
-                </div>
-              )}
-
-              <div className="flex justify-end mt-8">
-                <Button
-                  type="submit"
-                  disabled={isLoading}
-                  className="px-8 py-3 bg-[#425950] text-white rounded-lg hover:bg-[#5a6f6a] disabled:opacity-50 transition-colors duration-200"
-                >
-                  {isLoading ? 'Saving...' : 'Save Profile'}
-                </Button>
+            {message && (
+              <div
+                className={`mt-6 rounded-xl p-4 text-sm ${
+                  message.includes('successfully')
+                    ? 'bg-emerald-50 text-emerald-800'
+                    : message.includes('Could not load')
+                      ? 'bg-amber-50 text-amber-800'
+                      : 'bg-red-50 text-red-800'
+                }`}
+              >
+                {message}
               </div>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+            )}
+
+            <div className="mt-8 flex justify-end border-t border-gray-100 pt-6">
+              <Button
+                type="submit"
+                disabled={isLoading}
+                className="rounded-xl bg-anixi-green px-8 py-2.5 text-white hover:bg-anixi-green/90 disabled:opacity-50"
+              >
+                {isLoading ? 'Saving...' : 'Save Profile'}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </PageShell>
   );
 };
 

@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
+import { useAuth } from '../hooks/useAuth';
 import { auth } from '../lib/firebase';
 import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 
 const ChangePassword: React.FC = () => {
+  const { user } = useAuth();
   const { navigateBack } = useNavigateWithFallback();
+  const homePath = user?.role === 'caregiver' ? '/caregiver' : '/dashboard';
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -144,7 +147,7 @@ const ChangePassword: React.FC = () => {
           <div className="flex items-center justify-end gap-3">
             <button
               type="button"
-              onClick={() => navigateBack('/dashboard')}
+              onClick={() => navigateBack(homePath)}
               className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200"
             >
               Cancel

@@ -15,7 +15,7 @@ import {
 import { db } from '../lib/firebase';
 import { USERS_COLLECTION } from '../shared/constants';
 import { getVitalsRecordsForDate } from './logsService';
-import { convertTimestamp } from '../utils/dateFormatter';
+import { convertTimestamp, getDateString } from '../utils/dateFormatter';
 
 interface AdherenceRecord {
   date: string;
@@ -89,7 +89,7 @@ const getStartAndEndOfMonth = (year: number, month: number) => {
   return { startDate, endDate };
 };
 
-const toDateKey = (value: Date): string => value.toISOString().split('T')[0];
+const toDateKey = (value: Date): string => getDateString(value);
 
 const normalizeStatus = (status: unknown): 'taken' | 'missed' | 'pending' => {
   if (status === 'taken' || status === 'missed' || status === 'pending') {

@@ -104,7 +104,7 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id, practiceId, weekStart]);
+  }, [user?.id, practiceId, weekStart, weekEnd]);
 
   useEffect(() => { load(); }, [load]);
 

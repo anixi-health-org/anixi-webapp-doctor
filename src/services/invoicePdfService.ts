@@ -13,7 +13,6 @@ export interface DoctorLetterheadData {
 }
 
 // Brand palette
-const BRAND_HEX = '#425950';
 const BRAND_RGB: [number, number, number] = [66, 89, 80];
 const BRAND_LIGHT_RGB: [number, number, number] = [238, 242, 240];
 

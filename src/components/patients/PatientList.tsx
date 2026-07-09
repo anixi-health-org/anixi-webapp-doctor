@@ -1,91 +1,76 @@
 import React from 'react';
+import { Users } from 'lucide-react';
 import { Patient } from '../../types';
 import { getPatientStatus } from '../../services/patientManagementService';
+import { ListRowsSkeleton } from '../ui/Skeleton';
+
 interface PatientListProps {
   patients: Patient[];
   loading: boolean;
   onPatientClick: (patient: Patient) => void;
 }
+
 export const PatientList: React.FC<PatientListProps> = ({
   patients,
   loading,
   onPatientClick,
 }) => {
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-96">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#425950]"></div>
-      </div>
-    );
+    return <ListRowsSkeleton rows={6} />;
   }
+
   if (patients.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-96 text-gray-500">
-        <svg
-          className="w-16 h-16 mb-4"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 4.354a4 4 0 110 5.292M15 21H3v-2a6 6 0 0112 0v2zm0 0h6v-2a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-          />
-        </svg>
-        <p className="text-lg font-medium">No patients connected yet</p>
-        <p className="text-sm">Pending patient requests will appear here</p>
+      <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+        <Users className="mb-4 h-14 w-14 text-gray-300" />
+        <p className="font-heading text-lg font-medium text-gray-800">No patients connected yet</p>
+        <p className="mt-1 font-sans text-sm">Pending patient requests will appear here</p>
       </div>
     );
   }
+
   return (
-    <div className="divide-y divide-[#E9EEF4]">
+    <div className="divide-y divide-gray-100">
       {patients.map((patient) => {
         const status = getPatientStatus(patient);
         const statusColor =
           status === 'stable'
-            ? 'bg-[#DDF6E9] text-[#0E9F6E]'
+            ? 'bg-emerald-50 text-emerald-700'
             : status === 'warning'
-              ? 'bg-[#FFEAD1] text-[#D9480F]'
-              : 'bg-[#EEF2F7] text-[#5C6775]';
+              ? 'bg-amber-50 text-amber-700'
+              : 'bg-gray-100 text-gray-600';
+        const avatarColor =
+          status === 'warning'
+            ? 'bg-amber-500'
+            : status === 'inactive'
+              ? 'bg-slate-400'
+              : 'bg-emerald-500';
+
         return (
           <div
             key={patient.id}
             onClick={() => onPatientClick(patient)}
-            className="cursor-pointer px-5 py-5 transition-colors hover:bg-[#FBFCFD]"
+            className="cursor-pointer px-5 py-5 transition-colors hover:bg-gray-50/80"
           >
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-center gap-4 min-w-0">
-                <div className={`h-12 w-12 rounded-2xl ${status === 'warning' ? 'bg-[#FF7A00]' : status === 'inactive' ? 'bg-[#94A3B8]' : 'bg-[#10B981]'} text-white font-bold flex items-center justify-center shadow-sm flex-shrink-0`}>
-                  {(patient.displayName || patient.email || 'P').charAt(0).toUpperCase()}
+              <div className="flex min-w-0 items-center gap-4">
+                <div
+                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl font-sans text-sm font-bold text-white shadow-soft ${avatarColor}`}
+                >
+                  {(patient.displayName || patient.email || '?').charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-lg sm:text-xl font-semibold text-[#0E2340] truncate">
-                    {patient.displayName}
-                  </h3>
-                  <p className="text-sm text-[#8A99AF] truncate">{patient.email}</p>
+                  <p className="truncate font-sans font-semibold text-gray-900">
+                    {patient.displayName || 'Unnamed Patient'}
+                  </p>
+                  <p className="truncate font-sans text-sm text-gray-500">{patient.email}</p>
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 lg:pr-2">
-                <div className="text-left sm:text-right">
-                  <p className="text-[11px] font-semibold tracking-[0.12em] uppercase text-[#C0CAD8]">Last Seen</p>
-                  <p className="text-sm font-semibold text-[#0E2340]">No visits</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold tracking-[0.08em] uppercase ${statusColor}`}>
-                    {status.charAt(0).toUpperCase() + status.slice(1)}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-[#CBD5E1] hover:text-[#8FA0B6] text-2xl leading-none px-2"
-                    onClick={(event) => event.stopPropagation()}
-                    aria-label="More actions"
-                  >
-                    ⋮
-                  </button>
-                </div>
-              </div>
+              <span
+                className={`inline-flex w-fit rounded-full px-3 py-1 font-sans text-xs font-semibold capitalize ${statusColor}`}
+              >
+                {status}
+              </span>
             </div>
           </div>
         );

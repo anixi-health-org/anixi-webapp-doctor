@@ -4,7 +4,7 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { getPatientsByDoctorId } from '../../services/unifiedPatientDataSource';
 import { createAppointment } from '../../services/appointmentService';
 import { getAvailableSlots, validateSlot, createScheduledAppointment } from '../../services/schedulingService';
-import { Patient, Appointment, AvailableSlot, ConsultType } from '../../types';
+import { Patient, AvailableSlot, ConsultType } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Toast } from '../ui';
 

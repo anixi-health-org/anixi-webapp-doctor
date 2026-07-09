@@ -50,6 +50,12 @@ export const NotificationBell: React.FC = () => {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
+    if (open) {
+      load();
+    }
+  }, [open, load]);
+
+  useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         setOpen(false);
@@ -71,11 +77,19 @@ export const NotificationBell: React.FC = () => {
   return (
     <div className="relative" ref={panelRef}>
       <button
-        onClick={() => setOpen((v) => !v)}
-        className="relative h-8 w-8 flex items-center justify-center rounded-full hover:bg-anixi-beige/20 transition-colors"
+        onClick={() => {
+          setOpen((v) => {
+            const next = !v;
+            if (next) {
+              void load();
+            }
+            return next;
+          });
+        }}
+        className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 transition-all hover:border-anixi-green/30 hover:text-anixi-green hover:shadow-soft"
         aria-label="Notifications"
       >
-        <BellIcon className="h-5 w-5 text-anixi-green" />
+        <BellIcon className="h-5 w-5" />
         {badgeCount > 0 && (
           <span className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold">
             {badgeCount > 9 ? '9+' : badgeCount}
@@ -84,9 +98,9 @@ export const NotificationBell: React.FC = () => {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="font-semibold text-gray-900 text-sm">Notifications</h3>
+        <div className="absolute right-0 mt-2 w-80 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-elevated z-50">
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+            <h3 className="font-heading text-sm font-semibold text-gray-900">Notifications</h3>
             <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
           </div>
 

@@ -2,7 +2,8 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { loginDoctor, logoutDoctor, getCurrentDoctor } from '../services/authService';
+import { loginProfessional, logoutDoctor, getCurrentProfessional } from '../services/authService';
+import { linkCaregiverToNominatedPatients } from '../services/caregiverService';
 import {
   getPracticeForUser,
   getPracticeMember,
@@ -13,14 +14,15 @@ import {
 } from '../services/practiceSettingsService';
 import { resolveEffectivePermissions } from '../services/permissions/practicePermissionsService';
 import { USERS_COLLECTION } from '../shared/constants';
-import { Doctor, PracticeSession } from '../types';
+import { PracticeSession, ProfessionalUser } from '../types';
+import { AuthRole } from '../types/auth';
 
 export type AuthContextType = {
-  user: Doctor | null;
+  user: ProfessionalUser | null;
   practiceSession: PracticeSession | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<Doctor | null>;
+  login: (email: string, password: string, role?: AuthRole) => Promise<ProfessionalUser | null>;
   logout: () => Promise<void>;
   refreshPracticeSession: () => Promise<void>;
 };
@@ -84,7 +86,7 @@ const loadPracticeSession = async (uid: string): Promise<PracticeSession | null>
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<Doctor | null>(null);
+  const [user, setUser] = useState<ProfessionalUser | null>(null);
   const [practiceSession, setPracticeSession] = useState<PracticeSession | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -93,11 +95,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setIsLoading(true);
       try {
         if (firebaseUser) {
-          const doctor = await getCurrentDoctor(firebaseUser);
-          setUser(doctor);
-          if (doctor) {
-            const session = await loadPracticeSession(doctor.id);
+          const professional = await getCurrentProfessional(firebaseUser);
+          setUser(professional);
+          if (professional?.role === 'doctor') {
+            const session = await loadPracticeSession(professional.id);
             setPracticeSession(session);
+          } else {
+            setPracticeSession(null);
+            if (professional?.role === 'caregiver' && firebaseUser.email) {
+              void linkCaregiverToNominatedPatients(firebaseUser.uid, firebaseUser.email);
+            }
           }
         } else {
           setUser(null);
@@ -114,16 +121,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string): Promise<Doctor | null> => {
+  const login = async (
+    email: string,
+    password: string,
+    role?: AuthRole
+  ): Promise<ProfessionalUser | null> => {
     setIsLoading(true);
     try {
-      const doctor = await loginDoctor(email, password);
-      setUser(doctor);
-      if (doctor) {
-        const session = await loadPracticeSession(doctor.id);
+      const professional = await loginProfessional(email, password, role);
+      setUser(professional);
+      if (professional.role === 'doctor') {
+        const session = await loadPracticeSession(professional.id);
         setPracticeSession(session);
+      } else {
+        setPracticeSession(null);
       }
-      return doctor;
+      return professional;
     } finally {
       setIsLoading(false);
     }
@@ -141,7 +154,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const refreshPracticeSession = async (): Promise<void> => {
-    if (!user) return;
+    if (!user || user.role !== 'doctor') return;
     const session = await loadPracticeSession(user.id);
     setPracticeSession(session);
   };

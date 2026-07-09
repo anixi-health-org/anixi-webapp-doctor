@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { PatientList } from '../components/patients/PatientList';
 import { SharingRequestsList } from '../components/patients/SharingRequestsList';
-import { PatientDetailModal } from '../components/patients/PatientDetailModal';
 import { AddPatientModal } from '../components/patients/AddPatientModal';
 import { TabPill } from '../components/ui/TabPill';
+import { Card, CardContent } from '../components/ui/Card';
+import { PatientsPageSkeleton } from '../components/ui';
+import { PageHeader, PageShell } from '../components/page-layout';
+import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { Patient } from '../types';
 import { listenToDoctorPatients } from '../services/patientManagementService';
 import {
@@ -18,14 +22,13 @@ type TabType = 'patients' | 'requests';
 
 export const Patients: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const doctorId = user?.id;
 
   const [activeTab, setActiveTab] = useState<TabType>('patients');
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
   const [patientsError, setPatientsError] = useState<string | null>(null);
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [showModal, setShowModal] = useState(false);
   const [showAddPatient, setShowAddPatient] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -81,47 +84,42 @@ export const Patients: React.FC = () => {
     setSuccessMessage('Request rejected.');
   };
 
+  if (patientsLoading && patients.length === 0 && activeTab === 'patients') {
+    return (
+      <PageShell>
+        <PatientsPageSkeleton />
+      </PageShell>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-anixi-beige">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-[#0E2340]">Patient Directory</h1>
-            <p className="mt-2 text-sm sm:text-base text-[#72829B]">
-              Manage connected patients and review incoming requests.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowAddPatient(true)}
-            className="inline-flex items-center justify-center gap-3 rounded-2xl bg-anixi-green text-white px-6 py-4 text-base font-semibold shadow-lg shadow-[#425950]/15 hover:bg-anixi-green/90"
-          >
-            <span className="text-2xl leading-none">+</span>
-            <span>New Patient Record</span>
-          </button>
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Patient Directory"
+        description="Manage connected patients and review incoming requests."
+        actions={
+          <PrimaryButton onClick={() => setShowAddPatient(true)} icon={<span className="text-lg leading-none">+</span>}>
+            New Patient Record
+          </PrimaryButton>
+        }
+      />
 
       {successMessage && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-green-700">
-            {successMessage}
-          </div>
+        <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+          {successMessage}
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-2">
-        <div className="flex gap-3 rounded-3xl border border-[#E4EAF2] bg-white p-2 shadow-sm overflow-x-auto">
-          <TabPill onClick={() => setActiveTab('patients')} active={activeTab === 'patients'}>
-            All Patients ({patients.length})
-          </TabPill>
-          <TabPill onClick={() => setActiveTab('requests')} active={activeTab === 'requests'}>
-            Pending Requests ({pendingCount})
-          </TabPill>
-        </div>
+      <div className="mb-6 flex gap-2 overflow-x-auto rounded-2xl border border-gray-100 bg-white p-1.5 shadow-soft">
+        <TabPill onClick={() => setActiveTab('patients')} active={activeTab === 'patients'}>
+          All Patients ({patients.length})
+        </TabPill>
+        <TabPill onClick={() => setActiveTab('requests')} active={activeTab === 'requests'}>
+          Pending Requests ({pendingCount})
+        </TabPill>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div>
         {patientsError && activeTab === 'patients' && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 mb-4">
             {patientsError}
@@ -139,21 +137,19 @@ export const Patients: React.FC = () => {
         )}
 
         {activeTab === 'patients' && (
-          <div className="rounded-[28px] border border-[#E4EAF2] bg-white shadow-sm overflow-hidden">
+          <Card className="overflow-hidden">
             <PatientList
               patients={patients}
               loading={patientsLoading}
-              onPatientClick={(patient) => {
-                setSelectedPatient(patient);
-                setShowModal(true);
-              }}
+              onPatientClick={(patient) => navigate(`/patient-profile/${patient.id}`)}
             />
-          </div>
+          </Card>
         )}
 
         {activeTab === 'requests' && (
-          <div className="rounded-[28px] border border-[#E4EAF2] bg-white shadow-sm overflow-hidden p-4 sm:p-6">
-            <h3 className="text-lg font-semibold mb-4 text-[#0E2340]">Pending Requests</h3>
+          <Card>
+            <CardContent>
+            <h3 className="font-heading mb-4 text-lg font-semibold text-gray-900">Pending Requests</h3>
             <SharingRequestsList
               requests={sharingRequests}
               loading={sharingRequestsLoading}
@@ -165,30 +161,21 @@ export const Patients: React.FC = () => {
               }}
               refreshing={approveMutation.isPending || rejectMutation.isPending}
             />
-          </div>
+            </CardContent>
+          </Card>
         )}
       </div>
 
-      <PatientDetailModal
-        patient={selectedPatient}
-        isOpen={showModal}
-        onClose={() => {
-          setShowModal(false);
-          setSelectedPatient(null);
-        }}
-        onPatientUpdated={(updated) => {
-          setSelectedPatient(updated);
-          setPatients((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
-        }}
-      />
       <AddPatientModal
         isOpen={showAddPatient}
         onClose={() => setShowAddPatient(false)}
-        onAdded={() => {
-          setSuccessMessage('Patient added successfully');
+        onAdded={(result) => {
+          setSuccessMessage(
+            result.inviteWarning || 'Patient added successfully'
+          );
           setShowAddPatient(false);
         }}
       />
-    </div>
+    </PageShell>
   );
 };

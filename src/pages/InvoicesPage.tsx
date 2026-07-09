@@ -1,10 +1,22 @@
 import React, { useEffect, useState } from 'react';
+import {
+  CheckCircle2,
+  Clock,
+  FileText,
+  Lightbulb,
+  Printer,
+  Send,
+  CircleDollarSign,
+  Wallet,
+} from 'lucide-react';
 import { useAuth } from '../hooks/AuthContext';
+import { useDoctorCurrency } from '../hooks/useDoctorCurrency';
 import { getInvoicesByDoctor, updateInvoiceStatus, resendInvoice } from '../services/invoiceService';
 import { generateInvoicePDF } from '../services/invoicePdfService';
 import { Invoice, InvoiceStatus } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { Toast } from '../components/ui';
+import { Toast, InvoicePageSkeleton } from '../components/ui';
+import { PageHeader, PageShell } from '../components/page-layout';
 
 interface Summary {
   issued: number;
@@ -13,34 +25,37 @@ interface Summary {
   total: number;
 }
 
-const getStatusColor = (status: InvoiceStatus): string => {
+const STATUS_STYLES: Record<InvoiceStatus, string> = {
+  issued: 'bg-blue-50 text-blue-700 border-blue-200',
+  outstanding: 'bg-amber-50 text-amber-800 border-amber-200',
+  paid: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+};
+
+const StatusIcon: React.FC<{ status: InvoiceStatus }> = ({ status }) => {
+  const cls = 'h-4 w-4 shrink-0';
   switch (status) {
     case 'issued':
-      return 'bg-blue-100 text-blue-800 border-blue-300';
+      return <Send className={cls} />;
     case 'outstanding':
-      return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      return <Clock className={cls} />;
     case 'paid':
-      return 'bg-green-100 text-green-800 border-green-300';
+      return <CheckCircle2 className={cls} />;
     default:
-      return 'bg-gray-100 text-gray-800 border-gray-300';
+      return <FileText className={cls} />;
   }
 };
 
-const getStatusIcon = (status: InvoiceStatus): string => {
-  switch (status) {
-    case 'issued':
-      return '📤';
-    case 'outstanding':
-      return '⏳';
-    case 'paid':
-      return '✅';
-    default:
-      return '📋';
-  }
-};
+const SUMMARY_CARDS = [
+  { key: 'issued' as const, label: 'Total Issued', icon: Send, color: 'text-blue-600' },
+  { key: 'outstanding' as const, label: 'Outstanding', icon: Clock, color: 'text-amber-600' },
+  { key: 'paid' as const, label: 'Paid', icon: CircleDollarSign, color: 'text-emerald-600' },
+  { key: 'total' as const, label: 'Total Amount', icon: Wallet, color: 'text-gray-900' },
+];
 
 export const InvoicesPage: React.FC = () => {
   const { user } = useAuth();
+  const { formatAmount } = useDoctorCurrency();
+  const doctor = user?.role === 'doctor' ? user : null;
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [summary, setSummary] = useState<Summary>({ issued: 0, outstanding: 0, paid: 0, total: 0 });
   const [isLoading, setIsLoading] = useState(true);
@@ -55,7 +70,8 @@ export const InvoicesPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [user?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctor?.id]);
 
   useEffect(() => {
     if (toast.visible) {
@@ -67,7 +83,7 @@ export const InvoicesPage: React.FC = () => {
   }, [toast.visible]);
 
   const loadData = async () => {
-    if (!user?.id) {
+    if (!doctor?.id) {
       setIsLoading(false);
       return;
     }
@@ -76,10 +92,9 @@ export const InvoicesPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
-      const allInvoices = await getInvoicesByDoctor(user.id);
+      const allInvoices = await getInvoicesByDoctor(doctor.id);
       setInvoices(allInvoices);
 
-      // Calculate summary
       const newSummary: Summary = {
         issued: allInvoices.filter((i) => i.status === 'issued').reduce((sum, i) => sum + i.totalAmount, 0),
         outstanding: allInvoices
@@ -98,15 +113,28 @@ export const InvoicesPage: React.FC = () => {
     }
   };
 
+  const recalculateSummary = (list: Invoice[]): Summary => ({
+    issued: list.filter((i) => i.status === 'issued').reduce((sum, i) => sum + i.totalAmount, 0),
+    outstanding: list
+      .filter((i) => i.status === 'outstanding')
+      .reduce((sum, i) => sum + i.totalAmount, 0),
+    paid: list.filter((i) => i.status === 'paid').reduce((sum, i) => sum + i.totalAmount, 0),
+    total: list.reduce((sum, i) => sum + i.totalAmount, 0),
+  });
+
   const handleMarkAsPaid = async (invoiceId: string) => {
     setUpdatingId(invoiceId);
     try {
       await updateInvoiceStatus(invoiceId, 'paid');
-      setInvoices((prev) =>
-        prev.map((inv) => (inv.id === invoiceId ? { ...inv, status: 'paid' as InvoiceStatus } : inv))
-      );
+      setInvoices((prev) => {
+        const next = prev.map((inv) =>
+          inv.id === invoiceId ? { ...inv, status: 'paid' as InvoiceStatus } : inv
+        );
+        setSummary(recalculateSummary(next));
+        return next;
+      });
       setToast({ visible: true, message: 'Invoice marked as paid', type: 'success' });
-    } catch (err) {
+    } catch {
       setToast({ visible: true, message: 'Failed to update invoice', type: 'error' });
     } finally {
       setUpdatingId(null);
@@ -117,13 +145,15 @@ export const InvoicesPage: React.FC = () => {
     setUpdatingId(invoiceId);
     try {
       await updateInvoiceStatus(invoiceId, 'outstanding');
-      setInvoices((prev) =>
-        prev.map((inv) =>
+      setInvoices((prev) => {
+        const next = prev.map((inv) =>
           inv.id === invoiceId ? { ...inv, status: 'outstanding' as InvoiceStatus } : inv
-        )
-      );
+        );
+        setSummary(recalculateSummary(next));
+        return next;
+      });
       setToast({ visible: true, message: 'Invoice marked as outstanding', type: 'success' });
-    } catch (err) {
+    } catch {
       setToast({ visible: true, message: 'Failed to update invoice', type: 'error' });
     } finally {
       setUpdatingId(null);
@@ -134,8 +164,8 @@ export const InvoicesPage: React.FC = () => {
     setUpdatingId(invoiceId);
     try {
       await resendInvoice(invoiceId);
-      setToast({ visible: true, message: 'Invoice resent', type: 'success' });
-    } catch (err) {
+      setToast({ visible: true, message: 'Marked as resent (timestamp updated)', type: 'success' });
+    } catch {
       setToast({ visible: true, message: 'Failed to resend invoice', type: 'error' });
     } finally {
       setUpdatingId(null);
@@ -146,14 +176,14 @@ export const InvoicesPage: React.FC = () => {
     setUpdatingId(invoice.id);
     try {
       await generateInvoicePDF(invoice, {
-        displayName: user?.displayName ?? 'Doctor',
-        specialty: user?.specialty,
-        licenseNumber: user?.licenseNumber,
-        phoneNumber: user?.phoneNumber,
-        email: user?.email,
-        officeAddress: user?.officeAddress,
-        logoUrl: user?.logoUrl,
-        practiceName: user?.practiceName,
+        displayName: doctor?.displayName ?? 'Doctor',
+        specialty: doctor?.specialty,
+        licenseNumber: doctor?.licenseNumber,
+        phoneNumber: doctor?.phoneNumber,
+        email: doctor?.email,
+        officeAddress: doctor?.officeAddress,
+        logoUrl: doctor?.logoUrl,
+        practiceName: doctor?.practiceName,
       });
     } catch {
       setToast({ visible: true, message: 'Failed to generate PDF', type: 'error' });
@@ -166,14 +196,14 @@ export const InvoicesPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="p-6">
-        <p className="text-gray-500">Loading invoices...</p>
-      </div>
+      <PageShell maxWidth="wide">
+        <InvoicePageSkeleton />
+      </PageShell>
     );
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <PageShell maxWidth="wide">
       {toast.visible && (
         <Toast
           message={toast.message}
@@ -182,71 +212,57 @@ export const InvoicesPage: React.FC = () => {
         />
       )}
 
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">💰 Invoicing & Financial Tracking</h1>
-        <p className="text-gray-600">Manage your invoices and track payment status</p>
-      </div>
+      <PageHeader
+        title="Invoicing & Financial Tracking"
+        description="Manage your invoices and track payment status"
+      />
 
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-red-700">{error}</p>
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 font-sans text-sm text-red-700">
+          {error}
         </div>
       )}
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-sm text-gray-600 mb-1">Total Issued</p>
-              <p className="text-2xl font-bold text-blue-600">R {summary.issued.toFixed(2)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-sm text-gray-600 mb-1">Outstanding</p>
-              <p className="text-2xl font-bold text-amber-600">R {summary.outstanding.toFixed(2)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-sm text-gray-600 mb-1">Paid</p>
-              <p className="text-2xl font-bold text-green-600">R {summary.paid.toFixed(2)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-sm text-gray-600 mb-1">Total Amount</p>
-              <p className="text-2xl font-bold text-gray-900">R {summary.total.toFixed(2)}</p>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+        {SUMMARY_CARDS.map(({ key, label, icon: Icon, color }) => (
+          <Card key={key}>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-50 text-anixi-green">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-sans text-sm text-gray-500">{label}</p>
+                  <p className={`font-sans text-2xl font-semibold tabular-nums ${color}`}>
+                    {formatAmount(summary[key])}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* Invoices List */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl font-bold text-gray-900">📋 All Invoices</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-xl">
+            <FileText className="h-5 w-5 text-anixi-green" />
+            All Invoices
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {/* Filter Buttons */}
-          <div className="space-y-2 mb-4">
-            <label className="block text-sm font-medium text-gray-700">Filter by Status</label>
-            <div className="flex gap-2 flex-wrap">
-              {['all', 'issued', 'outstanding', 'paid'].map((status) => (
+          <div className="mb-4 space-y-2">
+            <label className="block font-sans text-sm font-medium text-gray-700">Filter by Status</label>
+            <div className="flex flex-wrap gap-2">
+              {(['all', 'issued', 'outstanding', 'paid'] as const).map((status) => (
                 <button
                   key={status}
-                  onClick={() => setFilter(status as any)}
-                  className={`px-3 py-1 rounded text-sm font-medium transition ${
+                  type="button"
+                  onClick={() => setFilter(status)}
+                  className={`rounded-full px-3.5 py-1.5 font-sans text-sm font-medium transition ${
                     filter === status
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      ? 'bg-anixi-green text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
                   {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -255,103 +271,109 @@ export const InvoicesPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Empty State */}
           {filteredInvoices.length === 0 ? (
-            <p className="text-gray-500">No invoices yet. Invoices are created when appointments are completed.</p>
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 py-12 text-center">
+              <FileText className="mb-3 h-10 w-10 text-gray-300" />
+              <p className="font-heading text-base font-medium text-gray-800">No invoices yet</p>
+              <p className="mt-1 font-sans text-sm text-gray-500">
+                Invoices are created when appointments are completed.
+              </p>
+            </div>
           ) : (
             <div className="space-y-3">
               {filteredInvoices.map((invoice) => (
-                <Card key={invoice.id} className="border-l-4" style={{ borderLeftColor: '#3F544D' }}>
+                <Card key={invoice.id} className="border-l-4 border-l-anixi-green shadow-soft">
                   <CardContent className="pt-4">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span>{getStatusIcon(invoice.status)}</span>
-                          <h3 className="font-semibold text-gray-900">{invoice.invoiceNumber}</h3>
+                    <div className="mb-3 flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <StatusIcon status={invoice.status} />
+                          <h3 className="font-sans font-semibold text-gray-900">{invoice.invoiceNumber}</h3>
                           <span
-                            className={`px-2 py-0.5 rounded text-xs font-semibold border ${getStatusColor(
-                              invoice.status
-                            )}`}
+                            className={`rounded-full border px-2.5 py-0.5 font-sans text-xs font-semibold capitalize ${STATUS_STYLES[invoice.status]}`}
                           >
-                            {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                            {invoice.status}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600">
+                        <p className="font-sans text-sm text-gray-500">
                           Issued: {new Date(invoice.issuedAt).toLocaleDateString()}
                         </p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-xl font-bold text-gray-900">
-                          R {invoice.totalAmount.toFixed(2)}
-                        </p>
-                      </div>
+                      <p className="font-sans text-xl font-semibold tabular-nums text-gray-900">
+                        {formatAmount(invoice.totalAmount, invoice.currency)}
+                      </p>
                     </div>
 
-                    {/* Line Items */}
-                    <div className="mb-3 bg-gray-50 p-2 rounded text-sm">
+                    <div className="mb-3 rounded-lg bg-gray-50 p-3 font-sans text-sm">
                       {invoice.lineItems.map((item, idx) => (
                         <div key={idx} className="flex justify-between text-gray-700">
                           <span>
-                            {item.description} x{item.quantity}
+                            {item.description} ×{item.quantity}
                           </span>
-                          <span>R {(item.amount * item.quantity).toFixed(2)}</span>
+                          <span>{formatAmount(item.amount * item.quantity, invoice.currency)}</span>
                         </div>
                       ))}
                     </div>
 
                     {invoice.notes && (
-                      <p className="text-xs text-gray-600 mb-3 italic">Notes: {invoice.notes}</p>
+                      <p className="mb-3 font-sans text-xs italic text-gray-500">Notes: {invoice.notes}</p>
                     )}
 
-                    {/* Dates */}
-                    <div className="mb-3 text-xs text-gray-600 space-y-1">
+                    <div className="mb-3 space-y-1 font-sans text-xs text-gray-500">
                       <p>
-                        <strong>Issued:</strong> {new Date(invoice.issuedAt).toLocaleDateString()}
-                        {invoice.dueDate && ` • Due: ${new Date(invoice.dueDate).toLocaleDateString()}`}
+                        <span className="font-medium text-gray-700">Issued:</span>{' '}
+                        {new Date(invoice.issuedAt).toLocaleDateString()}
+                        {invoice.dueDate && ` · Due: ${new Date(invoice.dueDate).toLocaleDateString()}`}
                       </p>
                       {invoice.paidAt && (
-                        <p>
-                          <strong>✅ Paid:</strong> {new Date(invoice.paidAt).toLocaleDateString()}
+                        <p className="flex items-center gap-1">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                          <span className="font-medium text-gray-700">Paid:</span>{' '}
+                          {new Date(invoice.paidAt).toLocaleDateString()}
                         </p>
                       )}
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex gap-2 flex-wrap">
+                    <div className="flex flex-wrap gap-2">
                       {invoice.status !== 'paid' && (
                         <button
+                          type="button"
                           onClick={() => handleMarkAsPaid(invoice.id)}
                           disabled={updatingId === invoice.id}
-                          className="px-3 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 transition disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1.5 font-sans text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
                         >
-                          ✅ Mark Paid
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Mark Paid
                         </button>
                       )}
-
                       {invoice.status === 'issued' && (
                         <button
+                          type="button"
                           onClick={() => handleMarkAsOutstanding(invoice.id)}
                           disabled={updatingId === invoice.id}
-                          className="px-3 py-1 text-xs bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 font-sans text-xs font-medium text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"
                         >
-                          ⏳ Outstanding
+                          <Clock className="h-3.5 w-3.5" />
+                          Outstanding
                         </button>
                       )}
-
                       <button
+                        type="button"
                         onClick={() => handleResendInvoice(invoice.id)}
                         disabled={updatingId === invoice.id}
-                        className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 font-sans text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
                       >
-                        📤 Resend
+                        <Send className="h-3.5 w-3.5" />
+                        Resend
                       </button>
-
                       <button
+                        type="button"
                         onClick={() => handleDownloadPDF(invoice)}
                         disabled={updatingId === invoice.id}
-                        className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 font-sans text-xs font-medium text-gray-700 transition hover:bg-gray-200 disabled:opacity-50"
                       >
-                        🖨️ Download PDF
+                        <Printer className="h-3.5 w-3.5" />
+                        Download PDF
                       </button>
                     </div>
                   </CardContent>
@@ -362,15 +384,15 @@ export const InvoicesPage: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Info Box */}
-      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <p className="text-sm text-blue-900">
-          <strong>💡 How it works:</strong> Invoices are created when you complete an appointment. You can then track 
-          payment status (Issued, Outstanding, Paid) and resend invoices to patients. Anixi does not process payments — 
-          funds go directly to you via Phase 2 payment integrations.
+      <div className="mt-6 flex gap-3 rounded-xl border border-blue-100 bg-blue-50/80 p-4">
+        <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+        <p className="font-sans text-sm leading-relaxed text-blue-900">
+          <span className="font-semibold">How it works:</span> Invoices are created when you complete an
+          appointment. Track payment status (Issued, Outstanding, Paid) and resend invoices to patients.
+          Anixi does not process payments — funds go directly to you via Phase 2 payment integrations.
         </p>
       </div>
-    </div>
+    </PageShell>
   );
 };
 

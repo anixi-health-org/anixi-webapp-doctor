@@ -13,6 +13,22 @@ service cloud.firestore {
       return request.auth.uid;
     }
 
+  function isBootstrapAdmin() {
+    return isSignedIn() && uid() in [
+      'Xwf3BwiJRJb6eL87p8LyL4Syyku1'
+    ];
+  }
+
+  function isAdmin() {
+    return isSignedIn() && (
+      isBootstrapAdmin() ||
+      (
+        exists(/databases/$(database)/documents/admins/$(uid())) &&
+        get(/databases/$(database)/documents/admins/$(uid())).data.active == true
+      )
+    );
+  }
+
     // Patient approved doctor (mobile app flow)
     function isApprovedDoctorForPatient(patientId) {
       return isSignedIn()
@@ -35,6 +51,22 @@ service cloud.firestore {
       return isApprovedDoctorForPatient(patientId)
         || isDoctorWithApprovedPatient(patientId)
         || isApprovedShareDoctorForPatient(patientId);
+    }
+
+    function isLinkedCaregiverForPatient(patientId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/Users/$(uid())/linked_patients/$(patientId))
+        && get(/databases/$(database)/documents/Users/$(uid())/linked_patients/$(patientId)).data.status != 'inactive';
+    }
+
+    function isNominatedCaregiverEmail() {
+      return isSignedIn()
+        && resource.data.hasCaregiver == true
+        && resource.data.caregiverEmail == request.auth.token.email;
+    }
+
+    function canReadPatientHealthData(patientId) {
+      return canDoctorReadPatientHealthData(patientId) || isLinkedCaregiverForPatient(patientId);
     }
 
     function isPracticeOwner(practiceId) {
@@ -63,17 +95,27 @@ service cloud.firestore {
     // ─── Legacy collections (unchanged for mobile compatibility) ────────────────
 
     match /Users/{userId}/adherence_records/{recordId} {
-      allow read: if isSignedIn() && (uid() == userId || canDoctorReadPatientHealthData(userId));
+      allow read: if isSignedIn() && (uid() == userId || canReadPatientHealthData(userId));
       allow write: if isSignedIn() && uid() == userId;
     }
 
     match /Users/{userId}/mood_entries/{entryId} {
-      allow read: if isSignedIn() && (uid() == userId || canDoctorReadPatientHealthData(userId));
+      allow read: if isSignedIn() && (uid() == userId || canReadPatientHealthData(userId));
       allow write: if isSignedIn() && uid() == userId;
     }
 
     match /Users/{userId}/vitals_records/{recordId} {
-      allow read: if isSignedIn() && (uid() == userId || canDoctorReadPatientHealthData(userId));
+      allow read: if isSignedIn() && (uid() == userId || canReadPatientHealthData(userId));
+      allow write: if isSignedIn() && uid() == userId;
+    }
+
+    match /Users/{userId}/medications/{medId} {
+      allow read: if isSignedIn() && (uid() == userId || canReadPatientHealthData(userId));
+      allow write: if isSignedIn() && uid() == userId;
+    }
+
+    match /Users/{userId}/mood_records/{recordId} {
+      allow read: if isSignedIn() && (uid() == userId || canReadPatientHealthData(userId));
       allow write: if isSignedIn() && uid() == userId;
     }
 
@@ -88,6 +130,11 @@ service cloud.firestore {
     // Doctor can read/write their approved_patients list
     match /Users/{doctorId}/approved_patients/{patientId} {
       allow read, write: if isSignedIn() && uid() == doctorId;
+    }
+
+    // Caregiver portal: patients linked to a caregiver account
+    match /Users/{caregiverId}/linked_patients/{patientId} {
+      allow read, write: if isSignedIn() && uid() == caregiverId;
     }
 
     // ─── Sharing requests (mobile parity) ─────────────────────────────────────
@@ -153,7 +200,21 @@ service cloud.firestore {
 
     match /doctors/{doctorId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && uid() == doctorId;
+      allow write: if isSignedIn() && (uid() == doctorId || isAdmin());
+    }
+
+    match /admins/{adminId} {
+      allow read: if isSignedIn() && (uid() == adminId || isAdmin());
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        (isBootstrapAdmin() && uid() == adminId)
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    match /group_posts/{postId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
     }
 
     // ─── Patients (manual creation by doctors) ─────────────────────────────────
@@ -163,10 +224,19 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.isManual == true
         && request.resource.data.assignedDoctorId == uid();
-      // Doctors can read/update patient docs only if linked to them
-      allow read, update: if isSignedIn()
-        && resource.data.assignedDoctorId == uid();
-      // Allow doctors to delete ONLY manual patients they created
+      allow read: if isSignedIn() && (
+        resource.data.assignedDoctorId == uid() ||
+        uid() == patientId ||
+        isLinkedCaregiverForPatient(patientId) ||
+        isNominatedCaregiverEmail()
+      );
+      allow update: if isSignedIn() && (
+        resource.data.assignedDoctorId == uid() ||
+        (
+          isNominatedCaregiverEmail() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['caregiverId', 'updatedAt'])
+        )
+      );
       allow delete: if isSignedIn()
         && resource.data.assignedDoctorId == uid()
         && resource.data.isManual == true;

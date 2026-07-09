@@ -4,10 +4,8 @@ import { jsPDF } from 'jspdf';
 import {
   Download,
   Eye,
-  FileText,
   Printer,
   Save,
-  Stethoscope,
   X,
 } from 'lucide-react';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
@@ -21,6 +19,7 @@ import {
   syncAppointmentStatus,
   updateAppointment,
 } from '../services/appointmentService';
+import { sendPatientDownloadInvite } from '../services/patientManagementService';
 import { Appointment, AppointmentDocument, PostConsultAction, PostConsultActionType } from '../types';
 
 type DocumentMode = 'scan' | 'upload';
@@ -31,9 +30,6 @@ interface LocationState {
 
 const actionButtonClass =
   'w-full rounded-xl border border-border bg-card px-4 py-4 text-left text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60';
-
-const comingSoonClass =
-  'w-full rounded-xl border border-border bg-muted px-4 py-4 text-left text-muted-foreground';
 
 const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`;
@@ -166,17 +162,6 @@ const { user } = useAuth();
       setPrescriptionDraft(latestPrescriptionDraft.content);
     }
   }, [latestPrescriptionDraft]);
-
-  const openDocumentModal = (mode: DocumentMode) => {
-    setDocumentMode(mode);
-    setDocumentFile(null);
-    setDocumentTitle('');
-    if (documentPreview) {
-      URL.revokeObjectURL(documentPreview);
-      setDocumentPreview(null);
-    }
-    setShowDocumentModal(true);
-  };
 
   const closeDocumentModal = () => {
     setShowDocumentModal(false);
@@ -1077,20 +1062,6 @@ const { user } = useAuth();
     }
   };
 
-  const addQuickAction = async (type: PostConsultActionType, successMessage: string, title: string) => {
-    try {
-      await appendPostConsultAction(type, {
-        title,
-        content: `${title} prepared on ${new Date().toLocaleString()}`,
-      });
-      setToast({ visible: true, message: successMessage, type: 'success' });
-    } catch {
-      setToast({ visible: true, message: 'Failed to save action.', type: 'error' });
-    }
-  };
-
-  const isManual = appointment?.isManual;
-
   const actionConfig = [
     {
       key: 'internal',
@@ -1104,7 +1075,28 @@ const { user } = useAuth();
       label: 'Invite to',
       icon: '📧',
       enabled: true,
-      onClick: () => setToast({ visible: true, message: 'Invite sent (demo).', type: 'success' }),
+      onClick: async () => {
+        if (!user?.id) return;
+        const email = appointment?.patientEmail?.trim();
+        if (!email) {
+          setToast({
+            visible: true,
+            message: 'Add a patient email on this appointment before sending an invite.',
+            type: 'error',
+          });
+          return;
+        }
+        try {
+          await sendPatientDownloadInvite({
+            doctorId: user.id,
+            to: email,
+            patientDisplayName: appointment?.patientName,
+          });
+          setToast({ visible: true, message: 'Invitation email queued.', type: 'success' });
+        } catch {
+          setToast({ visible: true, message: 'Failed to queue invitation email.', type: 'error' });
+        }
+      },
     },
     {
       key: 'invoice',
@@ -1138,15 +1130,6 @@ const { user } = useAuth();
       onClick: () => setShowRecorder(true),
     },
   ] as Array<{ key: string; label: string; icon: string; enabled: boolean; onClick: () => void }>;
-
-  const futureActions = [
-    { key: 'eprescription', label: 'e-Prescription (AES)', icon: '🛡', tooltip: 'e-Prescription (AES) integration coming soon.' },
-    { key: 'insurance', label: 'Insurance', icon: '🧾', tooltip: 'Insurance authorisation coming soon.' },
-    { key: 'telehealth', label: 'Telehealth', icon: '📞', tooltip: 'Telehealth sessions coming soon.' },
-    { key: 'hospital', label: 'Hospital admission', icon: '🏥', tooltip: 'Hospital admission workflow coming soon.' },
-    { key: 'clinical', label: 'Clinical support', icon: '🩺', tooltip: 'Clinical support integrations coming soon.' },
-    { key: 'dashboard', label: 'Dashboard', icon: '📊', tooltip: 'Post-consult dashboard coming soon.' },
-  ];
 
   if (isLoading) {
     return (
@@ -1262,21 +1245,6 @@ const { user } = useAuth();
             >
               <span className="mr-2">{action.icon}</span> {action.label}
             </button>
-          ))}
-        </div>
-
-        <div className="mb-4 mt-8 text-2xl font-medium text-foreground">Coming soon</div>
-        <div className="space-y-3">
-          {futureActions.map((action) => (
-            <div key={action.key} title={action.tooltip} className="cursor-not-allowed">
-              <button
-                disabled
-                aria-label={action.tooltip}
-                className={comingSoonClass}
-              >
-                <span className="mr-2">{action.icon}</span> {action.label}
-              </button>
-            </div>
           ))}
         </div>
 

@@ -9,7 +9,6 @@ import {
   query,
   where,
   Timestamp,
-  orderBy,
 } from 'firebase/firestore';
 import { Invoice, InvoiceLineItem, InvoiceStatus } from '../types';
 

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import React from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from './lib/firebase';
 import { auth } from './lib/firebase';
@@ -11,11 +12,19 @@ import FirestoreInspector from './pages/FirestoreInspector';
 import { Dashboard } from './pages/Dashboard';
 import AppointmentSummary from './pages/AppointmentSummary';
 import { Login } from './pages/Login';
-import { PatientList } from './pages/PatientList';
+import { Join } from './pages/Join';
+import { Register } from './pages/Register';
+import { CaregiverDashboard } from './components/caregiver/CaregiverDashboard';
+import { CaregiverRoute } from './components/CaregiverRoute';
+import { CaregiverLayout } from './components/CaregiverLayout';
+import { CaregiverPatientsPage } from './pages/caregiver/CaregiverPatientsPage';
+import { CaregiverPatientDetailPage } from './pages/caregiver/CaregiverPatientDetailPage';
+import { CaregiverProfilePage } from './pages/caregiver/CaregiverProfilePage';
+import { CaregiverSupportPage } from './pages/caregiver/CaregiverSupportPage';
+import { CaregiverSharePage } from './pages/caregiver/CaregiverSharePage';
 import { PatientProfile } from './pages/PatientProfile';
+import { PatientFullDetailsPage } from './pages/PatientFullDetailsPage';
 import { Patients } from './pages/Patients';
-import { DoctorSearch } from './pages/DoctorSearch';
-import MyDoctors from './pages/MyDoctors';
 import DelegateAccept from './pages/DelegateAccept';
 import ProfessionalProfile from './pages/Profile';
 import PracticeSettingsPage from './pages/PracticeSettingsPage';
@@ -35,6 +44,15 @@ import InvoiceCreate from './pages/InvoiceCreate';
 import InvoiceDetails from './pages/InvoiceDetails';
 import PrintDocumentsPage from './pages/PrintDocumentsPage';
 const queryClient = new QueryClient();
+
+const SignUpRedirect: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const ref = searchParams.get('ref');
+  const target = ref
+    ? `/register?role=patient&ref=${encodeURIComponent(ref)}`
+    : '/register?role=patient';
+  return <Navigate to={target} replace />;
+};
 
 const checkPatientFields = async () => {
   try {
@@ -142,9 +160,29 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
+          <Route path="/join" element={<Join />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/sign-up" element={<SignUpRedirect />} />
           <Route path="/delegate/accept" element={<DelegateAccept />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route
+            path="/caregiver"
+            element={
+              <CaregiverRoute>
+                <CaregiverLayout />
+              </CaregiverRoute>
+            }
+          >
+            <Route index element={<CaregiverDashboard />} />
+            <Route path="patients" element={<CaregiverPatientsPage />} />
+            <Route path="patients/:patientId" element={<CaregiverPatientDetailPage />} />
+            <Route path="profile" element={<CaregiverProfilePage />} />
+            <Route path="support" element={<CaregiverSupportPage />} />
+            <Route path="share" element={<CaregiverSharePage />} />
+            <Route path="change-password" element={<ChangePassword />} />
+            <Route path="delete-account" element={<DeleteAccount />} />
+          </Route>
           <Route
             path="/*"
             element={
@@ -152,16 +190,15 @@ function App() {
                 <Layout>
                   <Routes>
                     <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/patient-list" element={<PatientList />} />
+                    <Route path="/patient-list" element={<Navigate to="/patients" replace />} />
                     <Route path="/patient-profile/:patientId" element={<PatientProfile />} />
+                    <Route path="/patient-profile/:patientId/details" element={<PatientFullDetailsPage />} />
                     <Route path="/patient-profile/:patientId/mood-checker" element={<MoodCheckerPage />} />
                     <Route path="/patient-profile/:patientId/adherence-calendar" element={<AdherenceCalendarPage />} />
                     <Route path="/patient-profile/:patientId/adherence-logs" element={<AdherenceLogsPage />} />
                     <Route path="/patient-profile/:patientId/adherence-daily/:date" element={<AdherenceDailyPage />} />
                     <Route path="/patient-profile/:patientId/vitals-history" element={<VitalsHistoryPage />} />
                     <Route path="/patients" element={<Patients />} />
-                    <Route path="/find-doctor" element={<DoctorSearch />} />
-                    <Route path="/my-doctors" element={<MyDoctors />} />
                     <Route path="/appointments" element={<AppointmentsPage />} />
                     <Route path="/appointments/:appointmentId" element={<AppointmentSummary />} />
                     <Route path="/appointments/:appointmentId/post-consult" element={<PostConsultPage />} />
@@ -169,8 +206,12 @@ function App() {
                     <Route path="/invoices/new/:appointmentId" element={<InvoiceCreate />} />
                     <Route path="/invoices/:invoiceId" element={<InvoiceDetails />} />
                     <Route path="/appointments/:appointmentId/print-docs" element={<PrintDocumentsPage />} />
-                    <Route path="/debug/appointments" element={<AppointmentDebug />} />
-                    <Route path="/debug/firestore" element={<FirestoreInspector />} />
+                    {process.env.NODE_ENV === 'development' && (
+                      <>
+                        <Route path="/debug/appointments" element={<AppointmentDebug />} />
+                        <Route path="/debug/firestore" element={<FirestoreInspector />} />
+                      </>
+                    )}
                     <Route path="/professional-profile" element={<ProfessionalProfile />} />
                     <Route path="/practice-settings" element={<PracticeSettingsPage />} />
                     <Route path="/practice-calendar" element={<PracticeCalendarPage />} />

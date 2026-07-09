@@ -1,9 +1,20 @@
 import React from 'react';
+import {
+  AlertTriangle,
+  Heart,
+  Phone,
+  Pill,
+  Shield,
+  User,
+} from 'lucide-react';
 import { Patient } from '../../types';
 
 interface PatientDetailsPanelProps {
   patient: Patient | null;
 }
+
+const sectionTitleClass =
+  'mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-500';
 
 export const PatientDetailsPanel: React.FC<PatientDetailsPanelProps> = ({ patient }) => {
   if (!patient) {
@@ -16,152 +27,163 @@ export const PatientDetailsPanel: React.FC<PatientDetailsPanelProps> = ({ patien
     ? Math.floor((today.getTime() - birthDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25))
     : undefined;
 
+  const infoItems = [
+    age !== undefined ? { label: 'Age', value: `${age} years` } : null,
+    patient.gender
+      ? { label: 'Gender', value: patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1) }
+      : null,
+    patient.maritalStatus
+      ? {
+          label: 'Marital status',
+          value: patient.maritalStatus.charAt(0).toUpperCase() + patient.maritalStatus.slice(1),
+        }
+      : null,
+    patient.phoneNumber ? { label: 'Phone', value: patient.phoneNumber } : null,
+  ].filter(Boolean) as { label: string; value: string }[];
+
   return (
-    <div className="bg-anixi-card h-full overflow-y-auto">
-      {}
-      <div className="sticky top-0 bg-[#425950] text-white p-4 sm:p-6 shadow-lg">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-white flex items-center justify-center text-xl sm:text-2xl font-bold text-[#425950]">
-            {(patient.displayName || patient.email)?.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-xl sm:text-2xl font-bold break-words">{patient.displayName || patient.email}</h2>
-            <p className="text-gray-200 break-all text-sm sm:text-base">{patient.email}</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="p-4 sm:p-6 space-y-6">
-        {}
-        <div>
-          <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <span>👤</span> Personal Information
+    <div className="h-full overflow-y-auto p-4 sm:p-6">
+      {infoItems.length > 0 && (
+        <section className="mb-6">
+          <h3 className={sectionTitleClass}>
+            <User className="h-4 w-4" />
+            Personal information
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {age !== undefined && (
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-600">Age</p>
-                <p className="text-xl font-bold text-gray-900">{age} years</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
+            {infoItems.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-xl border border-gray-100 bg-gray-50/80 px-4 py-3"
+              >
+                <p className="text-xs text-gray-500">{item.label}</p>
+                <p className="mt-0.5 text-sm font-semibold text-gray-900 break-words">{item.value}</p>
               </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="mb-6">
+        <h3 className={sectionTitleClass}>
+          <Heart className="h-4 w-4" />
+          Medical information
+        </h3>
+        <div className="space-y-3">
+          <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+              Chronic diseases
+            </p>
+            {patient.chronicDiseases && patient.chronicDiseases.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {patient.chronicDiseases.map((disease, idx) => (
+                  <span
+                    key={idx}
+                    className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900"
+                  >
+                    {disease}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-1.5 text-sm text-amber-700/80">No chronic diseases recorded</p>
             )}
-            {patient.gender && (
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-600">Gender</p>
-                <p className="text-xl font-bold text-gray-900">
-                  {patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)}
-                </p>
+          </div>
+
+          <div className="rounded-xl border border-rose-100 bg-rose-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-rose-800">Allergies</p>
+            {patient.allergies && patient.allergies.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {patient.allergies.map((allergy, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-900"
+                  >
+                    <AlertTriangle className="h-3 w-3" />
+                    {allergy}
+                  </span>
+                ))}
               </div>
+            ) : (
+              <p className="mt-1.5 text-sm text-rose-700/80">No allergies recorded</p>
             )}
-            {patient.maritalStatus && (
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-600">Marital Status</p>
-                <p className="text-xl font-bold text-gray-900">
-                  {patient.maritalStatus.charAt(0).toUpperCase() + patient.maritalStatus.slice(1)}
-                </p>
+          </div>
+
+          <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+              Current treatments
+            </p>
+            {patient.currentTreatments && patient.currentTreatments.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {patient.currentTreatments.map((treatment, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-900"
+                  >
+                    <Pill className="h-3 w-3" />
+                    {typeof treatment === 'string' ? treatment : treatment.name}
+                  </span>
+                ))}
               </div>
-            )}
-            {patient.phoneNumber && (
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-600">Phone</p>
-                <p className="text-xl font-bold text-gray-900 break-all">{patient.phoneNumber}</p>
-              </div>
+            ) : (
+              <p className="mt-1.5 text-sm text-emerald-700/80">No treatments recorded</p>
             )}
           </div>
         </div>
+      </section>
 
-        {}
-        <div>
-          <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <span>🏥</span> Medical Information
-          </h3>
-          <div className="space-y-4">
-            {}
-            <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded">
-              <p className="text-sm font-medium text-orange-800 mb-2">Chronic Diseases</p>
-              {patient.chronicDiseases && patient.chronicDiseases.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {patient.chronicDiseases.map((disease, idx) => (
-                    <span
-                      key={idx}
-                      className="bg-orange-200 text-orange-900 px-3 py-1 rounded-full text-sm"
-                    >
-                      {disease}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-orange-700">No chronic diseases recorded</p>
-              )}
+      <section className="mb-6">
+        <h3 className={sectionTitleClass}>
+          <Phone className="h-4 w-4" />
+          Emergency contact
+        </h3>
+        {patient.emergencyContact ? (
+          <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-4 space-y-3">
+            <div>
+              <p className="text-xs text-gray-500">Name</p>
+              <p className="text-sm font-medium text-gray-900">
+                {patient.emergencyContact.name || 'Not provided'}
+              </p>
             </div>
-
-            {}
-            <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded">
-              <p className="text-sm font-medium text-red-800 mb-2">Allergies</p>
-              {patient.allergies && patient.allergies.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {patient.allergies.map((allergy, idx) => (
-                    <span key={idx} className="bg-red-200 text-red-900 px-3 py-1 rounded-full text-sm">
-                      ⚠️ {allergy}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-red-700">No allergies recorded</p>
-              )}
+            <div>
+              <p className="text-xs text-gray-500">Phone</p>
+              <p className="text-sm font-medium text-gray-900">
+                {patient.emergencyContact.phone || 'Not provided'}
+              </p>
             </div>
-
-            {}
-            <div className="bg-[#f0f2f1] border-l-4 border-[#425950] p-4 rounded">
-              <p className="text-sm font-medium text-[#425950] mb-2">Current Treatments</p>
-              {patient.currentTreatments && patient.currentTreatments.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {patient.currentTreatments.map((treatment, idx) => (
-                    <span key={idx} className="bg-[#e8eceb] text-[#425950] px-3 py-1 rounded-full text-sm">
-                      💊 {typeof treatment === 'string' ? treatment : treatment.name}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[#5a6f6a]">No treatments recorded</p>
-              )}
+            <div>
+              <p className="text-xs text-gray-500">Relationship</p>
+              <p className="text-sm font-medium text-gray-900">
+                {patient.emergencyContact.relationship || 'Not provided'}
+              </p>
             </div>
           </div>
-        </div>
-
-        {}
-        <div>
-          <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <span>🆘</span> Emergency Contact
-          </h3>
-          {patient.emergencyContact ? (
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm text-gray-600">Name</p>
-              <p className="font-medium text-gray-900">{patient.emergencyContact.name || 'Not provided'}</p>
-              <p className="text-sm text-gray-600 mt-2">Phone</p>
-              <p className="font-medium text-gray-900">{patient.emergencyContact.phone || 'Not provided'}</p>
-              <p className="text-sm text-gray-600 mt-2">Relationship</p>
-              <p className="font-medium text-gray-900">{patient.emergencyContact.relationship || 'Not provided'}</p>
-            </div>
-          ) : (
-            <p className="text-gray-500">No emergency contact recorded</p>
-          )}
-        </div>
-
-        {}
-        {patient.medicalAid && (
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <span>💳</span> Medical Aid
-            </h3>
-            <div className="bg-green-50 p-4 rounded-lg">
-              <p className="text-sm text-gray-600">Provider</p>
-              <p className="font-medium text-gray-900">{patient.medicalAid.provider || 'Not provided'}</p>
-              <p className="text-sm text-gray-600 mt-2">Member Number</p>
-              <p className="font-medium text-gray-900">{patient.medicalAid.memberNumber || 'Not provided'}</p>
-            </div>
-          </div>
+        ) : (
+          <p className="text-sm text-gray-500">No emergency contact recorded</p>
         )}
-      </div>
+      </section>
+
+      {patient.medicalAid && (
+        <section>
+          <h3 className={sectionTitleClass}>
+            <Shield className="h-4 w-4" />
+            Medical aid
+          </h3>
+          <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-4 space-y-3">
+            <div>
+              <p className="text-xs text-gray-500">Provider</p>
+              <p className="text-sm font-medium text-gray-900">
+                {patient.medicalAid.provider || 'Not provided'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Member number</p>
+              <p className="text-sm font-medium text-gray-900">
+                {patient.medicalAid.memberNumber || 'Not provided'}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 };

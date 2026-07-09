@@ -3,19 +3,14 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { DailyAdherenceView } from '../components/DailyAdherenceView';
 import { useAuth } from '../hooks/useAuth';
-
-const parseRouteDate = (value: string | undefined): Date | null => {
-  if (!value) return null;
-  const parsed = new Date(`${value}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
+import { addDays, getDateString, parseLocalDate } from '../utils/dateFormatter';
 
 export const AdherenceDailyPage: React.FC = () => {
   const navigate = useNavigate();
   const { patientId, date } = useParams<{ patientId: string; date: string }>();
   const { user } = useAuth();
 
-  const selectedDate = parseRouteDate(date);
+  const selectedDate = parseLocalDate(date ?? '');
 
   if (!patientId || !selectedDate) {
     return (
@@ -28,8 +23,7 @@ export const AdherenceDailyPage: React.FC = () => {
   }
 
   const goToDate = (target: Date) => {
-    const day = target.toISOString().split('T')[0];
-    navigate(`/patient-profile/${patientId}/adherence-daily/${day}`);
+    navigate(`/patient-profile/${patientId}/adherence-daily/${getDateString(target)}`);
   };
 
   return (
@@ -55,16 +49,8 @@ export const AdherenceDailyPage: React.FC = () => {
               patientId={patientId}
               doctorId={user?.id}
               date={selectedDate}
-              onPreviousDay={() => {
-                const previous = new Date(selectedDate);
-                previous.setDate(previous.getDate() - 1);
-                goToDate(previous);
-              }}
-              onNextDay={() => {
-                const next = new Date(selectedDate);
-                next.setDate(next.getDate() + 1);
-                goToDate(next);
-              }}
+              onPreviousDay={() => goToDate(addDays(selectedDate, -1))}
+              onNextDay={() => goToDate(addDays(selectedDate, 1))}
             />
           </CardContent>
         </Card>

@@ -65,10 +65,10 @@ export const GlobalPatientSearch: React.FC = () => {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-anixi-green/20 bg-anixi-beige/50 text-anixi-green/70 text-sm hover:bg-anixi-beige transition-colors"
+          className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50/80 px-3.5 py-2 text-sm text-gray-500 transition-all hover:border-anixi-green/30 hover:bg-white hover:text-gray-700 hover:shadow-soft"
           aria-label="Search patients"
         >
-          <MagnifyingGlassIcon className="h-4 w-4" />
+          <MagnifyingGlassIcon className="h-4 w-4 shrink-0" />
           <span className="hidden sm:inline">Search patients…</span>
         </button>
       )}
