@@ -123,7 +123,6 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   });
   const patientName = String(appointment.patientName || 'Unknown');
   const patientEmail = String(appointment.patientEmail || 'N/A');
-  const appointmentType = String(appointment.type || 'In-Person');
   const appointmentStatus = String(appointment.status || 'pending');
   const appointmentTime = typeof appointment.time === 'string' ? appointment.time : '10:00 AM';
   const appointmentNotes = String(appointment.notes || '');

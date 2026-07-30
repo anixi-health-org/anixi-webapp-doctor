@@ -1,6 +1,5 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { USERS_COLLECTION } from '../shared/constants';
 export interface PatientInfo {
   id: string;
   displayName?: string;

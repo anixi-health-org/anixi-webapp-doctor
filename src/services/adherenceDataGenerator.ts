@@ -28,6 +28,7 @@ export const generatePatientAdherenceData = async (
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split('T')[0];
 
+      // eslint-disable-next-line no-loop-func
       medications.forEach((med) => {
         const timeSlots = [
           { slot: 'morning', hour: 8 },

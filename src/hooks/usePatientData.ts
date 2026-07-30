@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { transformPatientData, transformMoodEntry, transformAdherenceRecord, transformVitalsRecord } from '../utils/dateFormatter';
+import { transformPatientData, transformMoodEntry } from '../utils/dateFormatter';
 import { Patient } from '../types';
 export const usePatientData = (patientId: string) => {
   const [patient, setPatient] = useState<Patient | null>(null);

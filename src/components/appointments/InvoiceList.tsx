@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Invoice, InvoiceStatus } from '../../types';
-import { getInvoicesByDoctor, updateInvoiceStatus, resendInvoice, generateStatement } from '../../services/invoiceService';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
+import { getInvoicesByDoctor, updateInvoiceStatus, resendInvoice } from '../../services/invoiceService';
+import { Card, CardContent } from '../ui/Card';
 import { Toast } from '../ui';
 
 interface InvoiceListProps {
@@ -47,10 +47,6 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({ doctorId, patientId, o
   });
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadInvoices();
-  }, [doctorId, patientId, filter]);
-
   const loadInvoices = async () => {
     if (!doctorId) return;
     setIsLoading(true);
@@ -60,12 +56,22 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({ doctorId, patientId, o
         status: filter === 'all' ? undefined : filter,
       });
       setInvoices(invoiceList);
-    } catch (err) {
-      showToast('Failed to load invoices', 'error');
+    } catch (error) {
+      console.error('Failed to load invoices:', error);
+      setToast({
+        visible: true,
+        message: 'Failed to load invoices',
+        type: 'error',
+      });
     } finally {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    void loadInvoices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctorId, patientId, filter]);
 
   const handleMarkAsPaid = async (invoiceId: string) => {
     setUpdatingId(invoiceId);
