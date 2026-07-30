@@ -36,23 +36,24 @@ export const AnixiLogo: React.FC<AnixiLogoProps> = ({
   }
 
   const content = (
-    <div className={clsx('flex items-center gap-4', className)}>
+    <div className={clsx('flex items-center gap-3.5', className)}>
+      {/* White mark on black: screen blend drops the black so only the emblem shows on green */}
       <img
-        src="/anixi.png"
+        src={isSidebar ? '/anixi-logo-white.png' : '/anixi.png'}
         alt=""
         className={clsx(
           'shrink-0 object-contain',
-          isSidebar && 'h-16 w-16 rounded-xl bg-white p-2 shadow-lg ring-2 ring-white/40',
+          isSidebar && 'h-14 w-14 mix-blend-screen',
           isAuth && 'h-16 w-16',
-          variant === 'header' && 'h-8 w-8 rounded-md'
+          variant === 'header' && 'h-8 w-8'
         )}
         aria-hidden
       />
       <div className="min-w-0">
         <p
           className={clsx(
-            'font-heading font-semibold leading-tight tracking-tight',
-            isSidebar && 'text-xl text-white',
+            'font-sans font-semibold leading-tight tracking-tight',
+            isSidebar && 'text-[1.15rem] text-white',
             isAuth && 'text-2xl text-anixi-green',
             variant === 'header' && 'text-sm text-anixi-green'
           )}
@@ -62,9 +63,9 @@ export const AnixiLogo: React.FC<AnixiLogoProps> = ({
         {showTagline && (
           <p
             className={clsx(
-              'font-sans text-xs font-semibold uppercase tracking-[0.14em]',
-              isSidebar && 'text-white/90',
-              (isAuth || variant === 'header') && 'text-gray-500'
+              'font-sans font-medium tracking-[0.04em]',
+              isSidebar && 'mt-0.5 text-xs text-white/90',
+              (isAuth || variant === 'header') && 'text-[11px] text-gray-500'
             )}
           >
             {subtitle}

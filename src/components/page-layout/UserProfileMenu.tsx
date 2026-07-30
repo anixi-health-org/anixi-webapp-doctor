@@ -13,11 +13,15 @@ import { useAuth } from '../../hooks/useAuth';
 interface UserProfileMenuProps {
   variant?: 'header' | 'mobile';
   onNavigate?: () => void;
+  subtitle?: string;
+  displayLabel?: string;
 }
 
 export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
   variant = 'header',
   onNavigate,
+  subtitle,
+  displayLabel,
 }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -29,6 +33,9 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
   const initial = displayName.charAt(0).toUpperCase();
   const email = user?.email || '';
   const shortName = displayName.split(' ')[0];
+  const headerLabel =
+    displayLabel || (isCaregiver ? shortName : `Dr. ${shortName}`);
+  const headerSubtitle = subtitle || (isCaregiver ? 'Caregiver' : 'Physician');
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -139,19 +146,22 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-full border border-gray-200/80 bg-white py-1 pl-1 pr-2.5 shadow-sm transition-all hover:border-anixi-green/30 hover:shadow-md"
+        className="flex items-center gap-2 rounded-[8px] px-1.5 py-1 transition-all hover:bg-[#f8fafc]"
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label="Open account menu"
       >
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-anixi-green text-sm font-semibold text-white">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#427160] text-sm font-semibold text-white">
           {initial}
         </div>
-        <span className="hidden max-w-[120px] truncate text-sm font-medium text-gray-700 lg:block">
-          {isCaregiver ? shortName : `Dr. ${shortName}`}
-        </span>
+        <div className="hidden min-w-0 text-left lg:block">
+          <p className="max-w-[140px] truncate text-sm font-semibold text-[#0a0a0a]">
+            {headerLabel}
+          </p>
+          <p className="max-w-[140px] truncate text-xs text-[#65758b]">{headerSubtitle}</p>
+        </div>
         <ChevronDownIcon
-          className={`h-4 w-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`h-4 w-4 text-[#65758b] transition-transform ${open ? 'rotate-180' : ''}`}
         />
       </button>
 
@@ -166,7 +176,7 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
                 {initial}
               </div>
               <div className="min-w-0">
-                <p className="truncate font-heading text-sm font-semibold text-gray-900">
+                <p className="truncate font-sans text-sm font-semibold text-gray-900">
                   {isCaregiver ? displayName : `Dr. ${displayName}`}
                 </p>
                 <p className="truncate text-xs text-gray-500">{email}</p>

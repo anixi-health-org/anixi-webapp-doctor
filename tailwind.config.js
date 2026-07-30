@@ -7,7 +7,7 @@ module.exports = {
     extend: {
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
-        heading: ['Lora', 'Georgia', 'Times New Roman', 'serif'],
+        heading: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
       },
       boxShadow: {
         soft: '0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04)',
@@ -17,7 +17,12 @@ module.exports = {
       colors: {
         'anixi-beige': '#F3F6EA', 
         'anixi-green': '#425950',
+        'anixi-teal': '#427160',
         'anixi-card': '#F5F5F5',
+        'anixi-slate': '#f8fafc',
+        'anixi-ink': '#344256',
+        'anixi-muted': '#65758b',
+        'anixi-line': '#e1e7ef',
         border: 'hsl(var(--border) / <alpha-value>)',
         background: 'hsl(var(--background) / <alpha-value>)',
         foreground: 'hsl(var(--foreground) / <alpha-value>)',

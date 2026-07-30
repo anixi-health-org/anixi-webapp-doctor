@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { formatTimestamp, getDateString, getTimeSlot } from '../utils/dateFormatter';
 import { getDailyAdherence, getDoctorDailyAdherence } from '../services/adherenceService';
+import { DailyAdherenceSkeleton } from './ui/Skeleton';
 interface DailyAdherenceViewProps {
   patientId: string;
   doctorId?: string;
@@ -93,11 +94,7 @@ export const DailyAdherenceView: React.FC<DailyAdherenceViewProps> = ({
     loadDailyData();
   }, [dateStr, patientId, doctorId]);
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-[10vh]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
+    return <DailyAdherenceSkeleton />;
   }
   const getMoodEmoji = (mood: string) => {
     const moodMap: { [key: string]: string } = {

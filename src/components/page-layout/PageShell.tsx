@@ -19,7 +19,7 @@ export const PageShell: React.FC<PageShellProps> = ({
   }[maxWidth];
 
   return (
-    <div className={clsx('mx-auto w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8', widthClass, className)}>
+    <div className={clsx('mx-auto w-full px-4 py-4 sm:px-6 sm:py-5 lg:px-8', widthClass, className)}>
       {children}
     </div>
   );

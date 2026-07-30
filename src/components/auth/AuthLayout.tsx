@@ -173,6 +173,11 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
             )}
           </div>
           {children}
+          <p className="text-center text-xs text-gray-500">
+            <a href="/privacy" className="text-anixi-green hover:underline">
+              Privacy notice (POPIA)
+            </a>
+          </p>
         </div>
       </div>
 

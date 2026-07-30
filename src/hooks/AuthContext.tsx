@@ -25,6 +25,7 @@ export type AuthContextType = {
   login: (email: string, password: string, role?: AuthRole) => Promise<ProfessionalUser | null>;
   logout: () => Promise<void>;
   refreshPracticeSession: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -159,9 +160,35 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setPracticeSession(session);
   };
 
+  const refreshUser = async (): Promise<void> => {
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser) {
+      setUser(null);
+      setPracticeSession(null);
+      return;
+    }
+    const professional = await getCurrentProfessional(firebaseUser);
+    setUser(professional);
+    if (professional?.role === 'doctor') {
+      const session = await loadPracticeSession(professional.id);
+      setPracticeSession(session);
+    } else {
+      setPracticeSession(null);
+    }
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, practiceSession, isLoading, isAuthenticated: !!user, login, logout, refreshPracticeSession }}
+      value={{
+        user,
+        practiceSession,
+        isLoading,
+        isAuthenticated: !!user,
+        login,
+        logout,
+        refreshPracticeSession,
+        refreshUser,
+      }}
     >
       {children}
     </AuthContext.Provider>

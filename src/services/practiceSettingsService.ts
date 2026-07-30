@@ -11,6 +11,7 @@ import {
   Timestamp,
   updateDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import {
@@ -21,11 +22,13 @@ import {
   BOOKING_POLICIES_SUBCOLLECTION,
   BOOKING_POLICIES_DOC_ID,
   USERS_COLLECTION,
+  DOCTORS_COLLECTION,
 } from '../shared/constants';
 import type {
   BookableBlock,
   BookingPolicy,
   ConsultType,
+  DayOfWeek,
   Practice,
   PracticeLocation,
   PracticeMember,
@@ -410,6 +413,82 @@ export const getBookableBlocks = async (practiceId: string): Promise<BookableBlo
   return snap.docs.map((d) => blockFromDoc(d.data(), d.id, practiceId));
 };
 
+const dateAtHm = (date: Date, hhmm: string): Date => {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(date);
+  d.setHours(h || 0, m || 0, 0, 0);
+  return d;
+};
+
+/**
+ * Mirrors practice clinic hours into doctors/{doctorId}/settings/availability
+ * so patients can see bookable windows without reading practice bookableBlocks.
+ */
+export const syncDoctorPublicAvailability = async (
+  practiceId: string,
+  doctorId: string
+): Promise<void> => {
+  if (!practiceId || !doctorId) return;
+
+  const blocks = (await getBookableBlocks(practiceId)).filter(
+    (b) => b.doctorId === doctorId && b.active !== false
+  );
+
+  const horizonDays = 60;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const availabilityBlocks: Array<{
+    id: string;
+    startDateTime: Timestamp;
+    endDateTime: Timestamp;
+    status: 'available';
+    title: string;
+  }> = [];
+
+  for (let i = 0; i <= horizonDays; i++) {
+    const day = new Date(today);
+    day.setDate(today.getDate() + i);
+    const dow = day.getDay() as DayOfWeek;
+    const dayKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+
+    for (const block of blocks) {
+      if (block.dayOfWeek !== dow) continue;
+      const start = dateAtHm(day, block.startTime);
+      const end = dateAtHm(day, block.endTime);
+      if (end.getTime() <= start.getTime()) continue;
+
+      availabilityBlocks.push({
+        id: `${block.id}_${dayKey}`,
+        startDateTime: Timestamp.fromDate(start),
+        endDateTime: Timestamp.fromDate(end),
+        status: 'available',
+        title: 'Clinic hours',
+      });
+    }
+  }
+
+  await setDoc(
+    doc(db, DOCTORS_COLLECTION, doctorId, 'settings', 'availability'),
+    {
+      doctorId,
+      source: 'practiceClinicHours',
+      blocks: availabilityBlocks,
+      clinicHours: blocks.map((b) => ({
+        id: b.id,
+        dayOfWeek: b.dayOfWeek,
+        startTime: b.startTime,
+        endTime: b.endTime,
+        slotDurationMinutes: b.slotDurationMinutes,
+        bufferAfterMinutes: b.bufferAfterMinutes,
+        active: true,
+      })),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+};
+
 export const createBookableBlock = async (
   practiceId: string,
   block: Omit<BookableBlock, 'id' | 'createdAt' | 'updatedAt'>
@@ -420,6 +499,11 @@ export const createBookableBlock = async (
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  try {
+    await syncDoctorPublicAvailability(practiceId, block.doctorId);
+  } catch (error) {
+    console.warn('[practiceSettings] syncDoctorPublicAvailability failed after create:', error);
+  }
   return docRef.id;
 };
 
@@ -432,16 +516,37 @@ export const updateBookableBlock = async (
     doc(db, PRACTICES_COLLECTION, practiceId, BOOKABLE_BLOCKS_SUBCOLLECTION, blockId),
     { ...updates, updatedAt: serverTimestamp() }
   );
+  const doctorId = updates.doctorId;
+  if (doctorId) {
+    try {
+      await syncDoctorPublicAvailability(practiceId, doctorId);
+    } catch (error) {
+      console.warn('[practiceSettings] syncDoctorPublicAvailability failed after update:', error);
+    }
+  }
 };
 
 export const deleteBookableBlock = async (
   practiceId: string,
-  blockId: string
+  blockId: string,
+  doctorId?: string
 ): Promise<void> => {
-  await updateDoc(
-    doc(db, PRACTICES_COLLECTION, practiceId, BOOKABLE_BLOCKS_SUBCOLLECTION, blockId),
-    { active: false, updatedAt: serverTimestamp() }
-  );
+  const blockRef = doc(db, PRACTICES_COLLECTION, practiceId, BOOKABLE_BLOCKS_SUBCOLLECTION, blockId);
+  let resolvedDoctorId = doctorId;
+  if (!resolvedDoctorId) {
+    const snap = await getDoc(blockRef);
+    resolvedDoctorId = snap.exists() ? String(snap.data()?.doctorId ?? '') : '';
+  }
+
+  await updateDoc(blockRef, { active: false, updatedAt: serverTimestamp() });
+
+  if (resolvedDoctorId) {
+    try {
+      await syncDoctorPublicAvailability(practiceId, resolvedDoctorId);
+    } catch (error) {
+      console.warn('[practiceSettings] syncDoctorPublicAvailability failed after delete:', error);
+    }
+  }
 };
 
 
@@ -490,6 +595,202 @@ export const getAllSoftBlocks = async (practiceId: string): Promise<SoftBlock[]>
   return snap.docs.map((d) => softBlockFromDoc(d.data(), d.id, practiceId));
 };
 
+const SOFT_BLOCK_HORIZON_DAYS = 60;
+
+const softBlockStartOfDay = (date: Date): Date => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const softBlockEndOfDay = (date: Date): Date => {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+};
+
+const softBlockAddDays = (date: Date, days: number): Date => {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+};
+
+const softBlockOverlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean =>
+  aStart < bEnd && aEnd > bStart;
+
+const softBlockDayKey = (date: Date): string => {
+  const d = softBlockStartOfDay(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const advanceSoftBlockOccurrence = (date: Date, recurrence: NonNullable<SoftBlock['recurrence']>): Date => {
+  const interval = Math.max(1, recurrence.interval || 1);
+  if (recurrence.frequency === 'daily') return softBlockAddDays(date, interval);
+  if (recurrence.frequency === 'weekly') return softBlockAddDays(date, 7 * interval);
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + interval);
+  return d;
+};
+
+type PublicSoftBlockOccurrence = {
+  id: string;
+  blockId: string;
+  title: string;
+  startAt: Date;
+  endAt: Date;
+};
+
+const expandSoftBlockOccurrencesInHorizon = (
+  block: SoftBlock,
+  horizonStart: Date,
+  horizonEnd: Date
+): PublicSoftBlockOccurrence[] => {
+  const durationMs = block.endAt.getTime() - block.startAt.getTime();
+  if (durationMs <= 0) return [];
+
+  if (!block.recurrence) {
+    if (softBlockOverlaps(block.startAt, block.endAt, horizonStart, horizonEnd)) {
+      const dayStart = softBlockStartOfDay(block.startAt);
+      return [{
+        id: `${block.id}_${softBlockDayKey(dayStart)}`,
+        blockId: block.id,
+        title: block.title,
+        startAt: block.startAt,
+        endAt: block.endAt,
+      }];
+    }
+    return [];
+  }
+
+  const recurrenceEnd = block.recurrence.endDate
+    ? softBlockEndOfDay(block.recurrence.endDate)
+    : null;
+  const results: PublicSoftBlockOccurrence[] = [];
+
+  if (
+    block.recurrence.frequency === 'weekly' &&
+    block.recurrence.daysOfWeek?.length
+  ) {
+    for (let i = 0; i <= SOFT_BLOCK_HORIZON_DAYS; i++) {
+      const day = softBlockAddDays(horizonStart, i);
+      if (day > horizonEnd) break;
+      const dayStart = softBlockStartOfDay(day);
+      if (dayStart < softBlockStartOfDay(block.startAt)) continue;
+      if (recurrenceEnd && dayStart > recurrenceEnd) continue;
+
+      const dow = day.getDay() as DayOfWeek;
+      if (!block.recurrence.daysOfWeek.includes(dow)) continue;
+
+      const occStart = dateAtHm(day, `${String(block.startAt.getHours()).padStart(2, '0')}:${String(block.startAt.getMinutes()).padStart(2, '0')}`);
+      const occEnd = new Date(occStart.getTime() + durationMs);
+      if (occStart >= block.startAt) {
+        results.push({
+          id: `${block.id}_${softBlockDayKey(dayStart)}`,
+          blockId: block.id,
+          title: block.title,
+          startAt: occStart,
+          endAt: occEnd,
+        });
+      }
+    }
+    return results;
+  }
+
+  let cursor = new Date(block.startAt);
+  let safety = 0;
+  while (cursor <= horizonEnd && safety < 5000) {
+    if (recurrenceEnd && cursor > recurrenceEnd) break;
+    const occurrenceEnd = new Date(cursor.getTime() + durationMs);
+    if (softBlockOverlaps(cursor, occurrenceEnd, horizonStart, horizonEnd)) {
+      results.push({
+        id: `${block.id}_${softBlockDayKey(cursor)}`,
+        blockId: block.id,
+        title: block.title,
+        startAt: new Date(cursor),
+        endAt: occurrenceEnd,
+      });
+    }
+    cursor = advanceSoftBlockOccurrence(cursor, block.recurrence);
+    safety += 1;
+  }
+
+  return results;
+};
+
+/**
+ * Mirrors practice soft blocks into doctors/{doctorId}/settings/softBlocks
+ * and Users/{doctorId}/soft_blocks so patients can read blocked times when booking.
+ */
+export const syncDoctorPublicSoftBlocks = async (
+  practiceId: string,
+  doctorId: string
+): Promise<void> => {
+  if (!practiceId || !doctorId) return;
+
+  const allBlocks = (await getAllSoftBlocks(practiceId)).filter((b) => b.doctorId === doctorId);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const horizonEnd = softBlockEndOfDay(softBlockAddDays(today, SOFT_BLOCK_HORIZON_DAYS));
+
+  const occurrences = allBlocks.flatMap((block) =>
+    expandSoftBlockOccurrencesInHorizon(block, today, horizonEnd)
+  );
+
+  const settingsBlocks = occurrences.map((occ) => ({
+    id: occ.id,
+    title: occ.title,
+    startAt: Timestamp.fromDate(occ.startAt),
+    endAt: Timestamp.fromDate(occ.endAt),
+  }));
+
+  await setDoc(
+    doc(db, DOCTORS_COLLECTION, doctorId, 'settings', 'softBlocks'),
+    {
+      doctorId,
+      source: 'practiceSoftBlocks',
+      blocks: settingsBlocks,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  const newOccurrenceIds = new Set(occurrences.map((occ) => occ.id));
+  const softBlocksRef = collection(db, USERS_COLLECTION, doctorId, 'soft_blocks');
+  const existingSnap = await getDocs(softBlocksRef);
+  const batch = writeBatch(db);
+  let batchOps = 0;
+
+  existingSnap.docs.forEach((existingDoc) => {
+    const data = existingDoc.data();
+    if (data.sourcePracticeBlockId && !newOccurrenceIds.has(existingDoc.id)) {
+      batch.delete(existingDoc.ref);
+      batchOps += 1;
+    }
+  });
+
+  for (const occ of occurrences) {
+    const dayStart = softBlockStartOfDay(occ.startAt);
+    batch.set(
+      doc(db, USERS_COLLECTION, doctorId, 'soft_blocks', occ.id),
+      {
+        doctorId,
+        date: Timestamp.fromDate(dayStart),
+        startTime: Timestamp.fromDate(occ.startAt),
+        endTime: Timestamp.fromDate(occ.endAt),
+        label: occ.title,
+        updatedAt: serverTimestamp(),
+        sourcePracticeBlockId: occ.blockId,
+      },
+      { merge: true }
+    );
+    batchOps += 1;
+  }
+
+  if (batchOps > 0) {
+    await batch.commit();
+  }
+};
+
 export const createSoftBlock = async (
   practiceId: string,
   block: Omit<SoftBlock, 'id' | 'createdAt' | 'updatedAt'>
@@ -517,6 +818,11 @@ export const createSoftBlock = async (
     };
   }
   const docRef = await addDoc(ref, payload);
+  try {
+    await syncDoctorPublicSoftBlocks(practiceId, block.doctorId);
+  } catch (error) {
+    console.warn('[practiceSettings] syncDoctorPublicSoftBlocks failed after create:', error);
+  }
   return docRef.id;
 };
 
@@ -539,15 +845,36 @@ export const updateSoftBlock = async (
     doc(db, PRACTICES_COLLECTION, practiceId, SOFT_BLOCKS_SUBCOLLECTION, softBlockId),
     payload
   );
+
+  const blockRef = doc(db, PRACTICES_COLLECTION, practiceId, SOFT_BLOCKS_SUBCOLLECTION, softBlockId);
+  const blockSnap = await getDoc(blockRef);
+  const doctorId = blockSnap.exists() ? String(blockSnap.data()?.doctorId ?? '') : '';
+  if (doctorId) {
+    try {
+      await syncDoctorPublicSoftBlocks(practiceId, doctorId);
+    } catch (error) {
+      console.warn('[practiceSettings] syncDoctorPublicSoftBlocks failed after update:', error);
+    }
+  }
 };
 
 export const deleteSoftBlock = async (
   practiceId: string,
   softBlockId: string
 ): Promise<void> => {
-  await deleteDoc(
-    doc(db, PRACTICES_COLLECTION, practiceId, SOFT_BLOCKS_SUBCOLLECTION, softBlockId)
-  );
+  const blockRef = doc(db, PRACTICES_COLLECTION, practiceId, SOFT_BLOCKS_SUBCOLLECTION, softBlockId);
+  const blockSnap = await getDoc(blockRef);
+  const doctorId = blockSnap.exists() ? String(blockSnap.data()?.doctorId ?? '') : '';
+
+  await deleteDoc(blockRef);
+
+  if (doctorId) {
+    try {
+      await syncDoctorPublicSoftBlocks(practiceId, doctorId);
+    } catch (error) {
+      console.warn('[practiceSettings] syncDoctorPublicSoftBlocks failed after delete:', error);
+    }
+  }
 };
 
 

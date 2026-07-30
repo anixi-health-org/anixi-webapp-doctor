@@ -33,9 +33,25 @@ function mapDoctorDoc(id: string, doctorData: Record<string, unknown>): Doctor {
             (doctorData.logoUrl as string) ||
             (doctorData.profileImageUrl as string) ||
             undefined,
+        practiceNumberBhf:
+            (doctorData.practiceNumberBhf as string) ||
+            (doctorData.practiceNumber as string) ||
+            undefined,
+        vatNumber: doctorData.vatNumber as string | undefined,
         country: doctorData.country as string | undefined,
         currency: doctorData.currency as string | undefined,
         nationality: doctorData.nationality as string | undefined,
+        verificationStatus: doctorData.verificationStatus as Doctor['verificationStatus'],
+        applicationComplete: Boolean(doctorData.applicationComplete),
+        applicationSubmittedAt:
+            (doctorData.applicationSubmittedAt as { toDate?: () => Date })?.toDate?.() ||
+            undefined,
+        verifiedAt:
+            (doctorData.verifiedAt as { toDate?: () => Date })?.toDate?.() || undefined,
+        rejectionReason:
+            (doctorData.rejectionReason as string) ||
+            (doctorData.suspensionReason as string) ||
+            undefined,
         createdAt:
             (doctorData.createdAt as { toDate?: () => Date })?.toDate?.() || new Date(),
         updatedAt:
@@ -68,14 +84,26 @@ export const getDoctorProfileFormData = async (
 export const saveDoctorProfileForm = async (
     doctorId: string,
     form: ProfessionalProfileFormData,
-    logoUrl?: string
+    logoUrl?: string,
+    options?: { submitForReview?: boolean }
 ): Promise<void> => {
     const doctorRef = doc(db, DOCTORS_COLLECTION, doctorId);
     const payload = formDataToFirestore(form, logoUrl);
+    const reviewFields = options?.submitForReview
+        ? {
+              applicationComplete: true,
+              applicationSubmittedAt: serverTimestamp(),
+              verificationStatus: 'pending',
+              verifiedAt: null,
+              verifiedBy: null,
+          }
+        : {};
+
     await setDoc(
         doctorRef,
         {
             ...payload,
+            ...reviewFields,
             updatedAt: serverTimestamp(),
         },
         { merge: true }

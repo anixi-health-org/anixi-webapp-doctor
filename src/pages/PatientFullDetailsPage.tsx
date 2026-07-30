@@ -11,7 +11,8 @@ import {
   UserCircleIcon,
 } from '@heroicons/react/24/outline';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { PageHeader, PageShell } from '../components/page-layout';
+import { PageShell } from '../components/page-layout';
+import { PatientProfileSkeleton } from '../components/ui';
 import { EditPatientModal } from '../components/patients/EditPatientModal';
 import { useAuth } from '../hooks/useAuth';
 import { getDoctorPatients } from '../services/doctorService';
@@ -32,15 +33,15 @@ function InfoField({ label, value }: { label: string; value?: string | null }) {
   if (isEmpty(value)) {
     return (
       <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
-        <p className="mt-1 text-sm text-gray-400">Not recorded</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">{label}</p>
+        <p className="mt-1 text-sm text-[#94a3b8]">Not recorded</p>
       </div>
     );
   }
   return (
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
-      <p className="mt-1 text-sm font-medium text-gray-900">{value}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">{label}</p>
+      <p className="mt-1 text-sm font-medium text-[#0E2340]">{value}</p>
     </div>
   );
 }
@@ -55,10 +56,12 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="border-gray-200/80 shadow-sm">
-      <CardHeader className="border-b border-gray-100 pb-4">
-        <CardTitle className="flex items-center gap-2 font-heading text-lg">
-          <Icon className="h-5 w-5 text-anixi-green" />
+    <Card className="border-[#e1e7ef] shadow-sm">
+      <CardHeader className="border-b border-[#eef2f6] pb-4">
+        <CardTitle className="flex items-center gap-2 text-[15px] font-semibold text-[#0E2340]">
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#eef4f1] text-anixi-green">
+            <Icon className="h-4 w-4" />
+          </span>
           {title}
         </CardTitle>
       </CardHeader>
@@ -129,11 +132,7 @@ export const PatientFullDetailsPage: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <PageShell>
-        <div className="flex min-h-[40vh] items-center justify-center text-gray-500">Loading record…</div>
-      </PageShell>
-    );
+    return <PatientProfileSkeleton />;
   }
 
   if (error || !patient) {
@@ -169,53 +168,55 @@ export const PatientFullDetailsPage: React.FC = () => {
       <button
         type="button"
         onClick={() => navigate(`/patient-profile/${patient.id}`)}
-        className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition-colors hover:text-anixi-green"
+        className="mb-5 inline-flex items-center gap-2 text-[13px] font-medium text-[#65758b] transition-colors hover:text-anixi-green"
       >
         <ArrowLeftIcon className="h-4 w-4" />
         Back to patient overview
       </button>
 
-      <PageHeader
-        title="Patient record"
-        description={`Complete clinical and demographic profile for ${name}.`}
-        actions={
-          <button
-            type="button"
-            onClick={() => setShowEditModal(true)}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
-          >
-            Edit record
-          </button>
-        }
-      />
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">Patient record</h1>
+          <p className="mt-1 text-[13px] text-[#65758b]">
+            Complete clinical and demographic profile for {name}.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowEditModal(true)}
+          className="inline-flex h-9 items-center rounded-lg bg-anixi-green px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f]"
+        >
+          Edit record
+        </button>
+      </div>
 
       {actionError && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {actionError}
         </div>
       )}
 
-      <div className="mb-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center">
+      <div className="mb-6 overflow-hidden rounded-xl border border-[#e1e7ef] bg-white shadow-sm">
+        <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:p-6">
           {patient.photoURL ? (
             <img
               src={patient.photoURL}
               alt={name}
-              className="h-24 w-24 rounded-2xl object-cover ring-2 ring-gray-100"
+              className="h-20 w-20 rounded-xl object-cover ring-2 ring-[#e1e7ef]"
             />
           ) : (
-            <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-anixi-green text-2xl font-bold text-white">
+            <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-anixi-green text-2xl font-bold text-white">
               {initials}
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <h2 className="font-heading text-2xl font-semibold text-gray-900">{name}</h2>
-            <p className="mt-1 text-gray-500">
+            <h2 className="text-xl font-semibold text-[#0E2340]">{name}</h2>
+            <p className="mt-1 text-[13px] text-[#65758b]">
               {[age !== null ? `${age} years` : null, formatGender(patient.gender)]
                 .filter(Boolean)
                 .join(' · ')}
             </p>
-            <p className="mt-2 font-mono text-xs text-gray-400">ID {patient.id}</p>
+            <p className="mt-2 font-mono text-xs text-[#8FA0B6]">ID {patient.id}</p>
           </div>
         </div>
       </div>
@@ -372,7 +373,7 @@ export const PatientFullDetailsPage: React.FC = () => {
         </SectionCard>
       </div>
 
-      <Card className="mt-6 border-red-200/60 shadow-sm">
+      <Card className="mt-6 border-red-200/70 shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base text-red-800">
             <CalendarIcon className="h-5 w-5" />
@@ -380,14 +381,14 @@ export const PatientFullDetailsPage: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-gray-600">
+          <p className="text-[13px] text-[#65758b]">
             Remove this patient from your practice if they are no longer under your care.
           </p>
           <button
             type="button"
             onClick={handleRemove}
             disabled={isRemoving}
-            className="shrink-0 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+            className="shrink-0 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
           >
             {isRemoving ? 'Removing…' : 'Remove from practice'}
           </button>

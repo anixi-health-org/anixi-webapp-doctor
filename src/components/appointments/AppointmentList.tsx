@@ -16,7 +16,7 @@ export const AppointmentList: React.FC<AppointmentListProps> = ({
   isLoading = false,
 }) => {
   if (isLoading) {
-    return <ListRowsSkeleton rows={4} />;
+    return <ListRowsSkeleton rows={8} />;
   }
 
   if (appointments.length === 0) {
@@ -32,14 +32,25 @@ export const AppointmentList: React.FC<AppointmentListProps> = ({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4">
-      {appointments.map((appointment) => (
-        <AppointmentCard
-          key={appointment.id}
-          appointment={appointment}
-          onClick={() => onSelectAppointment(appointment)}
-        />
-      ))}
+    <div className="overflow-hidden rounded-[10px] border border-[#e1e7ef] bg-white">
+      <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto] gap-3 border-b border-[#e1e7ef] bg-[#f8fafc] px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#8FA0B6] sm:grid sm:gap-4">
+        <span>Date & time</span>
+        <span>Patient</span>
+        <span>Type</span>
+        <span>Status</span>
+      </div>
+      <div className="max-h-[min(62vh,720px)] overflow-y-auto">
+        {appointments.map((appointment) => (
+          <AppointmentCard
+            key={appointment.id}
+            appointment={appointment}
+            onClick={() => onSelectAppointment(appointment)}
+          />
+        ))}
+      </div>
+      <div className="border-t border-[#eef2f6] bg-[#f8fafc] px-4 py-2 text-xs text-[#65758b]">
+        {appointments.length} appointment{appointments.length === 1 ? '' : 's'}
+      </div>
     </div>
   );
 };

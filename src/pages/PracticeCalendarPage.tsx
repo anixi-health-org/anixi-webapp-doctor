@@ -1,128 +1,178 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/AuthContext';
-import { getPracticeDailySchedule, setPracticeDailySchedule } from '../services/practiceCalendarService';
 import { getDoctorAppointments } from '../services/appointmentService';
-import type { AvailabilityStatus } from '../types';
-import { Appointment } from '../types';
+import {
+  getBookableBlocks,
+  getAllSoftBlocks,
+} from '../services/practiceSettingsService';
+import type { Appointment, BookableBlock, SoftBlock } from '../types';
 import { CalendarGridView } from '../components/calendar/CalendarGridView';
-import { TabPill } from '../components/ui/TabPill';
+import { DayAgendaView } from '../components/calendar/DayAgendaView';
+import {
+  appointmentDateKeys,
+  appointmentOnDate,
+  appointmentSortMinutes,
+  parseDateKey,
+  toDateKey,
+} from '../components/calendar/calendarDateUtils';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { AppointmentDetails } from '../components/appointments/AppointmentDetails';
 
-const PRACTICE_BRAND = {
-  primary: '#516059',
-  primaryDark: '#45524D',
-  subtle: '#EEF2F0',
-  border: '#C6CFCA',
+type Tab = 'day' | 'week';
+
+const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+const formatClock = (hhmm: string) => {
+  const [hRaw, m] = hhmm.split(':').map(Number);
+  if (Number.isNaN(hRaw) || Number.isNaN(m)) return hhmm;
+  const period = hRaw >= 12 ? 'PM' : 'AM';
+  const h = hRaw % 12 || 12;
+  return `${h}:${String(m).padStart(2, '0')} ${period}`;
 };
 
-type Tab = 'calendar' | 'daySettings';
+const formatDateTime = (d: Date) =>
+  d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+
+const startOfDay = (date: Date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const endOfDay = (date: Date) => {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+};
+
+const overlapsDay = (block: SoftBlock, day: Date) => {
+  const dayStart = startOfDay(day);
+  const dayEnd = endOfDay(day);
+  return block.startAt < dayEnd && block.endAt > dayStart;
+};
 
 const PracticeCalendarPage: React.FC = () => {
   const { practiceSession, user } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<Tab>('calendar');
-  const [availability, setAvailability] = useState<AvailabilityStatus>('open');
-  const [openTime, setOpenTime] = useState('09:00');
-  const [closeTime, setCloseTime] = useState('17:00');
-  const [note, setNote] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>('day');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [dayAppointments, setDayAppointments] = useState<Appointment[]>([]);
-  const [loadingDayApts, setLoadingDayApts] = useState(false);
+  const [allAppointments, setAllAppointments] = useState<Appointment[]>([]);
+  const [loadingApts, setLoadingApts] = useState(false);
   const [selectedDayAppointment, setSelectedDayAppointment] = useState<Appointment | null>(null);
+  const [calendarReloadToken, setCalendarReloadToken] = useState(0);
+  const [clinicHours, setClinicHours] = useState<BookableBlock[]>([]);
+  const [softBlocks, setSoftBlocks] = useState<SoftBlock[]>([]);
+  const [loadingHours, setLoadingHours] = useState(false);
 
   const practice = practiceSession?.practice;
-  const today = new Date().toISOString().split('T')[0];
+  const today = toDateKey(new Date());
   const [selectedDate, setSelectedDate] = useState(today);
   const [miniMonth, setMiniMonth] = useState<Date>(new Date());
 
-  // Reload availability settings whenever the selected date changes
-  useEffect(() => {
-    if (!practice) return;
-    const loadSchedule = async () => {
-      setLoading(true);
-      try {
-        const schedule = await getPracticeDailySchedule(practice.id, selectedDate);
-        if (schedule) {
-          setAvailability(schedule.availability);
-          setOpenTime(schedule.openTime || '09:00');
-          setCloseTime(schedule.closeTime || '17:00');
-          setNote(schedule.note || '');
-        } else {
-          setAvailability('open');
-          setOpenTime('09:00');
-          setCloseTime('17:00');
-          setNote('');
-        }
-      } catch (error) {
-        console.error('Error loading schedule:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadSchedule();
-  }, [practice, selectedDate]);
+  const loadPracticeSchedule = useCallback(async () => {
+    if (!practice?.id || !user?.id) return;
+    setLoadingHours(true);
+    try {
+      const [blocks, soft] = await Promise.all([
+        getBookableBlocks(practice.id),
+        getAllSoftBlocks(practice.id),
+      ]);
+      setClinicHours(blocks.filter((b) => b.doctorId === user.id && b.active !== false));
+      setSoftBlocks(soft.filter((b) => b.doctorId === user.id));
+    } catch {
+      setClinicHours([]);
+      setSoftBlocks([]);
+    } finally {
+      setLoadingHours(false);
+    }
+  }, [practice?.id, user?.id]);
 
-  // Load appointments for the selected date (Day View operational list)
-  const loadDayAppointments = useCallback(async () => {
+  useEffect(() => {
+    void loadPracticeSchedule();
+  }, [loadPracticeSchedule, calendarReloadToken]);
+
+  const loadAppointments = useCallback(async () => {
     if (!user?.id) return;
-    setLoadingDayApts(true);
+    setLoadingApts(true);
     try {
       const all = await getDoctorAppointments(user.id);
-      const sel = new Date(selectedDate);
-      const filtered = all
-        .filter((a) => {
-          const d = new Date(a.date);
-          return (
-            d.getFullYear() === sel.getFullYear() &&
-            d.getMonth() === sel.getMonth() &&
-            d.getDate() === sel.getDate()
-          );
-        })
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setDayAppointments(filtered);
+      setAllAppointments(all);
     } catch {
-      setDayAppointments([]);
+      setAllAppointments([]);
     } finally {
-      setLoadingDayApts(false);
+      setLoadingApts(false);
     }
-  }, [user?.id, selectedDate]);
+  }, [user?.id]);
 
-  useEffect(() => { loadDayAppointments(); }, [loadDayAppointments]);
+  useEffect(() => {
+    void loadAppointments();
+  }, [loadAppointments, calendarReloadToken]);
 
-  const handleSave = async () => {
-    if (!practice) return;
-    setSaving(true);
-    try {
-      await setPracticeDailySchedule({
-        practiceId: practice.id,
-        date: selectedDate,
-        availability,
-        openTime: availability === 'closed' ? undefined : openTime,
-        closeTime: availability === 'closed' ? undefined : closeTime,
-        note: note.trim() || undefined,
+  const selectedDay = useMemo(() => parseDateKey(selectedDate), [selectedDate]);
+  const selectedDow = selectedDay.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+  const dayClinicHours = useMemo(
+    () =>
+      clinicHours
+        .filter((b) => b.dayOfWeek === selectedDow)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime)),
+    [clinicHours, selectedDow]
+  );
+
+  const dayBlockedTime = useMemo(
+    () =>
+      softBlocks
+        .filter((b) => overlapsDay(b, selectedDay))
+        .sort((a, b) => a.startAt.getTime() - b.startAt.getTime()),
+    [softBlocks, selectedDay]
+  );
+
+  const dayAppointments = useMemo(
+    () =>
+      allAppointments
+        .filter((a) => appointmentOnDate(a, selectedDate))
+        .sort((a, b) => appointmentSortMinutes(a) - appointmentSortMinutes(b)),
+    [allAppointments, selectedDate]
+  );
+
+  const appointmentDates = useMemo(() => {
+    const set = new Set<string>();
+    allAppointments.forEach((a) => {
+      if (a.status === 'cancelled') return;
+      appointmentDateKeys(a).forEach((k) => set.add(k));
+    });
+    return set;
+  }, [allAppointments]);
+
+  const selectedLabel = selectedDay.toLocaleDateString('en-ZA', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  const handleSelectAppointment = (apt: Appointment) => {
+    const isAnixi =
+      !apt.isManual && apt.patientId && apt.patientId !== 'manual' && apt.patientId !== 'unknown';
+    if (isAnixi) {
+      navigate(`/patient-profile/${apt.patientId}`, {
+        state: {
+          appointmentId: apt.id,
+          consultType: apt.consultType,
+          status: apt.status,
+          appointmentTime: apt.time,
+        },
       });
-      setSuccessMessage('Schedule saved successfully!');
-      setErrorMessage(null);
-      window.setTimeout(() => setSuccessMessage(null), 5000);
-    } catch (error) {
-      console.error('Error saving schedule:', error);
-      const msg = (error as any)?.message || String(error);
-      setErrorMessage(msg || 'Error saving schedule. Please try again.');
-    } finally {
-      setSaving(false);
+    } else {
+      setSelectedDayAppointment(apt);
     }
   };
 
   if (!practice) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-gray-500">No practice found. Contact support.</p>
+      <div className="flex h-64 items-center justify-center">
+        <p className="text-[#65758b]">No practice found. Contact support.</p>
       </div>
     );
   }
@@ -147,265 +197,270 @@ const PracticeCalendarPage: React.FC = () => {
     year: 'numeric',
   });
 
+  const active = dayAppointments.filter((a) => a.status !== 'cancelled');
+  const confirmed = dayAppointments.filter((a) => a.status === 'confirmed').length;
+  const pending = dayAppointments.filter((a) => a.status === 'pending').length;
+  const completed = dayAppointments.filter((a) => a.status === 'completed').length;
+  const ratio = active.length > 0 ? Math.round((confirmed / active.length) * 100) : 0;
+
   return (
-    <div className="min-h-screen bg-anixi-beige px-4 py-6 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-[#f5f7fa] px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl space-y-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl sm:text-4xl font-bold text-[#0E2340]">Practice Calendar</h1>
-            <p className="text-sm text-[#6F7F95] mt-2">
-              Manage your consultations and schedule blocks
+            <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">Practice calendar</h1>
+            <p className="mt-1 text-[13px] text-[#65758b]">
+              See who is booked today, and scan the full week when you need it.
             </p>
           </div>
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="inline-flex rounded-2xl bg-white border border-[#DCE4EE] p-1 shadow-sm">
-              <TabPill active={activeTab === 'daySettings'} onClick={() => setActiveTab('daySettings')}>
-                Day View
-              </TabPill>
-              <TabPill active={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')}>
-                Week View
-              </TabPill>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex rounded-xl bg-[#e8eef4] p-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab('day')}
+                className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition sm:text-[13px] ${
+                  activeTab === 'day'
+                    ? 'bg-white text-[#0E2340] shadow-sm'
+                    : 'text-[#65758b] hover:text-[#344256]'
+                }`}
+              >
+                Day view
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('week')}
+                className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition sm:text-[13px] ${
+                  activeTab === 'week'
+                    ? 'bg-white text-[#0E2340] shadow-sm'
+                    : 'text-[#65758b] hover:text-[#344256]'
+                }`}
+              >
+                Week view
+              </button>
             </div>
             <button
               type="button"
               onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center justify-center gap-3 rounded-2xl bg-[#425950] px-6 py-4 text-base font-semibold text-white shadow-lg shadow-[#425950]/20 hover:bg-[#374d45] transition-colors"
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-anixi-green px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f]"
             >
-              <span className="text-2xl leading-none">+</span>
-              <span>Quick Add</span>
+              <span className="text-lg leading-none">+</span>
+              Quick add
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-6 items-start">
-          <div className="space-y-6">
-            <div className="rounded-[30px] border border-[#E2E8F0] bg-white shadow-sm p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-[30px] leading-none font-semibold text-[#0E2340]">{monthTitle}</h2>
+        <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
+          <div className="space-y-4">
+            <div className="rounded-xl border border-[#e1e7ef] bg-white p-4 shadow-sm">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-base font-semibold text-[#0E2340]">{monthTitle}</h2>
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    className="h-8 w-8 rounded-lg text-[#8FA0B6] hover:bg-[#F4F7FA]"
-                    onClick={() => setMiniMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#8FA0B6] transition hover:bg-[#f0f4f8] hover:text-[#0E2340]"
+                    onClick={() =>
+                      setMiniMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
+                    }
                   >
                     ‹
                   </button>
                   <button
                     type="button"
-                    className="h-8 w-8 rounded-lg text-[#8FA0B6] hover:bg-[#F4F7FA]"
-                    onClick={() => setMiniMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#8FA0B6] transition hover:bg-[#f0f4f8] hover:text-[#0E2340]"
+                    onClick={() =>
+                      setMiniMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
+                    }
                   >
                     ›
                   </button>
                 </div>
               </div>
-              <div className="grid grid-cols-7 gap-y-4 text-center text-sm text-[#8FA0B6]">
-                {['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'].map((day) => (
-                  <div key={day} className="font-semibold text-xs uppercase tracking-[0.08em]">{day}</div>
+              <div className="grid grid-cols-7 gap-y-2 text-center text-sm text-[#8FA0B6]">
+                {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((day) => (
+                  <div key={day} className="text-[10px] font-semibold uppercase tracking-wider">
+                    {day}
+                  </div>
                 ))}
                 {miniCalendarDays.days.map((day) => {
                   const isCurrentMonth = day.getMonth() === miniCalendarDays.month;
-                  const isSelected = day.toDateString() === new Date(selectedDate).toDateString();
+                  const dayKey = toDateKey(day);
+                  const isSelected = dayKey === selectedDate;
+                  const isToday = dayKey === today;
+                  const hasAppts = appointmentDates.has(dayKey);
                   return (
                     <button
-                      key={day.toISOString()}
+                      key={dayKey + String(isCurrentMonth)}
                       type="button"
-                      onClick={() => setSelectedDate(day.toISOString().split('T')[0])}
-                      className={`mx-auto flex h-9 w-9 items-center justify-center rounded-xl text-sm font-semibold transition-colors ${
+                      onClick={() => {
+                        setSelectedDate(dayKey);
+                        setActiveTab('day');
+                      }}
+                      className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full text-[13px] transition ${
                         isSelected
-                          ? 'bg-[#0FA968] text-white shadow-sm'
-                          : isCurrentMonth
-                            ? 'text-[#8FA0B6] hover:bg-[#F4F7FA]'
-                            : 'text-[#D2D8E1]'
+                          ? 'bg-anixi-green font-semibold text-white'
+                          : isToday
+                            ? 'font-semibold text-anixi-green ring-1 ring-anixi-green/40'
+                            : isCurrentMonth
+                              ? 'text-[#0E2340] hover:bg-[#f0f4f8]'
+                              : 'text-[#c5cdd8]'
                       }`}
                     >
-                      {day.getDate()}
+                      <span className="relative">
+                        {day.getDate()}
+                        {hasAppts && !isSelected && (
+                          <span className="absolute -bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-anixi-green" />
+                        )}
+                      </span>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <div className="rounded-[30px] bg-[#2F3A39] shadow-sm p-5 text-white">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Schedule Stats</h2>
-                <span className="text-emerald-400">◔</span>
-              </div>
-              <p className="mt-2 text-sm text-white/65">
-                {new Date(selectedDate).toLocaleDateString('en-ZA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            <div className="rounded-xl border border-[#e1e7ef] bg-white p-4 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                Schedule stats
               </p>
-              {loadingDayApts ? (
-                <p className="mt-4 text-xs text-white/40">Loading…</p>
-              ) : (() => {
-                const active = dayAppointments.filter((a) => a.status !== 'cancelled');
-                const confirmed = dayAppointments.filter((a) => a.status === 'confirmed').length;
-                const pending = dayAppointments.filter((a) => a.status === 'pending').length;
-                const completed = dayAppointments.filter((a) => a.status === 'completed').length;
-                const ratio = active.length > 0 ? Math.round((confirmed / active.length) * 100) : 0;
-                return (
-                  <div className="mt-5 space-y-3 text-sm">
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-white/60">Total</span>
-                      <span className="font-semibold text-white">{active.length}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-white/60">Confirmed</span>
-                      <span className="font-semibold text-emerald-400">{confirmed}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-white/60">Pending</span>
-                      <span className="font-semibold text-amber-300">{pending}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-white/60">Completed</span>
-                      <span className="font-semibold text-white/80">{completed}</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                      <div className="h-full bg-emerald-400 transition-all" style={{ width: `${ratio}%` }} />
-                    </div>
-                    <p className="text-xs text-white/40">{ratio}% confirmed</p>
+              <p className="mt-1 text-[12px] text-[#65758b]">{selectedLabel}</p>
+              {loadingApts ? (
+                <p className="mt-3 text-[13px] text-[#8FA0B6]">Loading…</p>
+              ) : (
+                <div className="mt-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { label: 'Total', value: active.length },
+                      { label: 'Confirmed', value: confirmed },
+                      { label: 'Pending', value: pending },
+                      { label: 'Completed', value: completed },
+                    ].map((stat) => (
+                      <div
+                        key={stat.label}
+                        className="rounded-lg border border-[#eef2f6] bg-[#f8fafc] px-3 py-2"
+                      >
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                          {stat.label}
+                        </p>
+                        <p className="mt-0.5 text-lg font-bold text-[#0E2340]">{stat.value}</p>
+                      </div>
+                    ))}
                   </div>
-                );
-              })()}
+                  <p className="mt-1.5 text-[11px] text-[#94a3b8]">
+                    {active.length === 0
+                      ? 'No visits on this day'
+                      : `${ratio}% confirmed · ${active.length} visit${active.length === 1 ? '' : 's'}`}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="rounded-[30px] border border-[#E2E8F0] bg-white shadow-sm p-4 sm:p-6 min-h-[720px]">
-            {activeTab === 'daySettings' && (
-              <div className="space-y-6">
-                {/* Availability settings */}
-                <div className="rounded-[24px] border border-[#E9EEF4] bg-[#FBFCFD] p-4 sm:p-6">
-                  <h3 className="text-sm font-semibold text-[#0E2340] mb-4">Availability Settings</h3>
-                <div className="space-y-6">
+          <div className="min-h-[640px] rounded-xl border border-[#e1e7ef] bg-white p-4 shadow-sm sm:p-5">
+            {activeTab === 'day' && (
+              <div className="space-y-5">
+                <DayAgendaView
+                  dateLabel={selectedLabel}
+                  appointments={dayAppointments}
+                  isLoading={loadingApts}
+                  onSelectAppointment={handleSelectAppointment}
+                  onQuickAdd={() => setShowCreateModal(true)}
+                />
+
+                <div className="rounded-xl border border-[#e1e7ef] bg-[#f8fafc] p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <label className="block text-sm font-medium text-[#0E2340] mb-3">Availability</label>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        {[
-                          { value: 'open' as const, label: 'Open', color: 'bg-[#E7FAEF] text-[#0E9F6E] border-[#CDEBD9]' },
-                          { value: 'limited' as const, label: 'Limited', color: 'bg-[#FFF3DE] text-[#C47A00] border-[#F3D9A5]' },
-                          { value: 'closed' as const, label: 'Closed', color: 'bg-[#FFF0F1] text-[#D6455D] border-[#F1C9CE]' },
-                        ].map((option) => (
-                          <label key={option.value} className="flex-1">
-                            <input
-                              type="radio"
-                              name="availability"
-                              value={option.value}
-                              checked={availability === option.value}
-                              onChange={(e) => setAvailability(e.target.value as AvailabilityStatus)}
-                              className="sr-only"
-                            />
-                            <div
-                              className={`px-4 py-3 text-sm font-semibold text-center border rounded-2xl cursor-pointer transition-colors ${
-                                availability === option.value
-                                  ? option.color + ' border-current'
-                                  : 'bg-white text-[#6F7F95] border-[#E4EAF2] hover:bg-[#FBFCFD]'
-                              }`}
-                            >
-                              {option.label}
-                            </div>
-                          </label>
-                        ))}
-                      </div>
+                      <p className="text-sm font-semibold text-[#0E2340]">Clinic hours</p>
+                      <p className="mt-0.5 text-[12px] text-[#65758b]">
+                        From Settings · {DAY_LABELS[selectedDow]}s
+                      </p>
                     </div>
-
-                    {availability !== 'closed' && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-[#0E2340] mb-2">Open Time</label>
-                          <input type="time" value={openTime} onChange={(e) => setOpenTime(e.target.value)}
-                            className="w-full text-sm border border-[#DDE5EF] rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#425950]/20" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-[#0E2340] mb-2">Close Time</label>
-                          <input type="time" value={closeTime} onChange={(e) => setCloseTime(e.target.value)}
-                            className="w-full text-sm border border-[#DDE5EF] rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#425950]/20" />
-                        </div>
-                      </div>
-                    )}
-
-                    <div>
-                      <label className="block text-sm font-medium text-[#0E2340] mb-2">Note (Optional)</label>
-                      <textarea value={note} onChange={(e) => setNote(e.target.value)}
-                        placeholder="Add any notes about today's schedule..." rows={4}
-                        className="w-full text-sm border border-[#DDE5EF] rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#425950]/20" />
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                      <div className="flex-1 space-y-2">
-                        {successMessage && (
-                          <div className="text-sm text-[#0E9F6E] bg-[#E7FAEF] border border-[#CDEBD9] rounded-2xl px-4 py-3">{successMessage}</div>
-                        )}
-                        {errorMessage && (
-                          <div className="text-sm text-[#D6455D] bg-[#FFF0F1] border border-[#F1C9CE] rounded-2xl px-4 py-3">{errorMessage}</div>
-                        )}
-                      </div>
-                      <button onClick={handleSave} disabled={saving || loading}
-                        className="inline-flex items-center justify-center rounded-2xl px-6 py-3 text-sm font-semibold text-white disabled:opacity-50"
-                        style={{ backgroundColor: PRACTICE_BRAND.primary }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = PRACTICE_BRAND.primaryDark)}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = PRACTICE_BRAND.primary)}>
-                        {saving ? 'Saving...' : 'Save'}
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/practice-settings?tab=availability')}
+                      className="shrink-0 text-xs font-semibold text-anixi-green hover:underline"
+                    >
+                      Manage in Settings
+                    </button>
                   </div>
+
+                  {loadingHours ? (
+                    <p className="mt-3 text-[13px] text-[#8FA0B6]">Loading clinic hours…</p>
+                  ) : dayClinicHours.length === 0 ? (
+                    <div className="mt-3 rounded-lg border border-dashed border-[#e1e7ef] bg-white px-3.5 py-3">
+                      <p className="text-[13px] font-medium text-[#0E2340]">
+                        No clinic hours on {DAY_LABELS[selectedDow]}s
+                      </p>
+                      <p className="mt-1 text-[12px] text-[#65758b]">
+                        Patients cannot book this day until you add hours in Settings.
+                      </p>
+                    </div>
+                  ) : (
+                    <ul className="mt-3 space-y-2">
+                      {dayClinicHours.map((block) => (
+                        <li
+                          key={block.id}
+                          className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2"
+                        >
+                          <p className="text-[13px] font-semibold text-emerald-900">
+                            {formatClock(block.startTime)} – {formatClock(block.endTime)}
+                          </p>
+                          <p className="text-[11px] text-emerald-800/80">
+                            {block.slotDurationMinutes}-min slots
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
 
-                {/* Operational day schedule */}
-                <div className="rounded-[24px] border border-[#E9EEF4] bg-white p-4 sm:p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-semibold text-[#0E2340]">
-                      Schedule — {new Date(selectedDate).toLocaleDateString('en-ZA', { weekday: 'long', month: 'long', day: 'numeric' })}
-                    </h3>
-                    {loadingDayApts && <span className="text-xs text-[#8FA0B6]">Loading…</span>}
+                <div className="rounded-xl border border-[#e1e7ef] bg-[#f8fafc] p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-[#0E2340]">Blocked time</p>
+                      <p className="mt-0.5 text-[12px] text-[#65758b]">
+                        From Settings · not bookable for patients
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/practice-settings?tab=soft-blocks')}
+                      className="shrink-0 text-xs font-semibold text-anixi-green hover:underline"
+                    >
+                      Manage in Settings
+                    </button>
                   </div>
-                  {!loadingDayApts && dayAppointments.length === 0 && (
-                    <p className="text-sm text-[#8FA0B6] italic">No appointments scheduled for this day.</p>
+
+                  {loadingHours ? (
+                    <p className="mt-3 text-[13px] text-[#8FA0B6]">Loading blocked time…</p>
+                  ) : dayBlockedTime.length === 0 ? (
+                    <p className="mt-3 text-[13px] text-[#65758b]">No blocked time on this day.</p>
+                  ) : (
+                    <ul className="mt-3 space-y-2">
+                      {dayBlockedTime.map((block) => (
+                        <li
+                          key={block.id}
+                          className="rounded-lg border border-[#e1e7ef] bg-white px-3 py-2"
+                        >
+                          <p className="text-[13px] font-semibold text-[#0E2340]">{block.title}</p>
+                          <p className="mt-0.5 text-[12px] text-[#65758b]">
+                            {formatDateTime(block.startAt)} – {formatDateTime(block.endAt)}
+                            {block.category ? ` · ${block.category.replace(/_/g, ' ')}` : ''}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
                   )}
-                  <div className="space-y-2">
-                    {dayAppointments
-                      .filter((a) => a.status !== 'cancelled')
-                      .map((apt) => {
-                        const isAnixi = !apt.isManual && apt.patientId && apt.patientId !== 'manual' && apt.patientId !== 'unknown';
-                        const statusColors: Record<string, string> = {
-                          confirmed: 'border-l-emerald-400 bg-emerald-50',
-                          pending: 'border-l-amber-400 bg-amber-50',
-                          completed: 'border-l-gray-400 bg-gray-50',
-                          no_show: 'border-l-orange-400 bg-orange-50',
-                        };
-                        const colorClass = statusColors[apt.status] ?? 'border-l-gray-300 bg-gray-50';
-                        return (
-                          <button
-                            key={apt.id}
-                            type="button"
-                            onClick={() => {
-                              if (isAnixi) {
-                                navigate(`/patient-profile/${apt.patientId}`, {
-                                  state: { appointmentId: apt.id, consultType: apt.consultType, status: apt.status },
-                                });
-                              } else {
-                                setSelectedDayAppointment(apt);
-                              }
-                            }}
-                            className={`w-full text-left border-l-4 rounded-r-xl px-4 py-3 transition-colors hover:brightness-95 ${colorClass}`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-semibold text-[#0E2340] truncate">{apt.patientName}</span>
-                              <span className="text-xs text-[#6F7F95] shrink-0">{apt.time}</span>
-                            </div>
-                            <div className="flex items-center gap-3 mt-1">
-                              <span className="text-xs text-[#8FA0B6] capitalize">{apt.consultType ?? apt.type}</span>
-                              {apt.isManual && <span className="text-[10px] text-[#8FA0B6]">manual</span>}
-                              {isAnixi && <span className="text-[10px] text-[#0FA968]">Anixi → Profile</span>}
-                            </div>
-                          </button>
-                        );
-                      })}
-                  </div>
                 </div>
               </div>
             )}
 
-            {activeTab === 'calendar' && <CalendarGridView showCreateButton={false} showLegend={false} />}
+            {activeTab === 'week' && (
+              <CalendarGridView
+                showCreateButton={false}
+                showLegend={false}
+                focusDate={selectedDate}
+                reloadToken={calendarReloadToken}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -414,8 +469,9 @@ const PracticeCalendarPage: React.FC = () => {
         <CreateAppointmentModal
           isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}
-          onAppointmentCreated={async (message) => {
-            await loadDayAppointments();
+          onAppointmentCreated={async () => {
+            setCalendarReloadToken((t) => t + 1);
+            await loadAppointments();
             setShowCreateModal(false);
           }}
         />
@@ -425,14 +481,13 @@ const PracticeCalendarPage: React.FC = () => {
         <AppointmentDetails
           appointment={selectedDayAppointment}
           onClose={() => setSelectedDayAppointment(null)}
-          onStatusChange={(id, status) => {
-            setDayAppointments((prev) =>
-              prev.map((a) => (a.id === id ? { ...a, status } : a))
-            );
+          onStatusChange={() => {
             setSelectedDayAppointment(null);
+            setCalendarReloadToken((t) => t + 1);
           }}
           onReschedule={async () => {
-            await loadDayAppointments();
+            setCalendarReloadToken((t) => t + 1);
+            await loadAppointments();
             setSelectedDayAppointment(null);
           }}
         />

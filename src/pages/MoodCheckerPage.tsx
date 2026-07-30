@@ -1,9 +1,8 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
-import { Card, CardContent } from '../components/ui/Card';
-import { PageHeader } from '../components/page-layout/PageHeader';
 import { MoodCalendar } from '../components/MoodCalendar';
+import { PageHeader, PageShell } from '../components/page-layout';
 
 export const MoodCheckerPage: React.FC = () => {
   const navigate = useNavigate();
@@ -11,38 +10,32 @@ export const MoodCheckerPage: React.FC = () => {
 
   if (!patientId) {
     return (
-      <div className="min-h-screen bg-anixi-beige p-6">
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-          <p className="text-red-700">Patient ID not found</p>
+      <PageShell>
+        <div className="rounded-[12px] border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          Patient ID not found
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-anixi-beige p-4 sm:p-6">
-      <div className="mx-auto max-w-5xl">
-        <button
-          type="button"
-          onClick={() => navigate(`/patient-profile/${patientId}`)}
-          className="mb-6 inline-flex items-center gap-2 rounded-lg bg-anixi-green px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-          Back to Patient Profile
-        </button>
-
-        <PageHeader
-          title="Mood Checker"
-          description="Track patient mood and emotional well-being over time."
-        />
-
-        <Card>
-          <CardContent className="p-4 sm:p-6">
-            <MoodCalendar patientId={patientId} />
-          </CardContent>
-        </Card>
+    <PageShell>
+      <button
+        type="button"
+        onClick={() => navigate(`/patient-profile/${patientId}`)}
+        className="mb-4 inline-flex h-9 items-center gap-2 rounded-[10px] border border-[#e1e7ef] bg-white px-3 text-sm font-medium text-[#344256] hover:border-[#427160]/40 hover:text-[#427160]"
+      >
+        <ArrowLeftIcon className="h-4 w-4" />
+        Back to Patient Profile
+      </button>
+      <PageHeader
+        title="Mood Checker"
+        description="Track patient mood and emotional well-being over time."
+      />
+      <div className="rounded-[12px] border border-[#e1e7ef] bg-white p-4 shadow-sm sm:p-6">
+        <MoodCalendar patientId={patientId} />
       </div>
-    </div>
+    </PageShell>
   );
 };
 

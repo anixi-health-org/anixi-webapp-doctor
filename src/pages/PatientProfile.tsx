@@ -7,7 +7,6 @@ import { PatientProfileIdentityCard, usePatientHealthSnapshot } from '../compone
 import { recordPatientVisit } from '../services/recentPatientsService';
 import { logPatientActivity } from '../services/patientActivityService';
 import { getPatientAppointments } from '../services/appointmentService';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { AppointmentDetails } from '../components/appointments/AppointmentDetails';
 import { AppointmentList } from '../components/appointments/AppointmentList';
 import { useAuth } from '../hooks/useAuth';
@@ -18,6 +17,7 @@ import { CreateAppointmentModal } from '../components/appointments/CreateAppoint
 import { EditPatientModal } from '../components/patients/EditPatientModal';
 import { convertTimestamp } from '../utils/dateFormatter';
 import { formatName } from '../utils/dataFormatter';
+import { PatientProfileSkeleton } from '../components/ui';
 
 export const PatientProfile: React.FC = () => {
   const navigate = useNavigate();
@@ -239,14 +239,7 @@ export const PatientProfile: React.FC = () => {
   }, [patientAppointments]);
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="text-lg text-gray-600">Loading patient profile...</div>
-          <div className="mt-2 text-sm text-gray-500">Please wait</div>
-        </div>
-      </div>
-    );
+    return <PatientProfileSkeleton />;
   }
 
   if (error || !patient) {
@@ -274,29 +267,127 @@ export const PatientProfile: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-anixi-beige px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[#f5f7fa] px-4 py-6 sm:px-6 lg:px-8">
       <AppointmentContextBanner />
 
       <div className="mx-auto max-w-7xl">
-        <button
-          type="button"
-          onClick={() => navigate('/patients')}
-          className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition-colors hover:text-anixi-green"
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-          Back to patients
-        </button>
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/patients')}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#e1e7ef] bg-white text-[#65758b] shadow-sm transition hover:border-[#c5cdd8] hover:text-[#0E2340]"
+              aria-label="Back to patients"
+            >
+              <ArrowLeftIcon className="h-4 w-4" />
+            </button>
+            <div>
+              <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">Patient details</h1>
+              <p className="mt-0.5 text-[13px] text-[#65758b]">
+                Clinical overview, appointments, and care tools
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate(`/patient-profile/${patient.id}/details`)}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#e1e7ef] bg-white px-3.5 text-sm font-medium text-[#344256] shadow-sm transition hover:border-[#c5cdd8] hover:text-[#0E2340]"
+            >
+              Full record
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowEditPatientModal(true)}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-anixi-green px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f]"
+            >
+              Edit
+            </button>
+          </div>
+        </div>
 
         {actionSuccess && (
-          <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
             {actionSuccess}
           </div>
         )}
         {actionError && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {actionError}
           </div>
         )}
+
+        <div className="mb-5 rounded-xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-anixi-green text-lg font-bold text-white">
+                {(formattedName || patient.email || '?')
+                  .split(' ')
+                  .map((p) => p[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase()}
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-bold text-[#0E2340]">{formattedName || 'Unnamed Patient'}</h2>
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                      patient.chronicDiseases?.length
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-emerald-50 text-emerald-700'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-1.5 w-1.5 rounded-full ${
+                        patient.chronicDiseases?.length ? 'bg-amber-500' : 'bg-emerald-500'
+                      }`}
+                    />
+                    {patient.chronicDiseases?.length ? 'Follow-up' : 'Stable'}
+                  </span>
+                </div>
+                <p className="mt-1 text-[13px] text-[#65758b]">
+                  {patient.id.slice(0, 8).toUpperCase()}
+                  {patient.gender ? ` · ${patient.gender}` : ''}
+                  {patient.email ? ` · ${patient.email}` : ''}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 rounded-lg bg-[#f8fafc] px-4 py-3 text-sm sm:grid-cols-3">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-[#8FA0B6]">Phone</p>
+                <p className="mt-0.5 font-medium text-[#0E2340]">{patient.phoneNumber || '—'}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-[#8FA0B6]">Email</p>
+                <p className="mt-0.5 truncate font-medium text-[#0E2340]">{patient.email || '—'}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-[#8FA0B6]">Address</p>
+                <p className="mt-0.5 font-medium text-[#0E2340]">{patient.address || '—'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            ['Allergies', patient.allergies?.length ? patient.allergies.join(', ') : 'None'],
+            ['Conditions', patient.chronicDiseases?.length ? patient.chronicDiseases.join(', ') : 'None'],
+            ['Upcoming', String(appointmentStats.upcoming)],
+            [
+              'Next visit',
+              appointmentStats.nextAppointment
+                ? (convertTimestamp(appointmentStats.nextAppointment.date) ?? new Date()).toLocaleDateString()
+                : '—',
+            ],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-[#e1e7ef] bg-white px-4 py-3.5 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">{label}</p>
+              <p className="mt-1.5 truncate text-base font-semibold text-[#0E2340]">{value}</p>
+            </div>
+          ))}
+        </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
           <div className="lg:col-span-5 xl:col-span-4 lg:sticky lg:top-6">
@@ -311,42 +402,42 @@ export const PatientProfile: React.FC = () => {
           </div>
 
           <div className="space-y-6 lg:col-span-7 xl:col-span-8">
-            <Card className="overflow-hidden border-gray-200 shadow-sm">
-              <CardHeader className="flex flex-col gap-4 border-b border-gray-100 bg-white sm:flex-row sm:items-center sm:justify-between">
+            <div className="overflow-hidden rounded-xl border border-[#e1e7ef] bg-white shadow-sm">
+              <div className="flex flex-col gap-4 border-b border-[#e1e7ef] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                 <div>
-                  <CardTitle className="flex items-center gap-2 font-heading text-xl">
+                  <h3 className="flex items-center gap-2 text-[15px] font-semibold text-[#0E2340]">
                     <CalendarDaysIcon className="h-5 w-5 text-anixi-green" />
                     Appointment management
-                  </CardTitle>
-                  <p className="mt-1 text-sm text-gray-500">
+                  </h3>
+                  <p className="mt-1 text-[13px] text-[#65758b]">
                     Schedule and review visits for {formattedName || 'this patient'}.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={openFollowUp}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-anixi-green px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-anixi-green px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f]"
                 >
                   <PlusIcon className="h-4 w-4" />
                   New appointment
                 </button>
-              </CardHeader>
+              </div>
 
-              <CardContent className="space-y-4 p-4 sm:p-5">
+              <div className="space-y-4 p-4 sm:p-6">
                 <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-center">
+                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-center">
                     <p className="text-lg font-bold text-sky-900">{appointmentStats.upcoming}</p>
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-700">
                       Upcoming
                     </p>
                   </div>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-center">
-                    <p className="text-lg font-bold text-gray-900">{appointmentStats.completed}</p>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                  <div className="rounded-lg border border-[#e1e7ef] bg-[#f8fafc] px-3 py-2.5 text-center">
+                    <p className="text-lg font-bold text-[#0E2340]">{appointmentStats.completed}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[#65758b]">
                       Completed
                     </p>
                   </div>
-                  <div className="rounded-lg border border-anixi-green/20 bg-anixi-green/5 px-3 py-2 text-center">
+                  <div className="rounded-lg border border-anixi-green/20 bg-[#eef4f1] px-3 py-2.5 text-center">
                     <p className="text-lg font-bold text-anixi-green">{appointmentStats.total}</p>
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-anixi-green/80">
                       Total
@@ -363,26 +454,26 @@ export const PatientProfile: React.FC = () => {
                       });
                       setSelectedAppointment(appointmentStats.nextAppointment!);
                     }}
-                    className="w-full rounded-xl border border-anixi-green/25 bg-gradient-to-r from-anixi-green/5 to-white p-4 text-left transition-shadow hover:shadow-md"
+                    className="w-full rounded-[12px] border border-[#427160]/25 bg-gradient-to-r from-[#eef4f1] to-white p-4 text-left transition-shadow hover:shadow-md"
                   >
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-anixi-green">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#427160]">
                       Next appointment
                     </p>
-                    <p className="mt-1 font-semibold text-gray-900">
+                    <p className="mt-1 font-semibold text-[#344256]">
                       {(convertTimestamp(appointmentStats.nextAppointment.date) ?? new Date()).toLocaleDateString(
                         'en-US',
                         { weekday: 'long', month: 'long', day: 'numeric' }
                       )}{' '}
                       · {appointmentStats.nextAppointment.time}
                     </p>
-                    <p className="mt-0.5 text-sm capitalize text-gray-500">
+                    <p className="mt-0.5 text-sm capitalize text-[#65758b]">
                       {appointmentStats.nextAppointment.type} · {appointmentStats.nextAppointment.status}
                     </p>
                   </button>
                 )}
 
                 {appointmentsError && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  <div className="rounded-[10px] border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                     {appointmentsError}
                   </div>
                 )}
@@ -398,8 +489,8 @@ export const PatientProfile: React.FC = () => {
                   }}
                   isLoading={appointmentsLoading}
                 />
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             <PatientCareQuickLinks
               onMoodChecker={() => {

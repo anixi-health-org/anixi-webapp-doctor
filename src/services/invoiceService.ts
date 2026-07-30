@@ -10,9 +10,54 @@ import {
   where,
   Timestamp,
 } from 'firebase/firestore';
-import { Invoice, InvoiceLineItem, InvoiceStatus } from '../types';
+import { Doctor, Invoice, InvoiceLineItem, InvoiceStatus } from '../types';
+import { SA_VAT_RATE, computeVatBreakdown } from '../lib/southAfrica';
+import { sendPatientNotification } from './notificationService';
+import { createDoctorNotification } from './doctorNotificationService';
 
 const INVOICES_COLLECTION = 'invoices';
+
+export interface CreateInvoiceOptions {
+  vatRate?: number;
+  vatNumber?: string;
+  bhfPracticeNumber?: string;
+  hpcsaNumber?: string;
+  paymentReference?: string;
+  bankDetailsNote?: string;
+  diagnosisCodes?: string[];
+}
+
+/** Snapshot SA practice identity + EFT reference onto a new invoice. */
+export const invoiceOptionsFromDoctor = (
+  doctor: Doctor | null | undefined,
+  appointmentId?: string
+): CreateInvoiceOptions => {
+  const paymentReference = appointmentId
+    ? `ANIXI-${appointmentId.slice(0, 8).toUpperCase()}`
+    : undefined;
+  return {
+    vatRate: SA_VAT_RATE,
+    vatNumber: doctor?.vatNumber || undefined,
+    bhfPracticeNumber: doctor?.practiceNumberBhf || undefined,
+    hpcsaNumber: doctor?.licenseNumber || undefined,
+    paymentReference,
+    bankDetailsNote:
+      'Pay by EFT using the payment reference above. Anixi does not collect card payments.',
+  };
+};
+
+function mapInvoiceDoc(id: string, data: Record<string, unknown>): Invoice {
+  return {
+    id,
+    ...(data as Omit<Invoice, 'id'>),
+    issuedAt: (data.issuedAt as { toDate?: () => Date })?.toDate?.() || new Date(),
+    dueDate: (data.dueDate as { toDate?: () => Date })?.toDate?.(),
+    paidAt: (data.paidAt as { toDate?: () => Date })?.toDate?.(),
+    lastResentAt: (data.lastResentAt as { toDate?: () => Date })?.toDate?.(),
+    createdAt: (data.createdAt as { toDate?: () => Date })?.toDate?.() || new Date(),
+    updatedAt: (data.updatedAt as { toDate?: () => Date })?.toDate?.() || new Date(),
+  };
+}
 
 /**
  * Generate invoice number based on appointment ID
@@ -30,24 +75,30 @@ export const createInvoiceRecord = async (
   appointmentId: string,
   lineItems: InvoiceLineItem[],
   notes?: string,
-  currency: string = 'ZAR'
+  currency: string = 'ZAR',
+  opts?: CreateInvoiceOptions
 ): Promise<Invoice> => {
   if (!doctorId || !patientId || !appointmentId || !lineItems.length) {
     throw new Error('Missing required invoice fields');
   }
 
-  const totalAmount = lineItems.reduce((sum, item) => sum + item.amount * item.quantity, 0);
+  const subtotalExVat = lineItems.reduce((sum, item) => sum + item.amount * item.quantity, 0);
+  const vatRate = opts?.vatRate ?? SA_VAT_RATE;
+  const { subtotal, vatAmount, total } = computeVatBreakdown(subtotalExVat, vatRate);
   const invoiceNumber = generateInvoiceNumber(appointmentId);
   const now = new Date();
 
-  const invoiceData: any = {
+  const invoiceData: Record<string, unknown> = {
     doctorId,
     patientId,
     appointmentId,
     invoiceNumber,
     status: 'issued' as InvoiceStatus,
     lineItems,
-    totalAmount,
+    subtotalExVat: subtotal,
+    vatRate,
+    vatAmount,
+    totalAmount: total,
     currency,
     issuedAt: Timestamp.fromDate(now),
     dueDate: Timestamp.fromDate(new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)), // 30 days
@@ -55,10 +106,15 @@ export const createInvoiceRecord = async (
     updatedAt: Timestamp.fromDate(now),
   };
 
-  // Only include optional fields if they have values
   if (notes) {
     invoiceData.notes = notes;
   }
+  if (opts?.vatNumber) invoiceData.vatNumber = opts.vatNumber;
+  if (opts?.bhfPracticeNumber) invoiceData.bhfPracticeNumber = opts.bhfPracticeNumber;
+  if (opts?.hpcsaNumber) invoiceData.hpcsaNumber = opts.hpcsaNumber;
+  if (opts?.paymentReference) invoiceData.paymentReference = opts.paymentReference;
+  if (opts?.bankDetailsNote) invoiceData.bankDetailsNote = opts.bankDetailsNote;
+  if (opts?.diagnosisCodes?.length) invoiceData.diagnosisCodes = opts.diagnosisCodes;
 
   const docRef = await addDoc(collection(db, INVOICES_COLLECTION), invoiceData);
 
@@ -70,14 +126,23 @@ export const createInvoiceRecord = async (
     invoiceNumber,
     status: 'issued' as InvoiceStatus,
     lineItems,
-    totalAmount,
-    currency: invoiceData.currency,
-    issuedAt: invoiceData.issuedAt.toDate(),
-    dueDate: invoiceData.dueDate.toDate(),
+    subtotalExVat: subtotal,
+    vatRate,
+    vatAmount,
+    totalAmount: total,
+    currency,
+    vatNumber: opts?.vatNumber,
+    bhfPracticeNumber: opts?.bhfPracticeNumber,
+    hpcsaNumber: opts?.hpcsaNumber,
+    paymentReference: opts?.paymentReference,
+    bankDetailsNote: opts?.bankDetailsNote,
+    diagnosisCodes: opts?.diagnosisCodes,
+    issuedAt: now,
+    dueDate: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
     paidAt: undefined,
     notes: notes || undefined,
-    createdAt: invoiceData.createdAt.toDate(),
-    updatedAt: invoiceData.updatedAt.toDate(),
+    createdAt: now,
+    updatedAt: now,
   };
 };
 
@@ -105,17 +170,8 @@ export const getInvoicesByDoctor = async (
     }
 
     const snapshot = await getDocs(q);
-    let invoices: Invoice[] = snapshot.docs.map((d) => ({
-      id: d.id,
-      ...(d.data() as Omit<Invoice, 'id'>),
-      issuedAt: d.data().issuedAt?.toDate() || new Date(),
-      dueDate: d.data().dueDate?.toDate(),
-      paidAt: d.data().paidAt?.toDate(),
-      createdAt: d.data().createdAt?.toDate() || new Date(),
-      updatedAt: d.data().updatedAt?.toDate() || new Date(),
-    }));
+    let invoices: Invoice[] = snapshot.docs.map((d) => mapInvoiceDoc(d.id, d.data()));
 
-    // Sort by issuedAt descending (most recent first) - client-side to avoid index requirement
     invoices = invoices.sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime());
 
     if (options?.status) {
@@ -144,16 +200,7 @@ export const getInvoiceById = async (invoiceId: string): Promise<Invoice | null>
 
   if (!docSnap.exists()) return null;
 
-  const data = docSnap.data();
-  return {
-    id: docSnap.id,
-    ...(data as Omit<Invoice, 'id'>),
-    issuedAt: data.issuedAt?.toDate() || new Date(),
-    dueDate: data.dueDate?.toDate(),
-    paidAt: data.paidAt?.toDate(),
-    createdAt: data.createdAt?.toDate() || new Date(),
-    updatedAt: data.updatedAt?.toDate() || new Date(),
-  };
+  return mapInvoiceDoc(docSnap.id, docSnap.data());
 };
 
 /**
@@ -176,6 +223,23 @@ export const updateInvoiceStatus = async (
   }
 
   await updateDoc(invoiceRef, updates);
+
+  if (status === 'paid') {
+    try {
+      const invoice = await getInvoiceById(invoiceId);
+      if (invoice) {
+        await createDoctorNotification(invoice.doctorId, {
+          type: 'invoice_paid',
+          title: 'Invoice marked paid',
+          body: `Invoice ${invoice.invoiceNumber} was marked as paid.`,
+          invoiceId: invoice.id,
+          appointmentId: invoice.appointmentId,
+        });
+      }
+    } catch (error) {
+      console.warn('[invoiceService] paid notification failed:', error);
+    }
+  }
 };
 
 export const updateInvoiceRecord = async (
@@ -196,10 +260,16 @@ export const updateInvoiceRecord = async (
 
   if (patch.lineItems) {
     updateData.lineItems = patch.lineItems;
-    updateData.totalAmount = patch.lineItems.reduce(
+    const subtotalExVat = patch.lineItems.reduce(
       (sum, item) => sum + item.amount * item.quantity,
       0
     );
+    const existing = await getDoc(invoiceRef);
+    const vatRate = (existing.data()?.vatRate as number | undefined) ?? SA_VAT_RATE;
+    const { subtotal, vatAmount, total } = computeVatBreakdown(subtotalExVat, vatRate);
+    updateData.subtotalExVat = subtotal;
+    updateData.vatAmount = vatAmount;
+    updateData.totalAmount = total;
   }
 
   if (patch.notes !== undefined) {
@@ -224,16 +294,7 @@ export const updateInvoiceRecord = async (
   await updateDoc(invoiceRef, updateData);
   const updatedDoc = await getDoc(invoiceRef);
   if (!updatedDoc.exists()) throw new Error('Invoice not found after update');
-  const data = updatedDoc.data();
-  return {
-    id: updatedDoc.id,
-    ...(data as Omit<Invoice, 'id'>),
-    issuedAt: data.issuedAt?.toDate() || new Date(),
-    dueDate: data.dueDate?.toDate(),
-    paidAt: data.paidAt?.toDate(),
-    createdAt: data.createdAt?.toDate() || new Date(),
-    updatedAt: data.updatedAt?.toDate() || new Date(),
-  };
+  return mapInvoiceDoc(updatedDoc.id, updatedDoc.data());
 };
 
 /**
@@ -260,18 +321,45 @@ export const generateStatement = async (
 };
 
 /**
- * Resend invoice (mark as resent in audit trail - creates notification record)
- * For Phase 1: Just log the resend; Phase 2 would integrate with notification service
+ * Resend invoice notification to patient and stamp lastResentAt.
  */
 export const resendInvoice = async (invoiceId: string): Promise<void> => {
   if (!invoiceId) throw new Error('Invoice ID is required');
 
+  const invoice = await getInvoiceById(invoiceId);
+  if (!invoice) throw new Error('Invoice not found');
+
+  const now = new Date();
   const invoiceRef = doc(db, INVOICES_COLLECTION, invoiceId);
   await updateDoc(invoiceRef, {
-    updatedAt: Timestamp.fromDate(new Date()),
-    lastResentAt: Timestamp.fromDate(new Date()),
+    updatedAt: Timestamp.fromDate(now),
+    lastResentAt: Timestamp.fromDate(now),
+  });
+
+  const totalFormatted = invoice.totalAmount.toLocaleString('en-ZA', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  await sendPatientNotification(invoice.patientId, {
+    type: 'invoice_resent',
+    title: 'Invoice resent',
+    body: `Invoice ${invoice.invoiceNumber} for R ${totalFormatted} has been resent.`,
+    appointmentId: invoice.appointmentId,
+    doctorId: invoice.doctorId,
+  });
+
+  await createDoctorNotification(invoice.doctorId, {
+    type: 'system',
+    title: 'Invoice resent',
+    body: `Invoice ${invoice.invoiceNumber} was resent to the patient.`,
+    appointmentId: invoice.appointmentId,
+    invoiceId,
+  }).catch((error) => {
+    console.warn('[invoiceService] createDoctorNotification failed:', error);
   });
 };
+
 interface LocalInvoiceLineItem {
   description: string;
   amount: number;

@@ -150,6 +150,15 @@ export interface Doctor extends User {
     /** ISO 4217 — derived from country at registration */
     currency?: string;
     nationality?: string;
+    /** Admin verification — set at registration; updated by Anixi Admin */
+    verificationStatus?: 'pending' | 'approved' | 'rejected' | 'suspended';
+    /** True once personal + practice details were submitted for review */
+    applicationComplete?: boolean;
+    applicationSubmittedAt?: Date;
+    verifiedAt?: Date;
+    rejectionReason?: string;
+    practiceNumberBhf?: string;
+    vatNumber?: string;
 }
 export interface Caregiver extends User {
     role: 'caregiver';
@@ -252,6 +261,24 @@ export interface PostConsultAction {
     updatedAt: Date;
 }
 
+export type TeleconsultStatus = 'waiting' | 'in_progress' | 'ended';
+
+export interface AppointmentTeleconsult {
+    provider?: 'livekit';
+    roomName?: string;
+    status?: TeleconsultStatus | string;
+    doctorJoinedAt?: Date;
+    patientJoinedAt?: Date;
+    endedAt?: Date;
+    updatedAt?: Date;
+}
+
+export interface TeleconsultConsent {
+    obtained: boolean;
+    at?: Date;
+    by?: string;
+}
+
 export interface Appointment {
     id: string;
     doctorId: string;
@@ -271,6 +298,9 @@ export interface Appointment {
     practiceId?: string;
     locationId?: string;
     consultType?: ConsultType;
+    teleconsult?: AppointmentTeleconsult;
+    teleconsultConsent?: TeleconsultConsent;
+    virtualMeetingLink?: string;
     startAt?: Date;
     endAt?: Date;
     requestedByRole?: 'patient' | 'doctor' | 'delegate';
@@ -335,7 +365,9 @@ export type InvoiceStatus = 'issued' | 'outstanding' | 'paid';
 export interface InvoiceLineItem {
     description: string;
     quantity: number;
-    amount: number;
+    amount: number; // unit amount ex-VAT
+    icd10Code?: string;
+    icd10Description?: string;
 }
 
 export interface Invoice {
@@ -346,12 +378,22 @@ export interface Invoice {
     invoiceNumber: string;
     status: InvoiceStatus;
     lineItems: InvoiceLineItem[];
-    totalAmount: number;
+    subtotalExVat?: number;
+    vatRate?: number; // default 0.15
+    vatAmount?: number;
+    totalAmount: number; // inclusive
     currency?: string;
+    vatNumber?: string;
+    bhfPracticeNumber?: string;
+    hpcsaNumber?: string;
+    paymentReference?: string; // EFT reference
+    bankDetailsNote?: string;
+    diagnosisCodes?: string[];
     issuedAt: Date;
     dueDate?: Date;
     paidAt?: Date;
     notes?: string;
+    lastResentAt?: Date;
     createdAt: Date;
     updatedAt: Date;
 }

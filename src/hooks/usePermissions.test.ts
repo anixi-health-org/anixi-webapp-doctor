@@ -18,6 +18,7 @@ describe('usePermissions', () => {
       login: jest.fn(),
       logout: jest.fn(),
       refreshPracticeSession: jest.fn(),
+      refreshUser: jest.fn(),
     });
 
     const { result } = renderHook(() => usePermissions());
@@ -70,6 +71,7 @@ describe('usePermissions', () => {
       login: jest.fn(),
       logout: jest.fn(),
       refreshPracticeSession: jest.fn(),
+      refreshUser: jest.fn(),
     });
 
     const { result } = renderHook(() => usePermissions());

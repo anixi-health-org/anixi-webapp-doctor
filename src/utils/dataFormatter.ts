@@ -1,3 +1,5 @@
+import { formatSaPhone } from '../lib/southAfrica';
+
 export const calculateAge = (dateOfBirth?: Date): number | null => {
   if (!dateOfBirth) return null;
   const today = new Date();
@@ -13,9 +15,9 @@ export const formatDate = (date?: Date, format: 'short' | 'long' = 'short'): str
   if (!date) return null;
   const d = new Date(date);
   if (format === 'short') {
-    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return d.toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' });
   }
-  return d.toLocaleDateString('en-US', {
+  return d.toLocaleDateString('en-ZA', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -35,15 +37,7 @@ export const formatGender = (gender?: string): string | null => {
   if (g === 'other' || g === 'o') return 'Other';
   return g.charAt(0).toUpperCase() + g.slice(1);
 };
-export const formatPhone = (phone?: string): string | null => {
-  if (!phone) return null;
-  const cleaned = phone.replace(/\D/g, '');
-  if (cleaned.length < 10) return null;
-  if (cleaned.length === 10) {
-    return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
-  }
-  return phone.trim();
-};
+export const formatPhone = (phone?: string): string | null => formatSaPhone(phone);
 export const formatAddress = (address?: string): string | null => {
   if (!address) return null;
   return address.trim().length > 0 ? address.trim() : null;
@@ -85,13 +79,13 @@ export const formatTimestamp = (
   try {
     switch (format) {
       case 'short':
-        return date.toLocaleDateString('en-US', {
+        return date.toLocaleDateString('en-ZA', {
           year: 'numeric',
           month: 'short',
           day: 'numeric',
         });
       case 'long':
-        return date.toLocaleString('en-US', {
+        return date.toLocaleString('en-ZA', {
           year: 'numeric',
           month: 'long',
           day: 'numeric',
@@ -99,7 +93,7 @@ export const formatTimestamp = (
           minute: '2-digit',
         });
       case 'time':
-        return date.toLocaleTimeString('en-US', {
+        return date.toLocaleTimeString('en-ZA', {
           hour: '2-digit',
           minute: '2-digit',
         });

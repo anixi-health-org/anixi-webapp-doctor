@@ -5,3 +5,4 @@ export { MoodCheckerWidget } from './MoodCheckerWidget';
 export { MedicationAdherenceCalendar } from './MedicationAdherenceCalendar';
 export { MedicationAdherenceLogs } from './MedicationAdherenceLogs';
 export { ImprovedDashboard } from './ImprovedDashboard';
+export { V2Dashboard } from './V2Dashboard';

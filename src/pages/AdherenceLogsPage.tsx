@@ -1,45 +1,44 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { AdherenceLogs } from '../components/AdherenceLogs';
+import { PageHeader, PageShell } from '../components/page-layout';
 import { useAuth } from '../hooks/useAuth';
 
 export const AdherenceLogsPage: React.FC = () => {
   const navigate = useNavigate();
   const { patientId } = useParams<{ patientId: string }>();
   const { user } = useAuth();
+
   if (!patientId) {
     return (
-      <div className="p-6 bg-anixi-beige min-h-screen">
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-red-700">Patient ID not found</p>
+      <PageShell>
+        <div className="rounded-[12px] border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          Patient ID not found
         </div>
-      </div>
+      </PageShell>
     );
   }
+
   return (
-    <div className="p-6 bg-anixi-beige min-h-screen">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
-          <button
-            onClick={() => navigate(`/patient-profile/${patientId}`)}
-            className="mb-4 px-4 py-2 bg-anixi-green text-white hover:opacity-90 rounded-lg transition-all"
-          >
-            ← Back to Patient Profile
-          </button>
-          <h1 className="text-3xl font-bold text-anixi-green">📋 Adherence Logs</h1>
-          <p className="mt-2 text-anixi-green">View medication adherence history</p>
-        </div>
-        <Card>
-          <CardHeader>
-            <CardTitle>Adherence History</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {user ? <AdherenceLogs patientId={patientId} doctorId={user.id} /> : null}
-          </CardContent>
-        </Card>
+    <PageShell>
+      <button
+        type="button"
+        onClick={() => navigate(`/patient-profile/${patientId}`)}
+        className="mb-4 inline-flex h-9 items-center gap-2 rounded-[10px] border border-[#e1e7ef] bg-white px-3 text-sm font-medium text-[#344256] hover:border-[#427160]/40 hover:text-[#427160]"
+      >
+        <ArrowLeftIcon className="h-4 w-4" />
+        Back to Patient Profile
+      </button>
+      <PageHeader
+        title="Adherence Logs"
+        description="View medication adherence history."
+      />
+      <div className="rounded-[12px] border border-[#e1e7ef] bg-white p-4 shadow-sm sm:p-5">
+        {user ? <AdherenceLogs patientId={patientId} doctorId={user.id} /> : null}
       </div>
-    </div>
+    </PageShell>
   );
 };
+
 export default AdherenceLogsPage;

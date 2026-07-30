@@ -4,18 +4,23 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { getPatientsByDoctorId } from '../../services/unifiedPatientDataSource';
 import { createAppointment } from '../../services/appointmentService';
 import { getAvailableSlots, validateSlot, createScheduledAppointment } from '../../services/schedulingService';
+import { createDoctorNotification } from '../../services/doctorNotificationService';
 import { Patient, AvailableSlot, ConsultType } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Toast } from '../ui';
+import { modalityFromConsultType } from '../../utils/teleconsult';
 
 const CONSULT_TYPES: { value: ConsultType; label: string }[] = [
   { value: 'initial', label: 'Initial Consultation' },
   { value: 'follow-up', label: 'Follow-up' },
   { value: 'urgent', label: 'Urgent' },
   { value: 'procedure', label: 'Procedure' },
-  { value: 'teleconsult', label: 'Teleconsult' },
+  { value: 'teleconsult', label: 'Virtual / video' },
   { value: 'other', label: 'Other' },
 ];
+
+const WHATSAPP_COMING_SOON_NOTE =
+  'WhatsApp consultations are coming soon.';
 
 const fmt12 = (d: Date) =>
   d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
@@ -77,6 +82,9 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
 
   const practiceId = practiceSession?.practice?.id ?? null;
   const hasBookableBlocks = !!practiceId;
+  const isFollowUpFlow = consultTypeDefault === 'follow-up';
+  const modalTitle = isFollowUpFlow ? 'Book Follow-up' : 'New Appointment';
+  const submitLabel = isFollowUpFlow ? 'Book Follow-up' : 'Create Appointment';
 
   const loadPatients = useCallback(async () => {
     if (!user?.id) return;
@@ -224,7 +232,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
         patientId: resolvedPatientId,
         patientName: resolvedPatientName,
         patientEmail: resolvedPatientEmail,
-        type: selectedConsultType === 'teleconsult' ? 'Virtual' : 'In-Person',
+        type: modalityFromConsultType(selectedConsultType),
         status: appointmentStatus,
         date: startAt,
         time: timeStr,
@@ -263,6 +271,15 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
         });
       }
 
+      await createDoctorNotification(user.id, {
+        type: appointmentStatus === 'pending' ? 'booking_request' : 'system',
+        title: 'Appointment created',
+        body: `Appointment created for ${resolvedPatientName} on ${startAt.toLocaleDateString('en-GB')} at ${timeStr}.`,
+        appointmentId,
+      }).catch((error) => {
+        console.warn('[CreateAppointmentModal] createDoctorNotification failed:', error);
+      });
+
       onAppointmentCreated(
         overrideApplied
           ? 'Appointment created with override successfully.'
@@ -290,7 +307,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[1px]">
       {toast.visible && (
         <Toast
           message={toast.message}
@@ -298,13 +315,14 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
           onClose={() => setToast({ visible: false, message: '', type: 'success' })}
         />
       )}
-      <div className="bg-white rounded-lg max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-[#e1e7ef] bg-white shadow-xl">
         <Card className="border-0 shadow-none">
-          <CardHeader>
-            <CardTitle className="text-xl font-bold text-gray-900">New Appointment</CardTitle>
+          <CardHeader className="relative border-b border-[#e1e7ef]">
+            <CardTitle className="text-xl font-bold text-gray-900">{modalTitle}</CardTitle>
             <button
               onClick={onClose}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              className="absolute right-4 top-4 rounded-md border border-[#e1e7ef] p-1.5 text-gray-400 transition hover:bg-[#f8fafc] hover:text-gray-600"
+              aria-label="Close appointment modal"
             >
               ✕
             </button>
@@ -407,6 +425,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                     <option key={ct.value} value={ct.value}>{ct.label}</option>
                   ))}
                 </select>
+                <p className="mt-1.5 text-xs text-amber-700">{WHATSAPP_COMING_SOON_NOTE}</p>
               </div>
 
               {}
@@ -432,7 +451,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                     <p className="text-sm text-gray-500">Loading slots…</p>
                   ) : availableSlots.length === 0 ? (
                     <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
-                      No available slots on this date.
+                      No available slots within clinic hours on this date.
                       {can('overrideConflicts') && (
                         <button
                           type="button"
@@ -520,17 +539,17 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                  className="flex-1 rounded-[10px] border border-[#e1e7ef] bg-white px-4 py-2 text-gray-700 transition-colors hover:bg-[#f3f6fa]"
                   disabled={isSubmitting}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-anixi-green text-white rounded-md hover:bg-anixi-green/90 transition-colors disabled:opacity-50"
+                  className="flex-1 rounded-[10px] bg-anixi-green px-4 py-2 text-white transition-colors hover:bg-anixi-green/90 disabled:opacity-50"
                   disabled={isSubmitting || !can('manageAppointments')}
                 >
-                  {isSubmitting ? 'Creating…' : 'Create Appointment'}
+                  {isSubmitting ? 'Saving…' : submitLabel}
                 </button>
               </div>
               {!can('manageAppointments') && (

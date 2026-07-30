@@ -13,11 +13,8 @@ import {
   Clock,
   XCircle,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { DashboardStatsCard } from '../components/dashboard/DashboardStatsCard';
 import { Toast, AppointmentsPageSkeleton } from '../components/ui';
 import { PageHeader, PageShell } from '../components/page-layout';
-import { PrimaryButton } from '../components/ui/PrimaryButton';
 type FilterType = Appointment['status'] | 'All' | 'Today';
 export const AppointmentsPage: React.FC = () => {
   const { user } = useAuth();
@@ -139,7 +136,7 @@ export const AppointmentsPage: React.FC = () => {
     filteredAppointments = baseAppointments.filter((a) => a.status === filterStatus);
   }
 
-  if (isLoading && appointments.length === 0) {
+  if (isLoading) {
     return (
       <PageShell>
         <AppointmentsPageSkeleton />
@@ -162,61 +159,91 @@ export const AppointmentsPage: React.FC = () => {
         description="Manage and view all patient appointments"
         actions={
           can('manageAppointments') ? (
-            <PrimaryButton onClick={() => setShowCreateModal(true)} icon={<span className="text-lg leading-none">+</span>}>
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="btn-primary h-10 px-4"
+            >
+              <span className="text-lg leading-none">+</span>
               New Appointment
-            </PrimaryButton>
+            </button>
           ) : undefined
         }
       />
-      {}
+
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-red-800 font-medium">⚠️ {error}</p>
+        <div className="mb-6 rounded-[12px] border border-red-200 bg-red-50 p-4">
+          <p className="font-medium text-red-800">{error}</p>
           <button
+            type="button"
             onClick={() => setError(null)}
-            className="mt-2 text-sm text-red-600 hover:text-red-700 underline"
+            className="mt-2 text-sm text-red-600 underline hover:text-red-700"
           >
             Dismiss
           </button>
         </div>
       )}
+
       {!isLoading && !error && (
-        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-          <DashboardStatsCard label="Total" value={stats.total} icon={<ClipboardList />} color="blue" onClick={() => handleCardClick('All')} isActive={selectedCard === 'All'} />
-          <DashboardStatsCard label="Confirmed" value={stats.confirmed} icon={<CheckCircle2 />} color="green" onClick={() => handleCardClick('confirmed')} isActive={selectedCard === 'confirmed'} />
-          <DashboardStatsCard label="Pending" value={stats.pending} icon={<Clock />} color="orange" onClick={() => handleCardClick('pending')} isActive={selectedCard === 'pending'} />
-          <DashboardStatsCard label="Completed" value={stats.completed} icon={<CheckCircle2 />} color="blue" onClick={() => handleCardClick('completed')} isActive={selectedCard === 'completed'} />
-          <DashboardStatsCard label="Cancelled" value={stats.cancelled} icon={<XCircle />} color="red" onClick={() => handleCardClick('cancelled')} isActive={selectedCard === 'cancelled'} />
-          <DashboardStatsCard label="Today" value={stats.today} icon={<Calendar />} color="blue" onClick={() => handleCardClick('Today')} isActive={selectedCard === 'Today'} />
+        <div className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
+          {[
+            { label: 'Total', value: stats.total, card: 'All' as FilterType, icon: <ClipboardList className="h-3.5 w-3.5" /> },
+            { label: 'Confirmed', value: stats.confirmed, card: 'confirmed' as FilterType, icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
+            { label: 'Pending', value: stats.pending, card: 'pending' as FilterType, icon: <Clock className="h-3.5 w-3.5" /> },
+            { label: 'Completed', value: stats.completed, card: 'completed' as FilterType, icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
+            { label: 'Cancelled', value: stats.cancelled, card: 'cancelled' as FilterType, icon: <XCircle className="h-3.5 w-3.5" /> },
+            { label: 'Today', value: stats.today, card: 'Today' as FilterType, icon: <Calendar className="h-3.5 w-3.5" /> },
+          ].map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={() => handleCardClick(item.card)}
+              className={`rounded-[10px] border bg-white px-2.5 py-2 text-left transition-all duration-200 ${
+                selectedCard === item.card
+                  ? 'border-anixi-green ring-1 ring-anixi-green/30'
+                  : 'border-[#e1e7ef] hover:border-anixi-green/40'
+              }`}
+            >
+              <div className="mb-1 flex items-center gap-1 text-anixi-green">{item.icon}</div>
+              <p className="text-lg font-bold leading-none text-[#344256]">{item.value}</p>
+              <p className="mt-1 truncate text-[11px] text-[#65758b]">{item.label}</p>
+            </button>
+          ))}
         </div>
       )}
-      {}
-      <Card className="transition-all duration-300">
-        {selectedCard && (
-          <CardHeader>
-            <CardTitle>
-              {selectedCard === 'Today' && "Today's Appointments"}
-              {selectedCard === 'confirmed' && 'Confirmed Appointments'}
-              {selectedCard === 'pending' && 'Pending Appointments'}
-              {selectedCard === 'completed' && 'Completed Appointments'}
-              {selectedCard === 'cancelled' && 'Cancelled Appointments'}
-              {selectedCard === 'All' && 'All Appointments'}
-            </CardTitle>
-          </CardHeader>
-        )}
-        <CardContent>
-          {}
-          <div className="animate-fade-in">
-            <AppointmentList
-              appointments={filteredAppointments}
-              onSelectAppointment={handleAppointmentClick}
-              isLoading={isLoading}
-            />
-          </div>
-        </CardContent>
-      </Card>
-      {}
-      
+
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex rounded-[10px] bg-[#f1f5f9] p-1">
+          {(['All', 'confirmed', 'pending', 'completed'] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => handleCardClick(tab === 'All' ? 'All' : tab)}
+              className={`rounded-[8px] px-3 py-1.5 text-sm font-medium capitalize transition-all duration-200 ${
+                (selectedCard === tab || (!selectedCard && tab === 'All' && filterStatus === 'All'))
+                  ? 'bg-anixi-green text-white shadow-sm'
+                  : 'text-[#65758b] hover:bg-white hover:text-anixi-green hover:shadow-sm'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+        <p className="text-sm font-medium text-[#344256]">
+          {selectedCard === 'Today' && "Today's appointments"}
+          {selectedCard === 'confirmed' && 'Confirmed'}
+          {selectedCard === 'pending' && 'Pending'}
+          {selectedCard === 'completed' && 'Completed'}
+          {selectedCard === 'cancelled' && 'Cancelled'}
+          {(selectedCard === 'All' || !selectedCard) && 'All appointments'}
+        </p>
+      </div>
+
+      <AppointmentList
+        appointments={filteredAppointments}
+        onSelectAppointment={handleAppointmentClick}
+        isLoading={isLoading}
+      />
 
       <CreateAppointmentModal
         isOpen={showCreateModal}

@@ -6,10 +6,10 @@ import {
   Eye,
   Printer,
   Save,
-  X,
 } from 'lucide-react';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
-import { Toast } from '../components/ui';
+import { VisitPatientBriefing } from '../components/appointments/VisitChartSnapshot';
+import { Toast, PostConsultSkeleton } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import {
@@ -19,17 +19,21 @@ import {
   syncAppointmentStatus,
   updateAppointment,
 } from '../services/appointmentService';
-import { sendPatientDownloadInvite } from '../services/patientManagementService';
 import { Appointment, AppointmentDocument, PostConsultAction, PostConsultActionType } from '../types';
+import {
+  canDoctorStartVideoCall,
+  formatAppointmentTypeLabel,
+  isWhatsAppComingSoon,
+} from '../utils/teleconsult';
+import { sendPatientDownloadInvite } from '../services/patientManagementService';
+import { COMMON_ICD10_CODES, isValidNappiCode } from '../lib/southAfrica';
 
 type DocumentMode = 'scan' | 'upload';
 
 interface LocationState {
   appointment?: Appointment;
+  fromTeleconsult?: boolean;
 }
-
-const actionButtonClass =
-  'w-full rounded-xl border border-border bg-card px-4 py-4 text-left text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60';
 
 const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`;
@@ -43,6 +47,7 @@ const location = useLocation();
 const { navigateBack } = useNavigateWithFallback();
 const navigate = useNavigate();
 const { user } = useAuth();
+const doctor = user?.role === 'doctor' ? user : null;
 
   const [appointment, setAppointment] = useState<Appointment | null>(
     (location.state as LocationState | undefined)?.appointment ?? null
@@ -70,7 +75,7 @@ const { user } = useAuth();
   const [recordingMimeType, setRecordingMimeType] = useState<string>('audio/webm');
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
   const [recordingTitle, setRecordingTitle] = useState('Session recording');
-  const [documentMode] = useState<DocumentMode>('scan');
+  const [documentMode, setDocumentMode] = useState<DocumentMode>('upload');
   const [documentTitle, setDocumentTitle] = useState('');
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [documentPreview, setDocumentPreview] = useState<string | null>(null);
@@ -79,13 +84,22 @@ const { user } = useAuth();
 
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
   const [prescriptionDraft, setPrescriptionDraft] = useState('');
+  const [nappiCode, setNappiCode] = useState('');
+  const [icd10Code, setIcd10Code] = useState('');
+  const [icd10Custom, setIcd10Custom] = useState('');
   const [isSavingPrescription, setIsSavingPrescription] = useState(false);
   const [showDoctorLetterModal, setShowDoctorLetterModal] = useState(false);
   const [doctorLetterDraft, setDoctorLetterDraft] = useState('');
+  const [letterIcd10Code, setLetterIcd10Code] = useState('');
+  const [letterIcd10Custom, setLetterIcd10Custom] = useState('');
   const [isSavingDoctorLetter, setIsSavingDoctorLetter] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
   const [previewPdfType, setPreviewPdfType] = useState<'prescription' | 'doctor-letter' | 'manual-documents'>('prescription');
+  const [isCompletingVisit, setIsCompletingVisit] = useState(false);
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
+  const [teleconsultConsentChecked, setTeleconsultConsentChecked] = useState(false);
+  const [isSavingTeleconsultConsent, setIsSavingTeleconsultConsent] = useState(false);
 
   useEffect(() => {
     if (!toast.visible) return;
@@ -109,7 +123,13 @@ const { user } = useAuth();
         const direct = await getAppointmentById(user.id, appointmentId);
         if (direct) {
           setAppointment(direct);
-          setNoteValue(direct.notes || '');
+          setTeleconsultConsentChecked(Boolean(direct.teleconsultConsent?.obtained));
+          const existingCallNote = (direct.postConsultActions ?? []).find(
+            (a) =>
+              a.type === 'post_consult_note' &&
+              (a.id === 'call_notes' || a.title === 'Call notes')
+          );
+          setNoteValue(existingCallNote?.content || '');
           return;
         }
 
@@ -121,9 +141,14 @@ const { user } = useAuth();
         }
 
         setAppointment(found);
-        setNoteValue(found.notes || '');
+        const existingCallNote = (found.postConsultActions ?? []).find(
+          (a) =>
+            a.type === 'post_consult_note' &&
+            (a.id === 'call_notes' || a.title === 'Call notes')
+        );
+        setNoteValue(existingCallNote?.content || '');
       } catch {
-        setError('Failed to load appointment for post consult actions.');
+        setError('Failed to load this appointment.');
       } finally {
         setIsLoading(false);
       }
@@ -150,10 +175,30 @@ const { user } = useAuth();
 
   const documents = useMemo<AppointmentDocument[]>(() => appointment?.documents ?? [], [appointment?.documents]);
 
+  const fromTeleconsult = Boolean((location.state as LocationState | undefined)?.fromTeleconsult);
+  const callEnded = appointment?.teleconsult?.status === 'ended' || fromTeleconsult;
+
+  const callNotes = useMemo(() => {
+    const actions = appointment?.postConsultActions ?? [];
+    return actions.find(
+      (action) =>
+        action.type === 'post_consult_note' &&
+        (action.id === 'call_notes' || action.title === 'Call notes') &&
+        action.content.trim().length > 0
+    );
+  }, [appointment?.postConsultActions]);
+
   const latestPrescriptionDraft = useMemo(() => {
     const actions = appointment?.postConsultActions ?? [];
     return actions
       .filter((action) => action.type === 'prescription_draft' && action.content.trim().length > 0)
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
+  }, [appointment?.postConsultActions]);
+
+  const latestDoctorLetter = useMemo(() => {
+    const actions = appointment?.postConsultActions ?? [];
+    return actions
+      .filter((action) => action.type === 'doctor_letter_draft' && action.content.trim().length > 0)
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
   }, [appointment?.postConsultActions]);
 
@@ -163,8 +208,15 @@ const { user } = useAuth();
     }
   }, [latestPrescriptionDraft]);
 
+  useEffect(() => {
+    if (latestDoctorLetter) {
+      setDoctorLetterDraft(latestDoctorLetter.content);
+    }
+  }, [latestDoctorLetter]);
+
   const closeDocumentModal = () => {
     setShowDocumentModal(false);
+    setDocumentMode('upload');
     setDocumentFile(null);
     setDocumentTitle('');
     if (documentPreview) {
@@ -258,21 +310,30 @@ const { user } = useAuth();
       const trimmedNote = noteValue.trim();
 
       const now = new Date();
+      const existingCallNote = (appointment.postConsultActions ?? []).find(
+        (a) =>
+          a.type === 'post_consult_note' &&
+          (a.id === 'call_notes' || a.title === 'Call notes')
+      );
+
       const noteAction: PostConsultAction = {
-        id: `post_consult_note-${now.getTime()}`,
+        id: 'call_notes',
         type: 'post_consult_note',
-        title: 'Consult note',
+        title: 'Call notes',
         content: trimmedNote,
         status: 'draft',
         createdBy: user.id,
-        createdAt: now,
+        createdAt: existingCallNote?.createdAt ?? now,
         updatedAt: now,
       };
 
-      const currentActions = appointment.postConsultActions ?? [];
-      const nextActions = [noteAction, ...currentActions];
+      const others = (appointment.postConsultActions ?? []).filter(
+        (a) =>
+          !(a.type === 'post_consult_note' && (a.id === 'call_notes' || a.title === 'Call notes'))
+      );
+      const nextActions = trimmedNote ? [noteAction, ...others] : others;
 
-      await persistActions(nextActions, { notes: trimmedNote });
+      await persistActions(nextActions);
       setShowNoteModal(false);
       setToast({ visible: true, message: 'Note saved to appointment.', type: 'success' });
     } catch {
@@ -620,9 +681,18 @@ const { user } = useAuth();
     setShowRecorder(false);
   };
 
+  const resolvedPrescriptionIcd10 =
+    icd10Code === '__custom__' ? icd10Custom.trim() : icd10Code.trim();
+  const resolvedLetterIcd10 =
+    letterIcd10Code === '__custom__' ? letterIcd10Custom.trim() : letterIcd10Code.trim();
+
   const savePrescriptionDraft = async () => {
     if (!prescriptionDraft.trim()) {
       setToast({ visible: true, message: 'Prescription cannot be empty.', type: 'error' });
+      return;
+    }
+    if (nappiCode.trim() && !isValidNappiCode(nappiCode)) {
+      setToast({ visible: true, message: 'NAPPI code must be 5–7 digits.', type: 'error' });
       return;
     }
 
@@ -631,6 +701,10 @@ const { user } = useAuth();
       await appendPostConsultAction('prescription_draft', {
         title: 'Prescription draft',
         content: prescriptionDraft.trim(),
+        metadata: {
+          ...(nappiCode.trim() ? { nappiCode: nappiCode.trim() } : {}),
+          ...(resolvedPrescriptionIcd10 ? { icd10Code: resolvedPrescriptionIcd10 } : {}),
+        },
       });
       setToast({ visible: true, message: 'Prescription draft saved.', type: 'success' });
     } catch {
@@ -651,6 +725,9 @@ const { user } = useAuth();
       await appendPostConsultAction('doctor_letter_draft', {
         title: 'Doctor letter draft',
         content: doctorLetterDraft.trim(),
+        metadata: {
+          ...(resolvedLetterIcd10 ? { icd10Code: resolvedLetterIcd10 } : {}),
+        },
       });
       setToast({ visible: true, message: 'Doctor letter draft saved.', type: 'success' });
     } catch {
@@ -663,7 +740,7 @@ const { user } = useAuth();
   const createPrescriptionPdfDocument = () => {
     const content = (prescriptionDraft || latestPrescriptionDraft?.content || '').trim();
     const appointmentDate = appointment?.date
-      ? new Date(appointment.date).toLocaleDateString('en-US', {
+      ? new Date(appointment.date).toLocaleDateString('en-ZA', {
           month: 'short',
           day: '2-digit',
           year: 'numeric',
@@ -697,9 +774,25 @@ const { user } = useAuth();
     doc.setFontSize(11);
     doc.text(`Doctor: ${user?.displayName || 'Doctor'}`, margin, cursorY);
     cursorY += 16;
+    if (doctor?.licenseNumber) {
+      doc.text(`HPCSA: ${doctor.licenseNumber}`, margin, cursorY);
+      cursorY += 16;
+    }
+    if (doctor?.practiceNumberBhf) {
+      doc.text(`BHF: ${doctor.practiceNumberBhf}`, margin, cursorY);
+      cursorY += 16;
+    }
     doc.text(`Patient: ${appointment?.patientName || 'Patient'}`, margin, cursorY);
     cursorY += 16;
     doc.text(`Appointment: ${appointmentDate}`, margin, cursorY);
+    if (nappiCode.trim()) {
+      cursorY += 16;
+      doc.text(`NAPPI: ${nappiCode.trim()}`, margin, cursorY);
+    }
+    if (resolvedPrescriptionIcd10) {
+      cursorY += 16;
+      doc.text(`ICD-10: ${resolvedPrescriptionIcd10}`, margin, cursorY);
+    }
 
     cursorY += 24;
     doc.setDrawColor(220, 220, 220);
@@ -752,7 +845,7 @@ const { user } = useAuth();
   const createDoctorLetterPdfDocument = () => {
     const content = doctorLetterDraft.trim();
     const appointmentDate = appointment?.date
-      ? new Date(appointment.date).toLocaleDateString('en-US', {
+      ? new Date(appointment.date).toLocaleDateString('en-ZA', {
           month: 'short',
           day: '2-digit',
           year: 'numeric',
@@ -786,9 +879,21 @@ const { user } = useAuth();
     doc.setFontSize(11);
     doc.text(`Doctor: ${user?.displayName || 'Doctor'}`, margin, cursorY);
     cursorY += 16;
+    if (doctor?.licenseNumber) {
+      doc.text(`HPCSA: ${doctor.licenseNumber}`, margin, cursorY);
+      cursorY += 16;
+    }
+    if (doctor?.practiceNumberBhf) {
+      doc.text(`BHF: ${doctor.practiceNumberBhf}`, margin, cursorY);
+      cursorY += 16;
+    }
     doc.text(`Patient: ${appointment?.patientName || 'Patient'}`, margin, cursorY);
     cursorY += 16;
     doc.text(`Appointment: ${appointmentDate}`, margin, cursorY);
+    if (resolvedLetterIcd10) {
+      cursorY += 16;
+      doc.text(`ICD-10: ${resolvedLetterIcd10}`, margin, cursorY);
+    }
 
     cursorY += 24;
     doc.setDrawColor(220, 220, 220);
@@ -944,29 +1049,6 @@ const { user } = useAuth();
     }, 450);
   };
 
-  const handleManualPrintDocuments = () => {
-    if (documents.length > 0 && documents[0].downloadURL) {
-      const printWindow = window.open(
-        documents[0].downloadURL,
-        '_blank',
-        'noopener,noreferrer,width=860,height=700'
-      );
-      if (!printWindow) {
-        setToast({ visible: true, message: 'Popup blocked. Please allow popups for printing.', type: 'error' });
-        return;
-      }
-      setTimeout(() => {
-        printWindow.focus();
-        printWindow.print();
-      }, 450);
-      return;
-    }
-
-    const blobUrl = createManualDocumentsPdfBlobUrl();
-    openPdfPreview(blobUrl, 'manual-documents');
-    setToast({ visible: true, message: 'Opened local print preview.', type: 'success' });
-  };
-
   const handlePreviewExport = () => {
     if (previewPdfType === 'doctor-letter') {
       exportDoctorLetter();
@@ -1062,81 +1144,8 @@ const { user } = useAuth();
     }
   };
 
-  const actionConfig = [
-    {
-      key: 'internal',
-      label: 'Internal',
-      icon: '📝',
-      enabled: true,
-      onClick: () => setShowNoteModal(true),
-    },
-    {
-      key: 'invite',
-      label: 'Invite to',
-      icon: '📧',
-      enabled: true,
-      onClick: async () => {
-        if (!user?.id) return;
-        const email = appointment?.patientEmail?.trim();
-        if (!email) {
-          setToast({
-            visible: true,
-            message: 'Add a patient email on this appointment before sending an invite.',
-            type: 'error',
-          });
-          return;
-        }
-        try {
-          await sendPatientDownloadInvite({
-            doctorId: user.id,
-            to: email,
-            patientDisplayName: appointment?.patientName,
-          });
-          setToast({ visible: true, message: 'Invitation email queued.', type: 'success' });
-        } catch {
-          setToast({ visible: true, message: 'Failed to queue invitation email.', type: 'error' });
-        }
-      },
-    },
-    {
-      key: 'invoice',
-      label: 'Invoice',
-      icon: '💳',
-      enabled: true,
-      onClick: () => {
-        if (appointment?.id) navigate(`/invoices/new/${appointment.id}`);
-        else setToast({ visible: true, message: 'Appointment not loaded', type: 'error' });
-      },
-    },
-    {
-      key: 'print',
-      label: 'Print docs',
-      icon: '🖨',
-      enabled: true,
-      onClick: handleManualPrintDocuments,
-    },
-    {
-      key: 'followup',
-      label: 'Follow-up',
-      icon: '✉',
-      enabled: true,
-      onClick: () => setShowFollowUpModal(true),
-    },
-    {
-      key: 'record',
-      label: 'Record session',
-      icon: '🎙',
-      enabled: true,
-      onClick: () => setShowRecorder(true),
-    },
-  ] as Array<{ key: string; label: string; icon: string; enabled: boolean; onClick: () => void }>;
-
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background px-4 py-8">
-        <p className="text-foreground">Loading post consult...</p>
-      </div>
-    );
+    return <PostConsultSkeleton />;
   }
 
   if (!appointment || error) {
@@ -1153,8 +1162,114 @@ const { user } = useAuth();
     );
   }
 
+  const canStartCall = canDoctorStartVideoCall(appointment);
+  const whatsappSoon = isWhatsAppComingSoon(appointment);
+  const visitCompleted = appointment.status === 'completed';
+  const hasClinicalNote = Boolean(callNotes?.content?.trim() || noteValue.trim());
+  const hasPrescription = Boolean(latestPrescriptionDraft);
+  const hasLetter = Boolean(latestDoctorLetter);
+  const hasDocuments = documents.length > 0;
+
+  const startVideoCall = () => {
+    if (!teleconsultConsentChecked) return;
+    navigate(`/teleconsult/${appointment.id}`, { state: { appointment } });
+  };
+
+  const handleTeleconsultConsentChange = async (checked: boolean) => {
+    setTeleconsultConsentChecked(checked);
+    if (!checked || !user?.id || !appointment) return;
+
+    try {
+      setIsSavingTeleconsultConsent(true);
+      const consent = { obtained: true, at: new Date(), by: user.id };
+      await updateAppointment(user.id, appointment.id, { teleconsultConsent: consent });
+      setAppointment((prev) => (prev ? { ...prev, teleconsultConsent: consent } : prev));
+    } catch {
+      setToast({
+        visible: true,
+        message: 'Failed to save telemedicine consent confirmation.',
+        type: 'error',
+      });
+      setTeleconsultConsentChecked(false);
+    } finally {
+      setIsSavingTeleconsultConsent(false);
+    }
+  };
+
+  const markVisitCompleted = async () => {
+    if (!user?.id || visitCompleted || isCompletingVisit) return;
+    try {
+      setIsCompletingVisit(true);
+      const trimmed = noteValue.trim();
+      if (trimmed && trimmed !== (callNotes?.content || '').trim()) {
+        const now = new Date();
+        const existingCallNote = (appointment.postConsultActions ?? []).find(
+          (a) =>
+            a.type === 'post_consult_note' &&
+            (a.id === 'call_notes' || a.title === 'Call notes')
+        );
+        const noteAction: PostConsultAction = {
+          id: 'call_notes',
+          type: 'post_consult_note',
+          title: 'Call notes',
+          content: trimmed,
+          status: 'draft',
+          createdBy: user.id,
+          createdAt: existingCallNote?.createdAt ?? now,
+          updatedAt: now,
+        };
+        const others = (appointment.postConsultActions ?? []).filter(
+          (a) =>
+            !(a.type === 'post_consult_note' && (a.id === 'call_notes' || a.title === 'Call notes'))
+        );
+        await persistActions([noteAction, ...others]);
+      }
+      await updateAppointment(user.id, appointment.id, { status: 'completed' });
+      await syncAppointmentStatus(appointment.id);
+      setAppointment((prev) => (prev ? { ...prev, status: 'completed' } : prev));
+      setToast({ visible: true, message: 'Visit marked completed.', type: 'success' });
+    } catch {
+      setToast({ visible: true, message: 'Failed to complete visit.', type: 'error' });
+    } finally {
+      setIsCompletingVisit(false);
+    }
+  };
+
+  const invitePatientToApp = async () => {
+    if (!user?.id || isSendingInvite) return;
+    const email = appointment.patientEmail?.trim();
+    if (!email) {
+      setToast({
+        visible: true,
+        message: 'Add a patient email on this appointment before sending an invite.',
+        type: 'error',
+      });
+      return;
+    }
+    try {
+      setIsSendingInvite(true);
+      await sendPatientDownloadInvite({
+        doctorId: user.id,
+        to: email,
+        patientDisplayName: appointment.patientName,
+      });
+      setToast({ visible: true, message: 'App invite emailed to the patient.', type: 'success' });
+    } catch {
+      setToast({ visible: true, message: 'Failed to send invite.', type: 'error' });
+    } finally {
+      setIsSendingInvite(false);
+    }
+  };
+
+  const dateLabel = appointment.date.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
   return (
-    <div className="bg-gray-50 min-h-screen">
+    <div className="min-h-full bg-[#f8fafc] px-4 py-6 sm:px-6 lg:px-8">
       {toast.visible && (
         <Toast
           message={toast.message}
@@ -1163,178 +1278,559 @@ const { user } = useAuth();
         />
       )}
       {showRecorder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-60">
-          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">Record session</h2>
-              <button onClick={cancelRecording} className="text-gray-500">×</button>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-[14px] border border-[#e1e7ef] bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-[#0E2340]">Record session</h2>
+              <button type="button" onClick={cancelRecording} className="text-[#65758b]">×</button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-700">Title</label>
-                <input value={recordingTitle} onChange={(e) => setRecordingTitle(e.target.value)} className="w-full rounded-md border px-3 py-2" />
+                <label className="mb-1 block text-sm text-[#65758b]">Title</label>
+                <input
+                  value={recordingTitle}
+                  onChange={(e) => setRecordingTitle(e.target.value)}
+                  className="h-10 w-full rounded-[10px] border border-[#e1e7ef] px-3 text-sm outline-none focus:border-anixi-green"
+                />
               </div>
 
               <div className="flex items-center gap-3">
                 {!isRecording ? (
-                  <button onClick={startRecording} className="px-4 py-2 bg-red-600 text-white rounded">Start</button>
+                  <button type="button" onClick={startRecording} className="rounded-[10px] bg-red-600 px-4 py-2 text-sm font-semibold text-white">Start</button>
                 ) : (
-                  <button onClick={() => { setIsRecording(false); const mr = mediaRecorderRef.current; if (mr) mr.stop(); }} className="px-4 py-2 bg-yellow-500 text-white rounded">Stop</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRecording(false);
+                      const mr = mediaRecorderRef.current;
+                      if (mr) mr.stop();
+                    }}
+                    className="rounded-[10px] bg-amber-500 px-4 py-2 text-sm font-semibold text-white"
+                  >
+                    Stop
+                  </button>
                 )}
-                <div className="text-sm text-gray-600">{isRecording ? 'Recording…' : recordedChunks.length ? `${(recordedChunks.reduce((s, c) => s + (c as Blob).size, 0) / 1024).toFixed(1)} KB recorded` : 'No recording yet'}</div>
+                <div className="text-sm text-[#65758b]">
+                  {isRecording
+                    ? 'Recording…'
+                    : recordedChunks.length
+                      ? `${(recordedChunks.reduce((s, c) => s + (c as Blob).size, 0) / 1024).toFixed(1)} KB recorded`
+                      : 'No recording yet'}
+                </div>
               </div>
 
-              <div className="flex justify-end gap-3">
-                <button onClick={cancelRecording} className="px-4 py-2 border rounded">Cancel</button>
-                <button onClick={stopAndUploadRecording} disabled={isUploadingRecording || recordedChunks.length === 0} className="px-4 py-2 bg-green-600 text-white rounded">{isUploadingRecording ? 'Saving…' : 'Save recording'}</button>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={cancelRecording} className="rounded-[10px] border border-[#e1e7ef] px-4 py-2 text-sm font-medium">Cancel</button>
+                <button
+                  type="button"
+                  onClick={stopAndUploadRecording}
+                  disabled={isUploadingRecording || recordedChunks.length === 0}
+                  className="rounded-[10px] bg-anixi-green px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {isUploadingRecording ? 'Saving…' : 'Save recording'}
+                </button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="rounded-[30px] border border-[#D8DEE5] bg-white shadow-sm p-6 space-y-6">
-          <div className="mb-8 relative">
+      <div className="mx-auto max-w-4xl space-y-5 pb-28 pt-2">
+        <div className="flex items-center gap-4">
           <button
-            onClick={() => navigateBack('/appointments')}
-            className="absolute left-0 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-2xl text-foreground"
+            type="button"
+            onClick={() => navigateBack(`/appointments/${appointment.id}`)}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#e1e7ef] bg-white text-[#65758b] shadow-sm transition hover:border-[#c5cdd8] hover:text-[#0E2340]"
+            aria-label="Back"
           >
-            ←
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
-          <h1 className="text-3xl font-semibold text-foreground sm:text-3xl text-center w-full">Post consult</h1>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">
+              {callEnded ? 'After the visit' : 'Pre-call briefing'}
+            </h1>
+            <p className="mt-0.5 truncate text-[13px] text-[#65758b]">
+              {appointment.patientName}
+              {appointment.time ? ` · ${appointment.time}` : ''}
+              {' · '}
+              {callEnded
+                ? 'Document, prescribe, schedule follow-up, then close the chart'
+                : 'Review the chart, then join when you and the patient are ready'}
+            </p>
+          </div>
         </div>
 
-        
+        {callEnded ? (
+          <>
+            {/* Encounter summary */}
+            <div className="rounded-xl border border-[#e1e7ef] bg-[#f8fafc] px-5 py-4">
+              <div className="grid gap-x-6 gap-y-3 sm:grid-cols-4">
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-[#8FA0B6]">Patient</p>
+                  <p className="mt-1 text-sm font-semibold text-[#0E2340]">{appointment.patientName}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-[#8FA0B6]">When</p>
+                  <p className="mt-1 text-sm font-medium text-[#344256]">
+                    {dateLabel}
+                    {appointment.time ? ` · ${appointment.time}` : ''}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-[#8FA0B6]">Type</p>
+                  <p className="mt-1 text-sm font-medium text-[#344256]">
+                    {formatAppointmentTypeLabel(appointment)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-[#8FA0B6]">Status</p>
+                  <p className="mt-1">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                        visitCompleted
+                          ? 'bg-slate-200/60 text-slate-600'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      <span className={`inline-block h-1.5 w-1.5 rounded-full ${visitCompleted ? 'bg-slate-400' : 'bg-amber-500'}`} />
+                      {visitCompleted ? 'Completed' : 'Needs wrap-up'}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              {appointment.notes ? (
+                <p className="mt-3 border-t border-[#e1e7ef] pt-3 text-[13px] leading-relaxed text-[#344256]">
+                  <span className="font-semibold text-[#8FA0B6]">Booking agenda: </span>
+                  {appointment.notes}
+                </p>
+              ) : null}
+            </div>
 
-        {latestPrescriptionDraft && (
-          <div className="mb-6 rounded-xl border border-border bg-muted/40 p-4">
-            <p className="text-sm font-medium text-foreground">Saved prescription draft</p>
-            <p
-              className="mt-2 text-sm text-muted-foreground"
-              style={{
-                display: '-webkit-box',
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-              }}
-            >
-              {latestPrescriptionDraft.content}
+            {/* 1. Clinical documentation */}
+            <section className="rounded-xl border border-[#e1e7ef] bg-white shadow-sm">
+              <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-1">
+                <div>
+                  <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-[#0E2340] text-[10px] font-bold text-white">1</span>
+                    Clinical note
+                  </p>
+                  <p className="mt-1.5 text-[13px] text-[#65758b]">
+                    Finalize what you documented during the visit (symptoms, assessment, plan).
+                  </p>
+                </div>
+                {hasClinicalNote && (
+                  <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    On file
+                  </span>
+                )}
+              </div>
+              <div className="px-5 pb-5">
+                <textarea
+                  value={noteValue}
+                  onChange={(e) => setNoteValue(e.target.value)}
+                  rows={6}
+                  placeholder="Chief complaint, findings, assessment, plan…"
+                  className="mt-2 w-full rounded-lg border border-[#e1e7ef] bg-[#f8fafc] px-3.5 py-3 text-sm leading-relaxed text-[#344256] outline-none transition focus:border-anixi-green focus:ring-2 focus:ring-anixi-green/20"
+                />
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => void saveNote()}
+                    disabled={isSavingNote}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-anixi-green px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f] disabled:opacity-60"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    {isSavingNote ? 'Saving…' : 'Save clinical note'}
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {/* 2. Orders & paperwork */}
+            <section className="rounded-xl border border-[#e1e7ef] bg-white shadow-sm">
+              <div className="px-5 pt-5 pb-1">
+                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-[#0E2340] text-[10px] font-bold text-white">2</span>
+                  Orders & paperwork
+                </p>
+                <p className="mt-1.5 text-[13px] text-[#65758b]">
+                  Write prescriptions, letters, and attach anything that belongs in the chart.
+                </p>
+              </div>
+              <div className="divide-y divide-[#e1e7ef] px-5 pb-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPrescriptionModal(true)}
+                  className="group flex w-full items-center gap-4 py-3.5 text-left transition"
+                >
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 transition group-hover:bg-blue-100">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12h6"/><path d="M12 9v6"/></svg>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-[#0E2340]">Prescription</p>
+                    <p className="mt-0.5 text-xs text-[#65758b]">
+                      {hasPrescription ? 'Draft on file — review or update' : 'Draft medications for this visit'}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-lg border border-[#e1e7ef] bg-white px-3 py-1.5 text-xs font-semibold text-[#344256] shadow-sm transition group-hover:border-anixi-green group-hover:text-anixi-green">
+                    {hasPrescription ? 'Edit' : 'Add'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowDoctorLetterModal(true)}
+                  className="group flex w-full items-center gap-4 py-3.5 text-left transition"
+                >
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 transition group-hover:bg-violet-100">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-[#0E2340]">Doctor letter / referral</p>
+                    <p className="mt-0.5 text-xs text-[#65758b]">
+                      {hasLetter ? 'Draft on file — review or update' : 'Referral or to-whom-it-may-concern letter'}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-lg border border-[#e1e7ef] bg-white px-3 py-1.5 text-xs font-semibold text-[#344256] shadow-sm transition group-hover:border-anixi-green group-hover:text-anixi-green">
+                    {hasLetter ? 'Edit' : 'Add'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowDocumentModal(true)}
+                  className="group flex w-full items-center gap-4 py-3.5 text-left transition"
+                >
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 transition group-hover:bg-amber-100">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-[#0E2340]">Attach document</p>
+                    <p className="mt-0.5 text-xs text-[#65758b]">
+                      {hasDocuments
+                        ? `${documents.length} file${documents.length === 1 ? '' : 's'} on this visit`
+                        : 'Scan or upload results, forms, or external reports'}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-lg border border-[#e1e7ef] bg-white px-3 py-1.5 text-xs font-semibold text-[#344256] shadow-sm transition group-hover:border-anixi-green group-hover:text-anixi-green">
+                    {hasDocuments ? 'Add more' : 'Upload'}
+                  </span>
+                </button>
+              </div>
+            </section>
+
+            {/* 3. Continuity */}
+            <section className="rounded-xl border border-[#e1e7ef] bg-white shadow-sm">
+              <div className="px-5 pt-5 pb-1">
+                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-[#0E2340] text-[10px] font-bold text-white">3</span>
+                  Continuity of care
+                </p>
+                <p className="mt-1.5 text-[13px] text-[#65758b]">
+                  Set the next step for the patient before they leave your desk.
+                </p>
+              </div>
+              <div className="grid gap-3 px-5 pb-5 pt-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setShowFollowUpModal(true)}
+                  className="group flex items-start gap-3 rounded-xl border border-[#e1e7ef] bg-[#f8fafc] px-4 py-3.5 text-left transition hover:border-anixi-green/40 hover:bg-[#f0f5f2]"
+                >
+                  <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 transition group-hover:bg-emerald-100">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-[#0E2340]">Book follow-up</p>
+                    <p className="mt-0.5 text-xs text-[#65758b]">Schedule the next appointment</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void invitePatientToApp()}
+                  disabled={isSendingInvite || !appointment.patientEmail?.trim()}
+                  className="group flex items-start gap-3 rounded-xl border border-[#e1e7ef] bg-[#f8fafc] px-4 py-3.5 text-left transition hover:border-anixi-green/40 hover:bg-[#f0f5f2] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600 transition group-hover:bg-sky-100">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4 20-7Z"/></svg>
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-[#0E2340]">
+                      {isSendingInvite ? 'Sending invite…' : 'Invite to Anixi app'}
+                    </p>
+                    <p className="mt-0.5 text-xs text-[#65758b]">
+                      {appointment.patientEmail?.trim()
+                        ? 'Send the patient download / signup email'
+                        : 'Add a patient email on the appointment first'}
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </section>
+
+            {/* 4. Billing */}
+            <section className="rounded-xl border border-[#e1e7ef] bg-white shadow-sm">
+              <div className="px-5 pt-5 pb-1">
+                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-[#0E2340] text-[10px] font-bold text-white">4</span>
+                  Billing
+                </p>
+                <p className="mt-1.5 text-[13px] text-[#65758b]">
+                  Raise the invoice for this visit, then close the chart from the bar below.
+                </p>
+              </div>
+              <div className="px-5 pb-5 pt-3">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/invoices/new/${appointment.id}`)}
+                  className="group inline-flex h-10 items-center gap-2.5 rounded-lg border border-[#e1e7ef] bg-[#f8fafc] px-4 text-sm font-semibold text-[#344256] shadow-sm transition hover:border-anixi-green hover:bg-white hover:text-anixi-green"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                  Create invoice
+                </button>
+              </div>
+            </section>
+          </>
+        ) : (
+          <>
+            {user?.id && (
+              <VisitPatientBriefing
+                doctorId={user.id}
+                patientId={appointment.patientId}
+                isManual={appointment.isManual}
+              />
+            )}
+
+            <div className="rounded-[14px] border border-[#e1e7ef] bg-white p-4 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#8FA0B6]">
+                Visit desk
+              </p>
+              {appointment.notes ? (
+                <p className="mt-2 rounded-[10px] bg-[#f8fafc] px-3 py-2 text-sm text-[#344256]">
+                  <span className="font-semibold text-[#8FA0B6]">Agenda: </span>
+                  {appointment.notes}
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-[#94a3b8]">
+                  No agenda on this booking — confirm the reason for visit when you connect.
+                </p>
+              )}
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                {whatsappSoon && (
+                  <div className="inline-flex h-11 items-center rounded-[10px] border border-amber-200 bg-amber-50 px-4 text-sm font-medium text-amber-900">
+                    WhatsApp visit — Coming soon
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowNoteModal(true)}
+                  className="inline-flex h-11 items-center justify-center rounded-[10px] border border-[#e1e7ef] bg-white px-4 text-sm font-semibold text-[#344256] hover:border-anixi-green/40"
+                >
+                  Add visit note
+                </button>
+              </div>
+            </div>
+
+            {latestPrescriptionDraft && (
+              <div className="rounded-[12px] border border-[#e1e7ef] bg-white p-4">
+                <p className="text-sm font-medium text-[#0E2340]">Saved prescription draft</p>
+                <p
+                  className="mt-2 text-sm text-[#65758b]"
+                  style={{
+                    display: '-webkit-box',
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {latestPrescriptionDraft.content}
+                </p>
+                <button
+                  type="button"
+                  onClick={previewPrescription}
+                  className="mt-3 inline-flex items-center gap-2 rounded-[10px] border border-[#e1e7ef] bg-white px-3 py-2 text-sm font-semibold text-[#344256] hover:border-anixi-green/40"
+                >
+                  <Eye className="h-4 w-4" />
+                  View prescription
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {canStartCall && !callEnded && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#e1e7ef] bg-white/80 px-4 py-3 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] backdrop-blur-md md:left-64">
+          <div className="mx-auto flex max-w-4xl flex-col gap-3">
+            <label className="flex items-start gap-2 text-[13px] text-[#344256]">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-anixi-green focus:ring-anixi-green"
+                checked={teleconsultConsentChecked}
+                disabled={isSavingTeleconsultConsent}
+                onChange={(e) => void handleTeleconsultConsentChange(e.target.checked)}
+              />
+              <span>
+                I confirm telemedicine consent has been obtained / the patient consented to a virtual
+                consultation per HPCSA telemedicine guidance.
+              </span>
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[13px] text-[#65758b]">
+                Ready for <span className="font-semibold text-[#0E2340]">{appointment.patientName}</span>
+                {appointment.time ? ` at ${appointment.time}` : ''}?
+              </p>
+              <button
+                type="button"
+                onClick={startVideoCall}
+                disabled={!teleconsultConsentChecked || isSavingTeleconsultConsent}
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-anixi-green px-6 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                Start call
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {callEnded && !visitCompleted && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#e1e7ef] bg-white/80 px-4 py-3 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] backdrop-blur-md md:left-64">
+          <div className="mx-auto flex max-w-4xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[13px] text-[#65758b]">
+              {hasClinicalNote
+                ? 'When documentation and billing are done, close the chart.'
+                : 'Save a clinical note before closing the chart when possible.'}
             </p>
             <button
               type="button"
-              onClick={previewPrescription}
-              className="mt-3 inline-flex items-center gap-2 rounded-md bg-secondary px-3 py-2 text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80"
+              onClick={() => void markVisitCompleted()}
+              disabled={isCompletingVisit}
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#0E2340] px-6 text-sm font-semibold text-white shadow-sm transition hover:bg-[#16325a] disabled:opacity-60 sm:w-auto"
             >
-              <Eye className="h-4 w-4" />
-              View prescription
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              {isCompletingVisit ? 'Closing…' : 'Mark visit completed'}
             </button>
           </div>
-        )}
+        </div>
+      )}
 
-        <div className="mb-4 text-lg font-semibold tracking-wide text-foreground">CLINICAL ACTIONS</div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {actionConfig.map((action) => (
+      {callEnded && visitCompleted && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#e1e7ef] bg-white/80 px-4 py-3 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] backdrop-blur-md md:left-64">
+          <div className="mx-auto flex max-w-4xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[13px] text-[#65758b]">This visit is closed. Notes and drafts remain on the chart.</p>
             <button
-              key={action.key}
-              onClick={action.enabled ? action.onClick : undefined}
-              className={actionButtonClass}
-              disabled={!action.enabled}
+              type="button"
+              onClick={() => navigateBack('/appointments')}
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-anixi-green px-6 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f] sm:w-auto"
             >
-              <span className="mr-2">{action.icon}</span> {action.label}
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Back to appointments
             </button>
-          ))}
-        </div>
-
-        {documents.length > 0 && (
-          <div className="mt-8 rounded-xl border border-border bg-card p-4">
-            <h2 className="text-lg font-semibold text-foreground">Recent Documents</h2>
-            <div className="mt-3 space-y-2">
-              {documents.slice(0, 5).map((doc) => (
-                <a
-                  key={doc.id}
-                  href={doc.downloadURL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-muted"
-                >
-                  <p className="font-medium text-foreground">{doc.title || doc.fileName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {doc.fileName} • {formatFileSize(doc.fileSize)}
-                  </p>
-                </a>
-              ))}
-            </div>
           </div>
-        )}
         </div>
-      </div>
+      )}
 
         {showPrescriptionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-2xl rounded-xl border border-border bg-card p-6 shadow-xl">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-semibold text-foreground">Manage prescription</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Save draft, preview as PDF, or export a real PDF file.
-                </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[1px]">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-[#e1e7ef] bg-white shadow-xl">
+            <div className="relative px-6 pt-6 pb-4">
+              <h2 className="text-xl font-bold text-gray-900">Manage Prescription</h2>
+              <button
+                type="button"
+                onClick={() => setShowPrescriptionModal(false)}
+                className="absolute right-4 top-4 rounded-md border border-[#e1e7ef] p-1.5 text-gray-400 transition hover:bg-[#f8fafc] hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 px-6 pb-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">NAPPI code</label>
+                  <input
+                    type="text"
+                    value={nappiCode}
+                    onChange={(e) => setNappiCode(e.target.value.replace(/\D/g, '').slice(0, 7))}
+                    placeholder="5–7 digits"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ICD-10 code</label>
+                  <select
+                    value={icd10Code}
+                    onChange={(e) => setIcd10Code(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select diagnosis code</option>
+                    {COMMON_ICD10_CODES.map((entry) => (
+                      <option key={entry.code} value={entry.code}>
+                        {entry.code} — {entry.description}
+                      </option>
+                    ))}
+                    <option value="__custom__">Other (enter manually)</option>
+                  </select>
+                  {icd10Code === '__custom__' && (
+                    <input
+                      type="text"
+                      value={icd10Custom}
+                      onChange={(e) => setIcd10Custom(e.target.value)}
+                      placeholder="e.g. M54.5"
+                      className="mt-2 w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
+                </div>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Prescription *</label>
+                <textarea
+                  value={prescriptionDraft}
+                  onChange={(e) => setPrescriptionDraft(e.target.value)}
+                  rows={8}
+                  placeholder="e.g. Medication, dosage, instructions…"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={savePrescriptionDraft}
+                  disabled={isSavingPrescription}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[10px] bg-anixi-green px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-anixi-green/90 disabled:opacity-50"
+                >
+                  <Save className="h-4 w-4" />
+                  {isSavingPrescription ? 'Saving…' : 'Save Draft'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={previewPrescription}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[10px] border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100"
+                >
+                  <Eye className="h-4 w-4" />
+                  Preview PDF
+                </button>
+
+                <button
+                  type="button"
+                  onClick={exportPrescription}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[10px] border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <Download className="h-4 w-4" />
+                  Export PDF
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-3 px-6 py-4 pt-2">
               <button
                 type="button"
                 onClick={() => setShowPrescriptionModal(false)}
-                className="rounded-md border border-border bg-card p-2 text-muted-foreground transition hover:bg-muted"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <label className="mb-2 block text-sm font-medium text-foreground">Prescription *</label>
-            <textarea
-              value={prescriptionDraft}
-              onChange={(e) => setPrescriptionDraft(e.target.value)}
-              rows={8}
-              placeholder="e.g. Medication, dosage, instructions…"
-              className="w-full rounded-md border border-border bg-card p-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-
-            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <button
-                type="button"
-                onClick={savePrescriptionDraft}
-                disabled={isSavingPrescription}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
-              >
-                <Save className="h-4 w-4" />
-                {isSavingPrescription ? 'Saving...' : 'Save draft'}
-              </button>
-
-              <button
-                type="button"
-                onClick={previewPrescription}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80"
-              >
-                <Eye className="h-4 w-4" />
-                Preview PDF
-              </button>
-
-              <button
-                type="button"
-                onClick={exportPrescription}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
-              >
-                <Download className="h-4 w-4" />
-                Export as PDF
-              </button>
-            </div>
-
-            <div className="mt-3 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowPrescriptionModal(false)}
-                className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition hover:bg-muted"
+                className="flex-1 rounded-[10px] border border-[#e1e7ef] bg-white px-4 py-2 text-gray-700 transition-colors hover:bg-[#f3f6fa]"
               >
                 Close
               </button>
@@ -1344,68 +1840,92 @@ const { user } = useAuth();
       )}
 
       {showDoctorLetterModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-2xl rounded-xl border border-border bg-card p-6 shadow-xl">
-            <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[1px]">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-[#e1e7ef] bg-white shadow-xl">
+            <div className="relative px-6 pt-6 pb-4">
+              <h2 className="text-xl font-bold text-gray-900">Doctor Letter</h2>
+              <button
+                type="button"
+                onClick={() => setShowDoctorLetterModal(false)}
+                className="absolute right-4 top-4 rounded-md border border-[#e1e7ef] p-1.5 text-gray-400 transition hover:bg-[#f8fafc] hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 px-6 pb-2">
               <div>
-                <h2 className="text-xl font-semibold text-foreground">Generate doctor letter</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Save draft, preview as PDF, or export a real PDF file.
-                </p>
+                <label className="block text-sm font-medium text-gray-700 mb-1">ICD-10 diagnosis code</label>
+                <select
+                  value={letterIcd10Code}
+                  onChange={(e) => setLetterIcd10Code(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select diagnosis code</option>
+                  {COMMON_ICD10_CODES.map((entry) => (
+                    <option key={entry.code} value={entry.code}>
+                      {entry.code} — {entry.description}
+                    </option>
+                  ))}
+                  <option value="__custom__">Other (enter manually)</option>
+                </select>
+                {letterIcd10Code === '__custom__' && (
+                  <input
+                    type="text"
+                    value={letterIcd10Custom}
+                    onChange={(e) => setLetterIcd10Custom(e.target.value)}
+                    placeholder="e.g. I10"
+                    className="mt-2 w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                )}
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Doctor letter *</label>
+                <textarea
+                  value={doctorLetterDraft}
+                  onChange={(e) => setDoctorLetterDraft(e.target.value)}
+                  rows={8}
+                  placeholder="e.g. Referral summary, diagnosis, and plan…"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={saveDoctorLetterDraft}
+                  disabled={isSavingDoctorLetter}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[10px] bg-anixi-green px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-anixi-green/90 disabled:opacity-50"
+                >
+                  <Save className="h-4 w-4" />
+                  {isSavingDoctorLetter ? 'Saving…' : 'Save Draft'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={previewDoctorLetter}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[10px] border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100"
+                >
+                  <Eye className="h-4 w-4" />
+                  Preview PDF
+                </button>
+
+                <button
+                  type="button"
+                  onClick={exportDoctorLetter}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[10px] border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <Download className="h-4 w-4" />
+                  Export PDF
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-3 px-6 py-4 pt-2">
               <button
                 type="button"
                 onClick={() => setShowDoctorLetterModal(false)}
-                className="rounded-md border border-border bg-card p-2 text-muted-foreground transition hover:bg-muted"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <label className="mb-2 block text-sm font-medium text-foreground">Doctor letter *</label>
-            <textarea
-              value={doctorLetterDraft}
-              onChange={(e) => setDoctorLetterDraft(e.target.value)}
-              rows={8}
-              placeholder="e.g. Referral summary, diagnosis, and plan..."
-              className="w-full rounded-md border border-border bg-card p-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-
-            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <button
-                type="button"
-                onClick={saveDoctorLetterDraft}
-                disabled={isSavingDoctorLetter}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
-              >
-                <Save className="h-4 w-4" />
-                {isSavingDoctorLetter ? 'Saving...' : 'Save draft'}
-              </button>
-
-              <button
-                type="button"
-                onClick={previewDoctorLetter}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80"
-              >
-                <Eye className="h-4 w-4" />
-                Preview PDF
-              </button>
-
-              <button
-                type="button"
-                onClick={exportDoctorLetter}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
-              >
-                <Download className="h-4 w-4" />
-                Export as PDF
-              </button>
-            </div>
-
-            <div className="mt-3 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowDoctorLetterModal(false)}
-                className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition hover:bg-muted"
+                className="flex-1 rounded-[10px] border border-[#e1e7ef] bg-white px-4 py-2 text-gray-700 transition-colors hover:bg-[#f3f6fa]"
               >
                 Close
               </button>
@@ -1415,33 +1935,43 @@ const { user } = useAuth();
       )}
 
       {showNoteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-lg rounded-xl border border-border bg-card shadow-xl">
-            <div className="border-b border-border p-4">
-              <h2 className="text-xl font-semibold text-foreground">Add note</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[1px]">
+          <div className="w-full max-w-lg rounded-2xl border border-[#e1e7ef] bg-white shadow-xl">
+            <div className="relative px-6 pt-6 pb-4">
+              <h2 className="text-xl font-bold text-gray-900">Clinical Note</h2>
+              <button
+                type="button"
+                onClick={() => setShowNoteModal(false)}
+                className="absolute right-4 top-4 rounded-md border border-[#e1e7ef] p-1.5 text-gray-400 transition hover:bg-[#f8fafc] hover:text-gray-600"
+              >
+                ✕
+              </button>
             </div>
-            <div className="p-4">
+            <div className="px-6 pb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>
               <textarea
                 value={noteValue}
                 onChange={(e) => setNoteValue(e.target.value)}
                 rows={7}
-                className="w-full rounded-md border border-border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="Write your clinical note..."
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Chief complaint, findings, assessment, plan…"
               />
             </div>
-            <div className="flex gap-3 border-t border-border bg-muted p-4">
+            <div className="flex gap-3 px-6 py-4 pt-2">
               <button
-                onClick={saveNote}
-                disabled={isSavingNote}
-                className="flex-1 rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
-              >
-                {isSavingNote ? 'Saving...' : 'Save note'}
-              </button>
-              <button
+                type="button"
                 onClick={() => setShowNoteModal(false)}
-                className="flex-1 rounded-md border border-border bg-card px-4 py-2 font-medium text-foreground transition hover:bg-muted"
+                className="flex-1 rounded-[10px] border border-[#e1e7ef] bg-white px-4 py-2 text-gray-700 transition-colors hover:bg-[#f3f6fa]"
               >
                 Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveNote}
+                disabled={isSavingNote}
+                className="flex-1 rounded-[10px] bg-anixi-green px-4 py-2 text-white transition-colors hover:bg-anixi-green/90 disabled:opacity-50"
+              >
+                {isSavingNote ? 'Saving…' : 'Save Note'}
               </button>
             </div>
           </div>
@@ -1449,66 +1979,118 @@ const { user } = useAuth();
       )}
 
       {showDocumentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-lg rounded-xl border border-border bg-card shadow-xl">
-            <div className="border-b border-border p-4">
-              <h2 className="text-xl font-semibold text-foreground">
-                {documentMode === 'scan' ? 'Scan document' : 'Upload document'}
-              </h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[1px]">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-[#e1e7ef] bg-white shadow-xl">
+            <div className="relative px-6 pt-6 pb-4">
+              <h2 className="text-xl font-bold text-gray-900">Attach Document</h2>
+              <button
+                type="button"
+                onClick={closeDocumentModal}
+                className="absolute right-4 top-4 rounded-md border border-[#e1e7ef] p-1.5 text-gray-400 transition hover:bg-[#f8fafc] hover:text-gray-600"
+              >
+                ✕
+              </button>
             </div>
-            <div className="space-y-4 p-4">
+            <div className="space-y-4 px-6 pb-2">
               <div>
-                <label className="mb-1 block text-sm font-medium text-foreground">Title (optional)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Source</label>
+                <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocumentMode('upload');
+                      setDocumentFile(null);
+                      if (documentPreview) { URL.revokeObjectURL(documentPreview); setDocumentPreview(null); }
+                    }}
+                    className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                      documentMode === 'upload'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    📁 From computer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocumentMode('scan');
+                      setDocumentFile(null);
+                      if (documentPreview) { URL.revokeObjectURL(documentPreview); setDocumentPreview(null); }
+                    }}
+                    className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                      documentMode === 'scan'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    📷 Scan with camera
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Title (optional)</label>
                 <input
                   type="text"
                   value={documentTitle}
                   onChange={(e) => setDocumentTitle(e.target.value)}
-                  className="w-full rounded-md border border-border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="e.g. Referral"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g. Referral, Lab results"
                 />
               </div>
 
               <input
                 ref={fileRef}
                 type="file"
-                accept={documentMode === 'scan' ? 'image/*' : 'image/*,application/pdf'}
+                accept={documentMode === 'scan' ? 'image/*' : 'image/*,application/pdf,.doc,.docx'}
                 capture={documentMode === 'scan' ? 'environment' : undefined}
                 onChange={handleDocumentPicked}
                 className="hidden"
               />
-              <button
-                onClick={() => fileRef.current?.click()}
-                className="w-full rounded-md border border-border bg-card px-4 py-3 text-left text-foreground transition hover:bg-muted"
-              >
-                {documentMode === 'scan' ? 'Open camera' : 'Choose file'}
-              </button>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">File *</label>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="w-full px-3 py-2 text-sm text-left border border-gray-300 rounded-md text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {documentFile
+                    ? documentFile.name
+                    : documentMode === 'scan'
+                      ? 'Open camera to capture…'
+                      : 'Choose file from computer…'}
+                </button>
+              </div>
 
               {documentFile && (
-                <div className="rounded-lg border border-border bg-muted p-3 text-sm text-foreground">
+                <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
                   <p className="font-medium">{documentFile.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatFileSize(documentFile.size)}</p>
+                  <p className="text-xs text-gray-500">{formatFileSize(documentFile.size)}</p>
                 </div>
               )}
 
               {documentPreview && (
-                <div className="overflow-hidden rounded-lg border border-border">
-                  <img src={documentPreview} alt="Preview" className="max-h-60 w-full object-cover" />
+                <div className="overflow-hidden rounded-md border border-gray-200">
+                  <img src={documentPreview} alt="Preview" className="max-h-48 w-full object-contain bg-gray-50" />
                 </div>
               )}
             </div>
-            <div className="flex gap-3 border-t border-border bg-muted p-4">
+            <div className="flex gap-3 px-6 py-4 pt-2">
               <button
-                onClick={saveDocument}
-                disabled={!documentFile || isSavingDocument}
-                className="flex-1 rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
-              >
-                {isSavingDocument ? 'Saving...' : 'Save to record'}
-              </button>
-              <button
+                type="button"
                 onClick={closeDocumentModal}
-                className="flex-1 rounded-md border border-border bg-card px-4 py-2 font-medium text-foreground transition hover:bg-muted"
+                className="flex-1 rounded-[10px] border border-[#e1e7ef] bg-white px-4 py-2 text-gray-700 transition-colors hover:bg-[#f3f6fa]"
               >
                 Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveDocument}
+                disabled={!documentFile || isSavingDocument}
+                className="flex-1 rounded-[10px] bg-anixi-green px-4 py-2 text-white transition-colors hover:bg-anixi-green/90 disabled:opacity-50"
+              >
+                {isSavingDocument ? 'Saving…' : 'Save to Record'}
               </button>
             </div>
           </div>
@@ -1532,56 +2114,56 @@ const { user } = useAuth();
       )}
 
       {showPreviewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-4xl rounded-xl border border-border bg-card shadow-xl max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-border p-4">
-              <h2 className="text-xl font-semibold text-foreground">
-                {previewPdfType === 'doctor-letter' && 'Doctor Letter PDF Preview'}
-                {previewPdfType === 'manual-documents' && 'Manual Documents PDF Preview'}
-                {previewPdfType === 'prescription' && 'Prescription PDF Preview'}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[1px]">
+          <div className="w-full max-w-4xl rounded-2xl border border-[#e1e7ef] bg-white shadow-xl max-h-[90vh] flex flex-col">
+            <div className="relative px-6 pt-6 pb-4">
+              <h2 className="text-xl font-bold text-gray-900">
+                {previewPdfType === 'doctor-letter' && 'Doctor Letter Preview'}
+                {previewPdfType === 'manual-documents' && 'Document Preview'}
+                {previewPdfType === 'prescription' && 'Prescription Preview'}
               </h2>
               <button
                 type="button"
                 onClick={closePreviewModal}
-                className="rounded-md border border-border bg-card p-2 text-muted-foreground transition hover:bg-muted"
+                className="absolute right-4 top-4 rounded-md border border-[#e1e7ef] p-1.5 text-gray-400 transition hover:bg-[#f8fafc] hover:text-gray-600"
               >
-                <X className="h-4 w-4" />
+                ✕
               </button>
             </div>
             {previewPdfUrl ? (
               <iframe
                 src={previewPdfUrl}
-                className="flex-1 border-0"
-                title="Prescription PDF Preview"
+                className="flex-1 border-0 mx-6 mb-2 rounded-md border border-gray-200"
+                title="PDF Preview"
               />
             ) : (
-              <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
+              <div className="flex flex-1 items-center justify-center p-6 text-sm text-gray-500">
                 PDF preview is not available. Please export the PDF.
               </div>
             )}
-            <div className="flex gap-3 border-t border-border bg-muted p-4">
+            <div className="flex gap-3 px-6 py-4">
+              <button
+                type="button"
+                onClick={closePreviewModal}
+                className="flex-1 rounded-[10px] border border-[#e1e7ef] bg-white px-4 py-2 text-gray-700 transition-colors hover:bg-[#f3f6fa]"
+              >
+                Close
+              </button>
               <button
                 type="button"
                 onClick={printPreviewPdf}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-[10px] border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100"
               >
                 <Printer className="h-4 w-4" />
-                Print PDF
+                Print
               </button>
               <button
                 type="button"
                 onClick={handlePreviewExport}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-[10px] bg-anixi-green px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-anixi-green/90"
               >
                 <Download className="h-4 w-4" />
-                Export as PDF
-              </button>
-              <button
-                type="button"
-                onClick={closePreviewModal}
-                className="flex-1 rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition hover:bg-muted"
-              >
-                Close
+                Export PDF
               </button>
             </div>
           </div>

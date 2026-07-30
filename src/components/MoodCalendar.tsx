@@ -18,6 +18,7 @@ import {
   getMoodScore,
   normalizeMoodLabel,
 } from '../lib/moodDisplay';
+import { ListRowsSkeleton } from './ui/Skeleton';
 
 interface MoodCalendarProps {
   patientId: string;
@@ -273,9 +274,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ patientId }) => {
 
             <div className="flex-1 overflow-y-auto p-6">
               {isLoadingDay ? (
-                <div className="flex justify-center py-12">
-                  <div className="h-10 w-10 animate-spin rounded-full border-2 border-anixi-green border-t-transparent" />
-                </div>
+                <ListRowsSkeleton rows={4} />
               ) : (
                 <div className="space-y-5">
                   <section className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
