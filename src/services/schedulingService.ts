@@ -243,21 +243,23 @@ export const validateSlot = async (
   const slotStartMin = startAt.getHours() * 60 + startAt.getMinutes();
   const slotEndMin = endAt.getHours() * 60 + endAt.getMinutes();
 
-  
-  const matchingBlock = doctorBlocks.find((b) => {
-    if (b.dayOfWeek !== dow || !b.active) return false;
-    const bStart = toMinutes(b.startTime);
-    const bEnd = toMinutes(b.endTime);
-    return slotStartMin >= bStart && slotEndMin <= bEnd;
-  });
+  // If the doctor has no clinic hours configured, allow the slot
+  // (doctor-side create/reschedule should not be blocked by an empty schedule).
+  if (doctorBlocks.length > 0) {
+    const matchingBlock = doctorBlocks.find((b) => {
+      if (b.dayOfWeek !== dow || !b.active) return false;
+      const bStart = toMinutes(b.startTime);
+      const bEnd = toMinutes(b.endTime);
+      return slotStartMin >= bStart && slotEndMin <= bEnd;
+    });
 
-  if (!matchingBlock) {
-    return { valid: false, reason: 'outside_bookable_block' };
-  }
+    if (!matchingBlock) {
+      return { valid: false, reason: 'outside_bookable_block' };
+    }
 
-  
-  if (!matchingBlock.allowedConsultTypes.includes(consultType)) {
-    return { valid: false, reason: 'consult_type_not_allowed' };
+    if (!matchingBlock.allowedConsultTypes.includes(consultType)) {
+      return { valid: false, reason: 'consult_type_not_allowed' };
+    }
   }
 
   

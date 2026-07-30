@@ -11,6 +11,7 @@ import AppointmentDebug from './pages/AppointmentDebug';
 import FirestoreInspector from './pages/FirestoreInspector';
 import { Dashboard } from './pages/Dashboard';
 import AppointmentSummary from './pages/AppointmentSummary';
+import TeleconsultPage from './pages/TeleconsultPage';
 import { Login } from './pages/Login';
 import { Join } from './pages/Join';
 import { Register } from './pages/Register';
@@ -33,6 +34,16 @@ import ShareAnixi from './pages/ShareAnixi';
 import ChangePassword from './pages/ChangePassword';
 import Support from './pages/Support';
 import DeleteAccount from './pages/DeleteAccount';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import { DoctorOnboardingPage } from './pages/DoctorOnboardingPage';
+import { AccountUnderReviewPage } from './pages/AccountUnderReviewPage';
+import {
+  AnalyticsPage,
+  HealthMonitorPage,
+  MedicalRecordsPage,
+  MessagesPage,
+  NotificationsPage,
+} from './pages/V2FeaturePages';
 import MoodCheckerPage from './pages/MoodCheckerPage';
 import AdherenceCalendarPage from './pages/AdherenceCalendarPage';
 import AdherenceLogsPage from './pages/AdherenceLogsPage';
@@ -165,6 +176,7 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/sign-up" element={<SignUpRedirect />} />
           <Route path="/delegate/accept" element={<DelegateAccept />} />
+          <Route path="/privacy" element={<PrivacyPolicyPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route
             path="/caregiver"
@@ -189,6 +201,8 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <Routes>
+                    <Route path="/onboarding" element={<DoctorOnboardingPage />} />
+                    <Route path="/account-review" element={<AccountUnderReviewPage />} />
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/patient-list" element={<Navigate to="/patients" replace />} />
                     <Route path="/patient-profile/:patientId" element={<PatientProfile />} />
@@ -202,6 +216,12 @@ function App() {
                     <Route path="/appointments" element={<AppointmentsPage />} />
                     <Route path="/appointments/:appointmentId" element={<AppointmentSummary />} />
                     <Route path="/appointments/:appointmentId/post-consult" element={<PostConsultPage />} />
+                    <Route path="/teleconsult/:appointmentId" element={<TeleconsultPage />} />
+                    <Route path="/medical-records" element={<MedicalRecordsPage />} />
+                    <Route path="/analytics" element={<AnalyticsPage />} />
+                    <Route path="/messages" element={<MessagesPage />} />
+                    <Route path="/notifications" element={<NotificationsPage />} />
+                    <Route path="/health-monitor" element={<HealthMonitorPage />} />
                     <Route path="/invoices" element={<InvoicesPage />} />
                     <Route path="/invoices/new/:appointmentId" element={<InvoiceCreate />} />
                     <Route path="/invoices/:invoiceId" element={<InvoiceDetails />} />

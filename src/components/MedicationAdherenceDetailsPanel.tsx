@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getTimeSlot } from '../utils/dateFormatter';
 import { getDailyAdherence, getDoctorDailyAdherence } from '../services/adherenceService';
+import { ListRowsSkeleton } from './ui/Skeleton';
 
 interface MedicationAdherenceDetailsPanelProps {
   patientId: string;
@@ -220,11 +221,7 @@ export const MedicationAdherenceDetailsPanel: React.FC<MedicationAdherenceDetail
           )}
 
           {}
-          {isLoading && (
-            <div className="flex items-center justify-center h-40">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
-            </div>
-          )}
+          {isLoading && <ListRowsSkeleton rows={4} />}
 
           {}
           {!isLoading && stats.total === 0 && (

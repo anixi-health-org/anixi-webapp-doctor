@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Check, Copy, Mail, Share2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { PageHeader, PageShell } from '../components/page-layout';
+import { SharePageSkeleton } from '../components/ui';
 import { Card, CardContent } from '../components/ui/Card';
 import { getDoctorReferral, getReferralStats, logInvitation } from '../services/referralService';
 
@@ -78,7 +79,7 @@ export const ShareAnixi: React.FC = () => {
   if (loading) {
     return (
       <PageShell>
-        <p className="text-gray-500">Loading referral details...</p>
+        <SharePageSkeleton />
       </PageShell>
     );
   }

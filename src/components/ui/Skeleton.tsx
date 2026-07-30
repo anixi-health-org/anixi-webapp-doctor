@@ -181,3 +181,189 @@ export const CaregiverPatientDetailSkeleton: React.FC = () => (
     </div>
   </>
 );
+
+/** Matches Patient Details layout while profile data loads */
+export const PatientProfileSkeleton: React.FC = () => (
+  <div className="min-h-screen bg-[#f8fafc] px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-48" />
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-9 w-9 rounded-[10px]" />
+            <Skeleton className="h-8 w-48 sm:h-9" />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Skeleton className="h-9 w-24 rounded-[10px]" />
+          <Skeleton className="h-9 w-20 rounded-[10px]" />
+        </div>
+      </div>
+
+      <div className="mb-6 rounded-[12px] border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <SkeletonCircle size="h-16 w-16" />
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-44" />
+              <Skeleton className="h-4 w-56" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="space-y-2">
+                <Skeleton className="h-3 w-14" />
+                <Skeleton className="h-4 w-28" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-[12px] border border-[#e1e7ef] bg-white p-4 shadow-sm">
+            <Skeleton className="mb-3 h-3 w-20" />
+            <Skeleton className="h-7 w-16" />
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
+          <CardSkeleton rows={4} />
+          <CardSkeleton rows={3} />
+        </div>
+        <div className="space-y-4">
+          <CardSkeleton rows={3} />
+          <CardSkeleton rows={2} />
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+export const DetailPageSkeleton: React.FC = () => (
+  <>
+    <Skeleton className="mb-4 h-9 w-44 rounded-[10px]" />
+    <PageHeaderSkeleton />
+    <CardSkeleton rows={5} />
+  </>
+);
+
+export const CalendarPageSkeleton: React.FC = () => (
+  <>
+    <PageHeaderSkeleton />
+    <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
+      <div className="space-y-4">
+        <Skeleton className="h-56 w-full rounded-[12px]" />
+        <Skeleton className="h-40 w-full rounded-[12px]" />
+      </div>
+      <Skeleton className="min-h-[420px] w-full rounded-[12px]" />
+    </div>
+  </>
+);
+
+export const SettingsPageSkeleton: React.FC = () => (
+  <>
+    <PageHeaderSkeleton />
+    <div className="mb-4 flex gap-2">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Skeleton key={i} className="h-9 w-24 rounded-full" />
+      ))}
+    </div>
+    <CardSkeleton rows={6} />
+  </>
+);
+
+export const AdherenceLogsSkeleton: React.FC = () => (
+  <div className="space-y-3">
+    {Array.from({ length: 5 }).map((_, i) => (
+      <div
+        key={i}
+        className="flex items-start justify-between rounded-[12px] border border-[#e1e7ef] bg-white p-4"
+      >
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-3 w-56" />
+        </div>
+        <Skeleton className="h-7 w-16 rounded-full" />
+      </div>
+    ))}
+  </div>
+);
+
+export const DailyAdherenceSkeleton: React.FC = () => (
+  <div className="space-y-4">
+    <div className="flex items-center justify-between">
+      <Skeleton className="h-9 w-24 rounded-[10px]" />
+      <Skeleton className="h-5 w-36" />
+      <Skeleton className="h-9 w-24 rounded-[10px]" />
+    </div>
+    <div className="grid gap-4 md:grid-cols-3">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <Skeleton key={i} className="h-40 w-full rounded-[12px]" />
+      ))}
+    </div>
+    <CardSkeleton rows={3} />
+  </div>
+);
+
+export const VitalsPageSkeleton: React.FC = () => (
+  <>
+    <Skeleton className="mb-4 h-9 w-44 rounded-[10px]" />
+    <PageHeaderSkeleton />
+    <div className="mb-6 grid gap-4 md:grid-cols-2">
+      <Skeleton className="h-32 rounded-[12px]" />
+      <Skeleton className="h-32 rounded-[12px]" />
+    </div>
+    <ListRowsSkeleton rows={4} />
+  </>
+);
+
+export const InvoiceDetailSkeleton: React.FC = () => (
+  <>
+    <Skeleton className="mb-4 h-9 w-32 rounded-[10px]" />
+    <PageHeaderSkeleton />
+    <div className="rounded-[12px] border border-[#e1e7ef] bg-white p-6 shadow-sm">
+      <div className="mb-6 flex justify-between">
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-4 w-56" />
+        </div>
+        <Skeleton className="h-8 w-24" />
+      </div>
+      <ListRowsSkeleton rows={3} />
+      <div className="mt-6 flex gap-2">
+        <Skeleton className="h-10 w-28 rounded-[10px]" />
+        <Skeleton className="h-10 w-28 rounded-[10px]" />
+      </div>
+    </div>
+  </>
+);
+
+export const PostConsultSkeleton: React.FC = () => (
+  <div className="min-h-screen bg-[#f8fafc] px-4 py-6 sm:px-6">
+    <div className="mx-auto max-w-5xl space-y-4">
+      <Skeleton className="h-9 w-28 rounded-[10px]" />
+      <PageHeaderSkeleton />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-28 rounded-[12px]" />
+        ))}
+      </div>
+      <CardSkeleton rows={4} />
+    </div>
+  </div>
+);
+
+export const SharePageSkeleton: React.FC = () => (
+  <>
+    <PageHeaderSkeleton />
+    <StatCardsSkeleton count={2} columns={3} />
+    <CardSkeleton rows={3} />
+    <CardSkeleton rows={2} />
+  </>
+);
+

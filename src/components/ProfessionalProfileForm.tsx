@@ -1,26 +1,69 @@
 import React, { useEffect, useState } from 'react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../lib/firebase';
-import { Card, CardContent } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
 import { TabPill } from '../components/ui/TabPill';
 import { PageHeader } from './page-layout/PageHeader';
 import { PageShell } from './page-layout/PageShell';
 import { LogoCropModal } from './LogoCropModal';
 import { useAuth } from '../hooks/useAuth';
 import { getDoctorProfileFormData, saveDoctorProfileForm } from '../services/doctorService';
+import { updatePractice } from '../services/practiceSettingsService';
 import {
   EMPTY_PROFILE_FORM,
   type ProfessionalProfileFormData,
 } from '../types/doctorProfile';
-import { CardSkeleton } from './ui/Skeleton';
+import { PageHeaderSkeleton, Skeleton } from './ui/Skeleton';
+import { isOnboardingFormComplete } from '../lib/doctorAccess';
+import { detectBrowserTimezone, timezoneSelectOptions } from '../lib/timezones';
+import { SA_PROVINCES, validateSouthAfricanId } from '../lib/southAfrica';
+
+const ProfileFormSkeleton: React.FC = () => (
+  <>
+    <div className="mb-6 flex gap-2 rounded-[12px] border border-[#e1e7ef] bg-white p-1.5">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <Skeleton key={i} className="h-10 flex-1 rounded-[10px]" />
+      ))}
+    </div>
+    <div className="rounded-[12px] border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-8">
+      <Skeleton className="mb-2 h-6 w-48" />
+      <Skeleton className="mb-6 h-4 w-72" />
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="space-y-2">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-11 w-full rounded-[10px]" />
+          </div>
+        ))}
+      </div>
+      <div className="mt-8 flex justify-between border-t border-[#eef2f6] pt-6">
+        <Skeleton className="h-10 w-28 rounded-[10px]" />
+        <Skeleton className="h-10 w-32 rounded-[10px]" />
+      </div>
+    </div>
+  </>
+);
 
 const fieldClass =
-  'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-anixi-green focus:outline-none focus:ring-2 focus:ring-anixi-green/15';
-const labelClass = 'mb-1.5 block text-sm font-medium text-gray-700';
+  'h-11 w-full rounded-[10px] border border-[#e1e7ef] bg-white px-3 text-sm text-[#344256] placeholder:text-[#94a3b8] outline-none transition focus:border-[#427160] focus:ring-2 focus:ring-[#427160]/15';
+const labelClass = 'mb-1.5 block text-sm font-medium text-[#344256]';
+const sectionTitleClass = 'text-lg font-semibold text-[#344256]';
+const sectionHintClass = 'mt-1 text-sm text-[#65758b]';
+const btnPrimaryClass =
+  'inline-flex h-10 items-center justify-center rounded-[10px] bg-[#427160] px-4 text-sm font-medium text-white transition-colors hover:bg-[#365c4f] disabled:cursor-not-allowed disabled:opacity-50';
+const btnSecondaryClass =
+  'inline-flex h-10 items-center justify-center rounded-[10px] border border-[#e1e7ef] bg-white px-4 text-sm font-medium text-[#344256] transition-colors hover:border-[#427160]/40 hover:text-[#427160]';
 
-const ProfessionalProfileForm: React.FC = () => {
-  const { user } = useAuth();
+interface ProfessionalProfileFormProps {
+  mode?: 'settings' | 'onboarding';
+  onSubmitted?: () => void | Promise<void>;
+}
+
+const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
+  mode = 'settings',
+  onSubmitted,
+}) => {
+  const isOnboarding = mode === 'onboarding';
+  const { user, practiceSession, refreshPracticeSession } = useAuth();
   const doctor = user?.role === 'doctor' ? user : null;
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -31,6 +74,7 @@ const ProfessionalProfileForm: React.FC = () => {
   const [logoUploading, setLogoUploading] = useState(false);
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [idOrPassportError, setIdOrPassportError] = useState('');
 
   const [formData, setFormData] = useState<ProfessionalProfileFormData>({
     ...EMPTY_PROFILE_FORM,
@@ -40,6 +84,7 @@ const ProfessionalProfileForm: React.FC = () => {
     hpcsaRegistrationNumber: doctor?.licenseNumber || '',
     medicalSpecialty: doctor?.specialty || '',
     practiceName: doctor?.practiceName || '',
+    timezone: practiceSession?.practice?.timezone || detectBrowserTimezone(),
     practiceAddress: doctor?.officeAddress || '',
     logoUrl: doctor?.logoUrl || '',
   });
@@ -64,10 +109,22 @@ const ProfessionalProfileForm: React.FC = () => {
             ...saved,
             emailAddress: saved.emailAddress || doctor.email || prev.emailAddress,
             fullName: saved.fullName || doctor.displayName || prev.fullName,
+            timezone:
+              saved.timezone ||
+              practiceSession?.practice?.timezone ||
+              detectBrowserTimezone(),
           }));
           if (saved.logoUrl) {
             setLogoPreview(saved.logoUrl);
           }
+        } else {
+          setFormData((prev) => ({
+            ...prev,
+            timezone:
+              prev.timezone ||
+              practiceSession?.practice?.timezone ||
+              detectBrowserTimezone(),
+          }));
         }
       } catch {
         if (!cancelled) {
@@ -85,7 +142,7 @@ const ProfessionalProfileForm: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [doctor?.id, doctor?.displayName, doctor?.email]);
+  }, [doctor?.id, doctor?.displayName, doctor?.email, practiceSession?.practice?.timezone]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -93,6 +150,29 @@ const ProfessionalProfileForm: React.FC = () => {
       ...prev,
       [name]: value
     }));
+    if (name === 'idOrPassport') {
+      setIdOrPassportError('');
+    }
+  };
+
+  const validateIdOrPassport = (value: string): string | null => {
+    const trimmed = value.trim();
+    if (!trimmed) return 'ID or passport is required';
+    if (/^\d+$/.test(trimmed)) {
+      if (trimmed.length !== 13) {
+        return 'South African ID must be exactly 13 digits';
+      }
+      const result = validateSouthAfricanId(trimmed);
+      if (!result.valid) return result.error ?? 'Invalid South African ID number';
+    } else if (!/^[a-zA-Z0-9]+$/.test(trimmed)) {
+      return 'Passport must contain only letters and numbers';
+    }
+    return null;
+  };
+
+  const handleIdOrPassportBlur = () => {
+    const error = validateIdOrPassport(formData.idOrPassport);
+    setIdOrPassportError(error ?? '');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -103,6 +183,22 @@ const ProfessionalProfileForm: React.FC = () => {
     setMessage('');
 
     try {
+      const idError = validateIdOrPassport(formData.idOrPassport);
+      if (idError) {
+        setIdOrPassportError(idError);
+        setMessage(idError);
+        setIsLoading(false);
+        return;
+      }
+
+      if (isOnboarding && !isOnboardingFormComplete(formData)) {
+        setMessage(
+          'Please complete all required personal, professional, and practice fields before submitting for review.'
+        );
+        setIsLoading(false);
+        return;
+      }
+
       let logoUrl: string | undefined = formData.logoUrl || doctor?.logoUrl;
 
       if (logoFile && doctor?.id) {
@@ -113,7 +209,20 @@ const ProfessionalProfileForm: React.FC = () => {
         setLogoUploading(false);
       }
 
-      await saveDoctorProfileForm(doctor.id, formData, logoUrl);
+      await saveDoctorProfileForm(doctor.id, formData, logoUrl, {
+        submitForReview: isOnboarding,
+      });
+
+      const practiceId = practiceSession?.practice?.id;
+      if (practiceId && (formData.practiceName.trim() || formData.timezone.trim())) {
+        await updatePractice(practiceId, {
+          ...(formData.practiceName.trim()
+            ? { name: formData.practiceName.trim() }
+            : {}),
+          ...(formData.timezone.trim() ? { timezone: formData.timezone.trim() } : {}),
+        });
+        await refreshPracticeSession();
+      }
 
       if (logoUrl) {
         setFormData((prev) => ({ ...prev, logoUrl: logoUrl as string }));
@@ -121,7 +230,14 @@ const ProfessionalProfileForm: React.FC = () => {
       }
 
       setLogoFile(null);
-      setMessage('Professional profile saved successfully.');
+      setMessage(
+        isOnboarding
+          ? 'Application submitted for Anixi Admin review.'
+          : 'Professional profile saved successfully.'
+      );
+      if (isOnboarding) {
+        await onSubmitted?.();
+      }
     } catch (error) {
       console.error('[ProfessionalProfileForm] save failed:', error);
       setMessage('Failed to update profile. Please try again.');
@@ -138,13 +254,13 @@ const ProfessionalProfileForm: React.FC = () => {
     ];
 
     return (
-      <div className="mb-6 flex gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1.5 shadow-sm">
+      <div className="mb-6 flex gap-1.5 overflow-x-auto rounded-[12px] border border-[#e1e7ef] bg-white p-1.5 shadow-sm">
         {tabs.map((tab) => (
           <TabPill
             key={tab.id}
             onClick={() => setCurrentStep(tab.id)}
             active={currentStep === tab.id}
-            className="flex-1 justify-center rounded-xl px-4 py-2.5"
+            className="min-w-0 flex-1 justify-center rounded-[10px] px-4 py-2.5"
           >
             {tab.name}
           </TabPill>
@@ -155,9 +271,9 @@ const ProfessionalProfileForm: React.FC = () => {
 
   const renderPersonalInformation = () => (
     <div className="space-y-6">
-      <div className="border-b border-gray-100 pb-4">
-        <h2 className="font-heading text-lg font-semibold text-anixi-green">Personal Information</h2>
-        <p className="mt-1 text-sm text-gray-500">Tell us about yourself and your contact details</p>
+      <div className="border-b border-[#eef2f6] pb-4">
+        <h2 className={sectionTitleClass}>Personal Information</h2>
+        <p className={sectionHintClass}>Tell us about yourself and your contact details.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -223,9 +339,13 @@ const ProfessionalProfileForm: React.FC = () => {
             name="idOrPassport"
             value={formData.idOrPassport}
             onChange={handleInputChange}
-            className={fieldClass}
+            onBlur={handleIdOrPassportBlur}
+            className={`${fieldClass}${idOrPassportError ? ' border-red-400 focus:border-red-400 focus:ring-red-400/15' : ''}`}
             required
           />
+          {idOrPassportError && (
+            <p className="mt-1 text-xs text-red-600">{idOrPassportError}</p>
+          )}
         </div>
 
         <div>
@@ -317,12 +437,12 @@ const ProfessionalProfileForm: React.FC = () => {
 
   const renderProfessionalInformation = () => (
     <div className="space-y-6">
-      <div className="border-b border-gray-100 pb-4">
-        <h2 className="font-heading text-lg font-semibold text-anixi-green">Professional Information</h2>
-        <p className="mt-1 text-sm text-gray-500">Your medical credentials and experience</p>
+      <div className="border-b border-[#eef2f6] pb-4">
+        <h2 className={sectionTitleClass}>Professional Information</h2>
+        <p className={sectionHintClass}>Your medical credentials and experience.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <div>
           <label className={labelClass}>
             HPCSA Registration Number <span className="text-red-500">*</span>
@@ -425,12 +545,14 @@ const ProfessionalProfileForm: React.FC = () => {
 
   const renderPracticeInformation = () => (
     <div className="space-y-6">
-      <div className="border-b border-gray-100 pb-4">
-        <h2 className="font-heading text-lg font-semibold text-anixi-green">Practice Information</h2>
-        <p className="mt-1 text-sm text-gray-500">Details about your medical practice</p>
+      <div className="border-b border-[#eef2f6] pb-4">
+        <h2 className={sectionTitleClass}>Practice Information</h2>
+        <p className={sectionHintClass}>
+          Details about your medical practice, including the name and timezone used for scheduling.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <div>
           <label className={labelClass}>
             Practice Type <span className="text-red-500">*</span>
@@ -467,6 +589,29 @@ const ProfessionalProfileForm: React.FC = () => {
 
         <div>
           <label className={labelClass}>
+            Timezone <span className="text-red-500">*</span>
+          </label>
+          <select
+            name="timezone"
+            value={formData.timezone}
+            onChange={handleInputChange}
+            className={fieldClass}
+            required
+          >
+            <option value="">Select timezone</option>
+            {timezoneSelectOptions(formData.timezone).map((tz) => (
+              <option key={tz.value} value={tz.value}>
+                {tz.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-xs text-[#65758b]">
+            Used for clinic hours, calendar, and appointment times.
+          </p>
+        </div>
+
+        <div>
+          <label className={labelClass}>
             Practice Number (BHF) <span className="text-gray-500">(optional)</span>
           </label>
           <input
@@ -474,6 +619,20 @@ const ProfessionalProfileForm: React.FC = () => {
             name="practiceNumber"
             value={formData.practiceNumber}
             onChange={handleInputChange}
+            className={fieldClass}
+          />
+        </div>
+
+        <div>
+          <label className={labelClass}>
+            VAT Number <span className="text-gray-500">(optional)</span>
+          </label>
+          <input
+            type="text"
+            name="vatNumber"
+            value={formData.vatNumber}
+            onChange={handleInputChange}
+            placeholder="e.g. 4123456789"
             className={fieldClass}
           />
         </div>
@@ -502,14 +661,20 @@ const ProfessionalProfileForm: React.FC = () => {
           <label className={labelClass}>
             Province <span className="text-red-500">*</span>
           </label>
-          <input
-            type="text"
+          <select
             name="province"
-            value={formData.province}
+            value={formData.province.toLowerCase()}
             onChange={handleInputChange}
             className={fieldClass}
             required
-          />
+          >
+            <option value="">Select province</option>
+            {SA_PROVINCES.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>
@@ -543,19 +708,32 @@ const ProfessionalProfileForm: React.FC = () => {
         {/* Practice Logo for Letterhead */}
         <div className="md:col-span-2">
           <label className={labelClass}>
-            Practice Logo <span className="text-gray-500">(used on invoices &amp; letterhead)</span>
+            Practice Logo <span className="font-normal text-[#94a3b8]">(invoices & letterhead)</span>
           </label>
-          <div className="flex items-center gap-4">
-            {logoPreview && (
-              <img
-                src={logoPreview}
-                alt="Practice logo preview"
-                className="w-16 h-16 object-contain rounded border border-gray-200 bg-gray-50"
-              />
-            )}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-[#e1e7ef] bg-[#f8fafc]">
+              {logoPreview ? (
+                <img
+                  src={logoPreview}
+                  alt="Practice logo preview"
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <span className="px-2 text-center text-[11px] text-[#94a3b8]">No logo</span>
+              )}
+            </div>
             <label className="cursor-pointer flex-1">
-              <div className="w-full px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-[#425950] hover:text-[#425950] transition text-center">
-                {logoUploading ? 'Uploading…' : logoPreview ? 'Change logo' : 'Upload logo (PNG or JPG)'}
+              <div className="flex h-20 w-full flex-col items-center justify-center rounded-[12px] border border-dashed border-[#c5ced9] bg-[#f8fafc] px-3 text-center transition hover:border-[#427160] hover:bg-[#eef4f1]">
+                <span className="text-sm font-medium text-[#344256]">
+                  {logoUploading
+                    ? 'Uploading…'
+                    : logoPreview
+                      ? 'Change logo'
+                      : 'Upload logo (PNG or JPG)'}
+                </span>
+                <span className="mt-1 text-xs text-[#94a3b8]">
+                  Square crop recommended · Min 200×200 px
+                </span>
               </div>
               <input
                 type="file"
@@ -573,7 +751,6 @@ const ProfessionalProfileForm: React.FC = () => {
               />
             </label>
           </div>
-          <p className="mt-1 text-xs text-gray-500">Square crop recommended. Min 200×200 px for invoices.</p>
         </div>
       </div>
 
@@ -614,15 +791,83 @@ const ProfessionalProfileForm: React.FC = () => {
   };
 
   if (isProfileLoading) {
+    if (isOnboarding) {
+      return <ProfileFormSkeleton />;
+    }
     return (
       <PageShell>
-        <PageHeader
-          title="Professional Profile"
-          description="Keep your personal, professional, and practice details up to date."
-        />
-        <CardSkeleton rows={8} />
+        <PageHeaderSkeleton />
+        <ProfileFormSkeleton />
       </PageShell>
     );
+  }
+
+  const formCard = (
+    <>
+      {renderTabNavigation()}
+
+      <div className="rounded-[12px] border border-[#e1e7ef] bg-white shadow-sm">
+        <div className="p-5 sm:p-8">
+          <form onSubmit={handleSubmit}>
+            {renderCurrentStep()}
+
+            {message && (
+              <div
+                className={`mt-6 rounded-[12px] p-4 text-sm ${
+                  message.includes('successfully') || message.includes('submitted')
+                    ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
+                    : message.includes('Could not load') || message.includes('required')
+                      ? 'border border-amber-200 bg-amber-50 text-amber-800'
+                      : 'border border-red-200 bg-red-50 text-red-800'
+                }`}
+              >
+                {message}
+              </div>
+            )}
+
+            <div className="mt-8 flex flex-col gap-3 border-t border-[#eef2f6] pt-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap gap-2">
+                {currentStep > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep((s) => Math.max(1, s - 1))}
+                    className={btnSecondaryClass}
+                  >
+                    Back
+                  </button>
+                )}
+                {currentStep < 3 && (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep((s) => Math.min(3, s + 1))}
+                    className={btnPrimaryClass}
+                  >
+                    Continue
+                  </button>
+                )}
+              </div>
+              <button
+                type="submit"
+                disabled={isLoading || logoUploading}
+                className={btnPrimaryClass}
+              >
+                {isLoading
+                  ? isOnboarding
+                    ? 'Submitting...'
+                    : 'Saving...'
+                  : isOnboarding
+                    ? 'Submit for review'
+                    : 'Save Profile'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </>
+  );
+
+  if (isOnboarding) {
+    return formCard;
   }
 
   return (
@@ -631,42 +876,10 @@ const ProfessionalProfileForm: React.FC = () => {
         title="Professional Profile"
         description="Keep your personal, professional, and practice details up to date."
       />
-
-      {renderTabNavigation()}
-
-      <Card className="border border-gray-200 shadow-sm">
-        <CardContent className="p-5 sm:p-8">
-          <form onSubmit={handleSubmit}>
-            {renderCurrentStep()}
-
-            {message && (
-              <div
-                className={`mt-6 rounded-xl p-4 text-sm ${
-                  message.includes('successfully')
-                    ? 'bg-emerald-50 text-emerald-800'
-                    : message.includes('Could not load')
-                      ? 'bg-amber-50 text-amber-800'
-                      : 'bg-red-50 text-red-800'
-                }`}
-              >
-                {message}
-              </div>
-            )}
-
-            <div className="mt-8 flex justify-end border-t border-gray-100 pt-6">
-              <Button
-                type="submit"
-                disabled={isLoading}
-                className="rounded-xl bg-anixi-green px-8 py-2.5 text-white hover:bg-anixi-green/90 disabled:opacity-50"
-              >
-                {isLoading ? 'Saving...' : 'Save Profile'}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+      {formCard}
     </PageShell>
   );
 };
 
 export default ProfessionalProfileForm;
+export { ProfessionalProfileForm };

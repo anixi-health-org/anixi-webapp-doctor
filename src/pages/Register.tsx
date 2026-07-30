@@ -64,7 +64,7 @@ export const Register: React.FC = () => {
         role,
         role === 'doctor' ? country : undefined
       );
-      navigate(role === 'caregiver' ? '/caregiver' : '/dashboard', { replace: true });
+      navigate(role === 'caregiver' ? '/caregiver' : '/onboarding', { replace: true });
     } catch (err: unknown) {
       const firebaseErr = err as { code?: string; message?: string };
       if (firebaseErr.code === 'auth/email-already-in-use') {

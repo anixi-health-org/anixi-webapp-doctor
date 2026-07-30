@@ -5,7 +5,9 @@ import { USERS_COLLECTION } from '../shared/constants';
 export type PatientNotificationType =
   | 'booking_confirmed'
   | 'booking_cancelled'
-  | 'booking_reminder';
+  | 'booking_rescheduled'
+  | 'booking_reminder'
+  | 'invoice_resent';
 
 export interface PatientNotificationPayload {
   type: PatientNotificationType;

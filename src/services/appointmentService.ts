@@ -198,6 +198,58 @@ const normalizePostConsultActions = (value: any): PostConsultAction[] => {
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 };
 
+const normalizeTeleconsult = (value: any): Appointment['teleconsult'] | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  return {
+    provider: value.provider === 'livekit' ? 'livekit' : undefined,
+    roomName: typeof value.roomName === 'string' ? value.roomName : undefined,
+    status: typeof value.status === 'string' ? value.status : undefined,
+    doctorJoinedAt: convertTimestamp(value.doctorJoinedAt) || undefined,
+    patientJoinedAt: convertTimestamp(value.patientJoinedAt) || undefined,
+    endedAt: convertTimestamp(value.endedAt) || undefined,
+    updatedAt: convertTimestamp(value.updatedAt) || undefined,
+  };
+};
+
+const mapAppointmentFields = (
+  id: string,
+  doctorId: string,
+  data: Record<string, any>
+): Appointment => ({
+  id,
+  doctorId,
+  patientId: data.patientId || 'unknown',
+  patientName: data.patientName || 'Patient',
+  patientEmail: data.patientEmail || '',
+  type: normalizeType(data.type),
+  status: normalizeStatus(data.status),
+  date: convertTimestamp(data.date) || new Date(),
+  time: normalizeAppointmentTime(data.time, data.startAt || data.date),
+  notes: data.notes || '',
+  documents: normalizeAppointmentDocuments(data.documents),
+  postConsultActions: normalizePostConsultActions(data.postConsultActions),
+  isManual: data.isManual ?? false,
+  practiceId: data.practiceId || undefined,
+  locationId: data.locationId || undefined,
+  consultType: data.consultType || undefined,
+  teleconsult: normalizeTeleconsult(data.teleconsult),
+  teleconsultConsent: data.teleconsultConsent
+    ? {
+        obtained: Boolean(data.teleconsultConsent.obtained),
+        at: convertTimestamp(data.teleconsultConsent.at) || undefined,
+        by: typeof data.teleconsultConsent.by === 'string' ? data.teleconsultConsent.by : undefined,
+      }
+    : undefined,
+  virtualMeetingLink: typeof data.virtualMeetingLink === 'string' ? data.virtualMeetingLink : undefined,
+  startAt: convertTimestamp(data.startAt) || undefined,
+  endAt: convertTimestamp(data.endAt) || undefined,
+  requestedByRole: data.requestedByRole || undefined,
+  overrideApplied: data.overrideApplied ?? undefined,
+  conflictMeta: data.conflictMeta || undefined,
+  createdAt: convertTimestamp(data.createdAt) || convertTimestamp(data.date) || new Date(),
+  updatedAt: convertTimestamp(data.updatedAt) || convertTimestamp(data.date) || new Date(),
+});
+
 /**
  * Applies auto-cancellation rule to pending appointments whose date/time has passed
  * Updates Firestore for both global collection and doctor's subcollection
@@ -324,25 +376,7 @@ export const getDoctorAppointments = async (doctorId: string): Promise<Appointme
       globalSnapshot.forEach((doc) => {
         const data = doc.data();
         try {
-          appointments.push({
-            id: doc.id,
-            doctorId: data.doctorId,
-            patientId: data.patientId || 'unknown',
-            patientName: data.patientName || 'Patient',
-            patientEmail: data.patientEmail || '',
-            type: normalizeType(data.type),
-            status: normalizeStatus(data.status),
-            date: convertTimestamp(data.date) || new Date(),
-            time: normalizeAppointmentTime(data.time, data.startAt || data.date),
-            notes: data.notes || '',
-            documents: normalizeAppointmentDocuments(data.documents),
-            postConsultActions: normalizePostConsultActions(data.postConsultActions),
-            isManual: data.isManual ?? false,
-            startAt: convertTimestamp(data.startAt) || undefined,
-            endAt: convertTimestamp(data.endAt) || undefined,
-            createdAt: convertTimestamp(data.createdAt) || convertTimestamp(data.date) || new Date(),
-            updatedAt: convertTimestamp(data.updatedAt) || convertTimestamp(data.date) || new Date(),
-          });
+          appointments.push(mapAppointmentFields(doc.id, data.doctorId || doctorId, data));
         } catch (error) {
           console.error('Error parsing global appointment:', error);
         }
@@ -359,27 +393,7 @@ export const getDoctorAppointments = async (doctorId: string): Promise<Appointme
           
           const exists = appointments.some(apt => apt.id === doc.id);
           if (!exists) {
-            
-            
-            appointments.push({
-              id: doc.id,
-              doctorId: doctorId,
-              patientId: data.patientId || 'unknown',
-              patientName: data.patientName || 'Patient',
-              patientEmail: data.patientEmail || '',
-              type: normalizeType(data.type),
-              status: normalizeStatus(data.status),
-              date: convertTimestamp(data.date) || new Date(),
-              time: normalizeAppointmentTime(data.time, data.startAt || data.date),
-              notes: data.notes || '',
-              documents: normalizeAppointmentDocuments(data.documents),
-              postConsultActions: normalizePostConsultActions(data.postConsultActions),
-              isManual: data.isManual ?? false,
-              startAt: convertTimestamp(data.startAt) || undefined,
-              endAt: convertTimestamp(data.endAt) || undefined,
-              createdAt: convertTimestamp(data.createdAt) || convertTimestamp(data.date) || new Date(),
-              updatedAt: convertTimestamp(data.updatedAt) || convertTimestamp(data.date) || new Date(),
-            });
+            appointments.push(mapAppointmentFields(doc.id, doctorId, data));
           }
         } catch (error) {
           console.error('Error parsing doctor subcollection appointment:', error);
@@ -410,25 +424,7 @@ export const getAppointmentById = async (
       return null;
     }
     const data = appointmentDoc.data();
-    const appointment: Appointment = {
-      id: appointmentDoc.id,
-      doctorId: doctorId,
-      patientId: data.patientId || 'unknown',
-      patientName: data.patientName || 'Patient',
-      patientEmail: data.patientEmail || '',
-      type: normalizeType(data.type),
-      status: normalizeStatus(data.status),
-      date: convertTimestamp(data.date) || new Date(),
-      time: normalizeAppointmentTime(data.time, data.startAt || data.date),
-      notes: data.notes || '',
-      documents: normalizeAppointmentDocuments(data.documents),
-      postConsultActions: normalizePostConsultActions(data.postConsultActions),
-      isManual: data.isManual ?? false,
-      startAt: convertTimestamp(data.startAt) || undefined,
-      endAt: convertTimestamp(data.endAt) || undefined,
-      createdAt: convertTimestamp(data.createdAt) || convertTimestamp(data.date) || new Date(),
-      updatedAt: convertTimestamp(data.updatedAt) || convertTimestamp(data.date) || new Date(),
-    };
+    const appointment: Appointment = mapAppointmentFields(appointmentDoc.id, doctorId, data);
 
     // Apply auto-cancellation rule if applicable
     const wasAutoCancelled = await applyAutoCancellationToAppointment(
@@ -582,6 +578,18 @@ export const updateAppointment = async (
     }
     if (updates.date) {
       updateData.date = Timestamp.fromDate(updates.date);
+    }
+    if (updates.teleconsultConsent) {
+      updateData.teleconsultConsent = {
+        ...updates.teleconsultConsent,
+        at: updates.teleconsultConsent.at
+          ? Timestamp.fromDate(
+              updates.teleconsultConsent.at instanceof Date
+                ? updates.teleconsultConsent.at
+                : new Date(updates.teleconsultConsent.at)
+            )
+          : serverTimestamp(),
+      };
     }
     delete updateData.id;
     delete updateData.doctorId;
@@ -822,22 +830,7 @@ export const getMobileAppAppointments = async (doctorId: string): Promise<Appoin
     snapshot.docs.forEach((doc) => {
       const data = doc.data();
       try {
-        appointments.push({
-          id: doc.id,
-          doctorId: doctorId,
-          patientId: data.patientId || 'unknown',
-          patientName: data.patientName || 'Patient',
-          patientEmail: data.patientEmail || '',
-          type: normalizeType(data.type),
-          status: normalizeStatus(data.status),
-          date: convertTimestamp(data.date) || new Date(),
-          time: data.time || '10:00 AM',
-          notes: data.notes || '',
-          documents: normalizeAppointmentDocuments(data.documents),
-          postConsultActions: normalizePostConsultActions(data.postConsultActions),
-          createdAt: convertTimestamp(data.createdAt) || convertTimestamp(data.date) || new Date(),
-          updatedAt: convertTimestamp(data.updatedAt) || convertTimestamp(data.date) || new Date(),
-        });
+        appointments.push(mapAppointmentFields(doc.id, doctorId, data));
       } catch (error) {
         console.error('Error parsing mobile appointment:', error);
       }
@@ -860,22 +853,7 @@ export const getPatientAppointments = async (patientId: string): Promise<Appoint
       patientSnapshot.forEach((doc) => {
         const data = doc.data();
         try {
-          appointments.push({
-            id: doc.id,
-            doctorId: data.doctorId,
-            patientId: data.patientId,
-            patientName: data.patientName || 'Patient',
-            patientEmail: data.patientEmail || '',
-            type: normalizeType(data.type),
-            status: normalizeStatus(data.status),
-            date: convertTimestamp(data.date) || new Date(),
-            time: data.time || '10:00 AM',
-            notes: data.notes || '',
-            documents: normalizeAppointmentDocuments(data.documents),
-            postConsultActions: normalizePostConsultActions(data.postConsultActions),
-            createdAt: convertTimestamp(data.createdAt) || new Date(),
-            updatedAt: convertTimestamp(data.updatedAt) || new Date(),
-          });
+          appointments.push(mapAppointmentFields(doc.id, data.doctorId || 'unknown', data));
         } catch (error) {
         }
       });
@@ -892,22 +870,7 @@ export const getPatientAppointments = async (patientId: string): Promise<Appoint
           
           const exists = appointments.some(apt => apt.id === doc.id);
           if (!exists) {
-            appointments.push({
-              id: doc.id,
-              doctorId: data.doctorId,
-              patientId: data.patientId,
-              patientName: data.patientName || 'Patient',
-              patientEmail: data.patientEmail || '',
-              type: normalizeType(data.type),
-              status: normalizeStatus(data.status),
-              date: convertTimestamp(data.date) || new Date(),
-              time: data.time || '10:00 AM',
-              notes: data.notes || '',
-              documents: normalizeAppointmentDocuments(data.documents),
-              postConsultActions: normalizePostConsultActions(data.postConsultActions),
-              createdAt: convertTimestamp(data.createdAt) || new Date(),
-              updatedAt: convertTimestamp(data.updatedAt) || new Date(),
-            });
+            appointments.push(mapAppointmentFields(doc.id, data.doctorId || 'unknown', data));
           }
         } catch (error) {
         }

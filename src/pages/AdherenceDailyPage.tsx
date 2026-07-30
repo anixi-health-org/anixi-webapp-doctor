@@ -1,7 +1,8 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { DailyAdherenceView } from '../components/DailyAdherenceView';
+import { PageHeader, PageShell } from '../components/page-layout';
 import { useAuth } from '../hooks/useAuth';
 import { addDays, getDateString, parseLocalDate } from '../utils/dateFormatter';
 
@@ -14,11 +15,11 @@ export const AdherenceDailyPage: React.FC = () => {
 
   if (!patientId || !selectedDate) {
     return (
-      <div className="p-6 bg-anixi-beige min-h-screen">
-        <div className="p-4 bg-gray-50 border border-red-200 rounded-lg">
-          <p className="text-red-700">Invalid patient or date</p>
+      <PageShell>
+        <div className="rounded-[12px] border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          Invalid patient or date
         </div>
-      </div>
+      </PageShell>
     );
   }
 
@@ -27,35 +28,29 @@ export const AdherenceDailyPage: React.FC = () => {
   };
 
   return (
-    <div className="p-6 bg-anixi-beige min-h-screen">
-      <div className="max-w-6xl mx-auto space-y-4">
-        <div>
-          <button
-            onClick={() => navigate(`/patient-profile/${patientId}/adherence-calendar`)}
-            className="mb-3 px-4 py-2 bg-anixi-green text-white hover:opacity-90 rounded-lg transition-all"
-          >
-            ← Back to Calendar
-          </button>
-          <h1 className="text-3xl font-bold text-anixi-green">Daily Adherence</h1>
-          <p className="mt-1 text-anixi-green">Medication, mood, and vitals for selected date</p>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Daily Details</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <DailyAdherenceView
-              patientId={patientId}
-              doctorId={user?.id}
-              date={selectedDate}
-              onPreviousDay={() => goToDate(addDays(selectedDate, -1))}
-              onNextDay={() => goToDate(addDays(selectedDate, 1))}
-            />
-          </CardContent>
-        </Card>
+    <PageShell>
+      <button
+        type="button"
+        onClick={() => navigate(`/patient-profile/${patientId}/adherence-calendar`)}
+        className="mb-4 inline-flex h-9 items-center gap-2 rounded-[10px] border border-[#e1e7ef] bg-white px-3 text-sm font-medium text-[#344256] hover:border-[#427160]/40 hover:text-[#427160]"
+      >
+        <ArrowLeftIcon className="h-4 w-4" />
+        Back to Calendar
+      </button>
+      <PageHeader
+        title="Daily Adherence"
+        description="Medication, mood, and vitals for the selected date."
+      />
+      <div className="rounded-[12px] border border-[#e1e7ef] bg-white p-4 shadow-sm sm:p-6">
+        <DailyAdherenceView
+          patientId={patientId}
+          doctorId={user?.id}
+          date={selectedDate}
+          onPreviousDay={() => goToDate(addDays(selectedDate, -1))}
+          onNextDay={() => goToDate(addDays(selectedDate, 1))}
+        />
       </div>
-    </div>
+    </PageShell>
   );
 };
 

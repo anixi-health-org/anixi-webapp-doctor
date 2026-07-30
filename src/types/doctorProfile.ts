@@ -15,7 +15,9 @@ export interface ProfessionalProfileFormData {
   practiceLicenceUrl: string;
   practiceType: string;
   practiceName: string;
+  timezone: string;
   practiceNumber: string;
+  vatNumber: string;
   practiceFacility: string;
   province: string;
   city: string;
@@ -40,7 +42,9 @@ export const EMPTY_PROFILE_FORM: ProfessionalProfileFormData = {
   practiceLicenceUrl: '',
   practiceType: '',
   practiceName: '',
+  timezone: '',
   practiceNumber: '',
+  vatNumber: '',
   practiceFacility: '',
   province: '',
   city: '',

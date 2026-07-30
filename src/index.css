@@ -17,7 +17,7 @@
   h4,
   h5,
   h6 {
-    @apply font-heading;
+    @apply font-sans;
   }
 
   button,
@@ -26,6 +26,24 @@
   textarea,
   label {
     @apply font-sans;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-[10px] bg-[#427160] px-3.5 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-[#365c4f] hover:shadow-md active:scale-[0.98];
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-[10px] border border-[#e1e7ef] bg-[#f8fafc] px-3.5 py-2 text-sm font-medium text-[#344256] transition-all duration-200 hover:border-[#427160]/40 hover:bg-white hover:text-[#427160] hover:shadow-sm active:scale-[0.98];
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-[10px] px-3 py-2 text-sm font-medium text-[#344256] transition-all duration-200 hover:bg-[#f1f5f9] hover:text-[#427160] active:scale-[0.98];
+  }
+
+  .btn-outline {
+    @apply inline-flex w-full items-center justify-center rounded-[10px] border border-[#e1e7ef] bg-white px-3 py-2 text-sm font-medium text-[#344256] transition-all duration-200 hover:border-[#427160] hover:bg-[#eef4f1] hover:text-[#427160] hover:shadow-sm active:scale-[0.98];
   }
 }
 
@@ -50,7 +68,7 @@ code {
   --anixi-button-hover: #344842;
   --anixi-button-text: #ffffff;
   --anixi-button-disabled: #8fa19c;
-  --font-heading: 'Lora', Georgia, 'Times New Roman', serif;
+  --font-heading: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 

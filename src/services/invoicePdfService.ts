@@ -1,10 +1,13 @@
 import jsPDF from 'jspdf';
 import { Invoice } from '../types';
+import { SA_VAT_RATE, computeVatBreakdown } from '../lib/southAfrica';
 
 export interface DoctorLetterheadData {
   displayName: string;
   specialty?: string;
   licenseNumber?: string;
+  practiceNumberBhf?: string;
+  vatNumber?: string;
   phoneNumber?: string;
   email?: string;
   officeAddress?: string;
@@ -84,6 +87,8 @@ export async function generateInvoicePDF(
     doctor.displayName !== practiceName ? doctor.displayName : '',
     doctor.specialty ?? '',
     doctor.licenseNumber ? `HPCSA: ${doctor.licenseNumber}` : '',
+    doctor.practiceNumberBhf ? `BHF: ${doctor.practiceNumberBhf}` : '',
+    doctor.vatNumber ? `VAT: ${doctor.vatNumber}` : '',
     doctor.phoneNumber ? `Tel: ${doctor.phoneNumber}` : '',
     doctor.email ?? '',
     doctor.officeAddress ?? '',
@@ -158,7 +163,16 @@ export async function generateInvoicePDF(
     doc.setFillColor(...fill);
     doc.rect(MARGIN, y, CONTENT_W, ROW_H, 'F');
     doc.setFontSize(9);
-    doc.text(item.description, COL_DESC + 2, y + 4.5);
+    const descLines: string[] = [item.description];
+    if (item.icd10Code) {
+      const icdLabel = item.icd10Description
+        ? `ICD-10: ${item.icd10Code} — ${item.icd10Description}`
+        : `ICD-10: ${item.icd10Code}`;
+      descLines.push(icdLabel);
+    }
+    const descText = descLines.join('\n');
+    const wrappedDesc = doc.splitTextToSize(descText, COL_QTY - COL_DESC - 4) as string[];
+    doc.text(wrappedDesc, COL_DESC + 2, y + 4.5);
     doc.text(String(item.quantity), COL_QTY + 2, y + 4.5);
     doc.text(fmtZAR(item.amount * item.quantity), COL_AMT + 2, y + 4.5);
     doc.setDrawColor(220, 220, 220);
@@ -169,7 +183,28 @@ export async function generateInvoicePDF(
 
   y += 5;
 
-  // ── Total row ─────────────────────────────────────────────────────────────
+  const vatRate = invoice.vatRate ?? SA_VAT_RATE;
+  const subtotalExVat =
+    invoice.subtotalExVat ??
+    invoice.lineItems.reduce((sum, item) => sum + item.amount * item.quantity, 0);
+  const vatBreakdown = computeVatBreakdown(subtotalExVat, vatRate);
+  const vatAmount = invoice.vatAmount ?? vatBreakdown.vatAmount;
+  const totalIncl = invoice.totalAmount ?? vatBreakdown.total;
+  const vatPctLabel = `${Math.round(vatRate * 100)}%`;
+
+  doc.setLineWidth(0.3);
+  doc.setDrawColor(200, 200, 200);
+  doc.line(COL_AMT, y, PAGE_W - MARGIN, y);
+  y += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(60, 60, 60);
+  doc.text('Subtotal (ex VAT):', COL_AMT + 2, y);
+  doc.text(fmtZAR(subtotalExVat), PAGE_W - MARGIN, y, { align: 'right' });
+  y += 6;
+  doc.text(`VAT (${vatPctLabel}):`, COL_AMT + 2, y);
+  doc.text(fmtZAR(vatAmount), PAGE_W - MARGIN, y, { align: 'right' });
+  y += 6;
   doc.setLineWidth(0.5);
   doc.setDrawColor(...BRAND_RGB);
   doc.line(COL_AMT, y, PAGE_W - MARGIN, y);
@@ -177,8 +212,8 @@ export async function generateInvoicePDF(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(...BRAND_RGB);
-  doc.text('Total:', COL_AMT + 2, y);
-  doc.text(fmtZAR(invoice.totalAmount), PAGE_W - MARGIN, y, { align: 'right' });
+  doc.text('Total (incl VAT):', COL_AMT + 2, y);
+  doc.text(fmtZAR(totalIncl), PAGE_W - MARGIN, y, { align: 'right' });
 
   if (invoice.paidAt) {
     y += 7;
@@ -188,8 +223,19 @@ export async function generateInvoicePDF(
     doc.text(`Paid on ${fmtDate(invoice.paidAt)}`, PAGE_W - MARGIN, y, { align: 'right' });
   }
 
-  // ── Notes ─────────────────────────────────────────────────────────────────
+  // ── Notes & payment details ───────────────────────────────────────────────
+  const noteSections: string[] = [];
+  if (invoice.paymentReference) {
+    noteSections.push(`Payment reference: ${invoice.paymentReference}`);
+  }
+  if (invoice.bankDetailsNote) {
+    noteSections.push(`Bank details: ${invoice.bankDetailsNote}`);
+  }
   if (invoice.notes) {
+    noteSections.push(invoice.notes);
+  }
+
+  if (noteSections.length > 0) {
     y += 14;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
@@ -197,8 +243,11 @@ export async function generateInvoicePDF(
     doc.text('Notes:', MARGIN, y);
     y += 5;
     doc.setFont('helvetica', 'normal');
-    const noteLines = doc.splitTextToSize(invoice.notes, CONTENT_W);
-    doc.text(noteLines, MARGIN, y);
+    for (const section of noteSections) {
+      const noteLines = doc.splitTextToSize(section, CONTENT_W);
+      doc.text(noteLines, MARGIN, y);
+      y += noteLines.length * 5 + 3;
+    }
   }
 
   // ── Footer ────────────────────────────────────────────────────────────────

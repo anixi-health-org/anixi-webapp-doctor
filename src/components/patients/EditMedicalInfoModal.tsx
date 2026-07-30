@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Patient } from '../../types';
+import { SA_MEDICAL_SCHEMES } from '../../lib/southAfrica';
 
 interface TreatmentFormRow {
   name: string;
@@ -28,6 +29,7 @@ function formatListInput(items?: string[]): string {
 
 export const EditMedicalInfoModal: React.FC<Props> = ({ isOpen, patient, onClose, onSave }) => {
   const [aidProvider, setAidProvider] = useState('');
+  const [aidProviderCustom, setAidProviderCustom] = useState('');
   const [aidMemberNumber, setAidMemberNumber] = useState('');
   const [aidGroupNumber, setAidGroupNumber] = useState('');
   const [chronicDiseasesText, setChronicDiseasesText] = useState('');
@@ -39,6 +41,13 @@ export const EditMedicalInfoModal: React.FC<Props> = ({ isOpen, patient, onClose
   useEffect(() => {
     if (!isOpen) return;
     setAidProvider(patient.medicalAid?.provider || '');
+    const provider = patient.medicalAid?.provider || '';
+    if (provider && !SA_MEDICAL_SCHEMES.includes(provider as (typeof SA_MEDICAL_SCHEMES)[number])) {
+      setAidProvider('Other');
+      setAidProviderCustom(provider);
+    } else {
+      setAidProviderCustom('');
+    }
     setAidMemberNumber(patient.medicalAid?.memberNumber || '');
     setAidGroupNumber(patient.medicalAid?.groupNumber || '');
     setChronicDiseasesText(formatListInput(patient.chronicDiseases));
@@ -90,8 +99,10 @@ export const EditMedicalInfoModal: React.FC<Props> = ({ isOpen, patient, onClose
           startDate: t.startDate ? new Date(t.startDate) : new Date(),
         }));
 
+      const resolvedProvider =
+        aidProvider === 'Other' ? aidProviderCustom.trim() : aidProvider.trim();
       const hasMedicalAid =
-        aidProvider.trim() || aidMemberNumber.trim() || aidGroupNumber.trim();
+        resolvedProvider || aidMemberNumber.trim() || aidGroupNumber.trim();
 
       const updates: Partial<Patient> = {
         chronicDiseases,
@@ -99,7 +110,7 @@ export const EditMedicalInfoModal: React.FC<Props> = ({ isOpen, patient, onClose
         currentTreatments,
         medicalAid: hasMedicalAid
           ? {
-              provider: aidProvider.trim(),
+              provider: resolvedProvider,
               memberNumber: aidMemberNumber.trim(),
               ...(aidGroupNumber.trim() ? { groupNumber: aidGroupNumber.trim() } : {}),
             }
@@ -133,12 +144,26 @@ export const EditMedicalInfoModal: React.FC<Props> = ({ isOpen, patient, onClose
           <section>
             <h3 className="text-sm font-semibold text-[#425950] mb-2">Medical aid</h3>
             <div className="space-y-2">
-              <input
+              <select
                 value={aidProvider}
                 onChange={(e) => setAidProvider(e.target.value)}
-                placeholder="Provider (e.g. Discovery)"
-                className="w-full px-3 py-2 border border-[#E7EDF4] rounded-lg text-sm"
-              />
+                className="w-full px-3 py-2 border border-[#E7EDF4] rounded-lg text-sm bg-white"
+              >
+                <option value="">Select medical scheme</option>
+                {SA_MEDICAL_SCHEMES.map((scheme) => (
+                  <option key={scheme} value={scheme}>
+                    {scheme}
+                  </option>
+                ))}
+              </select>
+              {aidProvider === 'Other' && (
+                <input
+                  value={aidProviderCustom}
+                  onChange={(e) => setAidProviderCustom(e.target.value)}
+                  placeholder="Enter scheme name"
+                  className="w-full px-3 py-2 border border-[#E7EDF4] rounded-lg text-sm"
+                />
+              )}
               <input
                 value={aidMemberNumber}
                 onChange={(e) => setAidMemberNumber(e.target.value)}

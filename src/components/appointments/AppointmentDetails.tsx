@@ -10,11 +10,20 @@ import {
 } from '../../services/appointmentService';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useAuth } from '../../hooks/AuthContext';
-import { updateScheduledAppointmentStatus, validateSlot } from '../../services/schedulingService';
-import { createInvoiceRecord } from '../../services/invoiceService';
+import {
+  createScheduledAppointment,
+  updateScheduledAppointmentStatus,
+  validateSlot,
+} from '../../services/schedulingService';
+import { createInvoiceRecord, invoiceOptionsFromDoctor } from '../../services/invoiceService';
 import { CreateAppointmentModal } from './CreateAppointmentModal';
 import { InvoiceModal } from './InvoiceModal';
 import { sendPatientNotification } from '../../services/notificationService';
+import {
+  canDoctorStartVideoCall,
+  formatAppointmentTypeLabel,
+  isWhatsAppComingSoon,
+} from '../../utils/teleconsult';
 
 interface AppointmentDetailsProps {
   appointment: Appointment;
@@ -98,7 +107,6 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   const [scanFile, setScanFile] = useState<File | null>(null);
   const [scanPreviewURL, setScanPreviewURL] = useState<string | null>(null);
   const [isSavingScan, setIsSavingScan] = useState(false);
-  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [documents, setDocuments] = useState<AppointmentDocument[]>(appointment.documents ?? []);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const safeDate = convertTimestamp(appointment.date) ?? new Date();
@@ -141,7 +149,6 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     appointment.status !== 'pending';
   const canGenerateInvoice = canManage;
   const isPendingAppointment = appointment.status === 'pending';
-  const canStartConsultation = canManage && appointment.status === 'confirmed';
 
   useEffect(() => {
     setDocuments(appointment.documents ?? []);
@@ -236,13 +243,15 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     }
 
     try {
-      // Create invoice
+      const doctorProfile = user.role === 'doctor' ? (user as import('../../types').Doctor) : null;
       await createInvoiceRecord(
         appointment.doctorId,
         appointment.patientId,
         appointment.id,
         lineItems,
-        notes
+        notes,
+        doctorProfile?.currency || 'ZAR',
+        invoiceOptionsFromDoctor(doctorProfile, appointment.id)
       );
 
       // Mark appointment as completed
@@ -285,17 +294,17 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   };
 
   const handleReschedule = async () => {
-    if (!onReschedule) return;
     setIsProcessing(true);
     setError(null);
     try {
-      const newDate = new Date(rescheduleDate);
+      const newDate = new Date(`${rescheduleDate}T00:00:00`);
       const [hours, minutes] = rescheduleTime.split(':').map(Number);
       const startAt = new Date(newDate);
-      startAt.setHours(hours, minutes, 0, 0);
+      startAt.setHours(hours || 0, minutes || 0, 0, 0);
       const endAt = new Date(startAt.getTime() + 30 * 60_000);
+      const timeLabel = convertTo12Hour(rescheduleTime);
 
-      const practiceId = practiceSession?.practice?.id;
+      const practiceId = appointment.practiceId ?? practiceSession?.practice?.id;
       let overrideApplied = false;
       let conflictMeta: Appointment['conflictMeta'] = undefined;
 
@@ -316,14 +325,20 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               softBlockId: validation.softBlock?.id,
               reason: `Soft block override: ${validation.softBlock?.title ?? 'blocked time'}`,
             };
+          } else if (
+            validation.reason === 'outside_bookable_block' &&
+            can('manageAppointments')
+          ) {
+            overrideApplied = true;
+            conflictMeta = { reason: 'Rescheduled outside clinic hours by practitioner' };
           } else {
             const reasonMessage =
               validation.reason === 'outside_bookable_block'
-                ? 'The selected time is outside configured bookable blocks.'
+                ? 'The selected time is outside clinic hours.'
                 : validation.reason === 'consult_type_not_allowed'
-                ? 'This consult type is not allowed for that time block.'
+                ? 'This consult type is not allowed for that clinic session.'
                 : validation.reason === 'soft_block_conflict'
-                ? 'This time overlaps a soft block and you do not have override permission.'
+                ? 'This time overlaps blocked time and you do not have override permission.'
                 : validation.reason === 'appointment_conflict'
                 ? 'This time conflicts with another appointment.'
                 : 'This time slot is not available.';
@@ -336,22 +351,59 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
 
       await updateAppointment(appointment.doctorId, appointment.id, {
         date: startAt,
-        time: convertTo12Hour(rescheduleTime),
+        time: timeLabel,
         startAt,
         endAt,
         status: 'confirmed',
         overrideApplied,
         conflictMeta,
       });
-      
+
       await syncAppointmentStatus(appointment.id);
-      await syncPracticeAppointmentStatus('confirmed');
-      onReschedule(appointment.id, startAt, convertTo12Hour(rescheduleTime));
+
+      if (practiceId) {
+        await createScheduledAppointment({
+          appointmentId: appointment.id,
+          practiceId,
+          doctorId: appointment.doctorId,
+          patientId: appointment.patientId,
+          patientName: appointment.patientName,
+          patientEmail: appointment.patientEmail,
+          consultType: toConsultType(),
+          locationId: appointment.locationId ?? '',
+          startAt,
+          endAt,
+          notes: appointment.notes,
+          status: 'confirmed',
+          requestedByRole: 'doctor',
+          overrideApplied,
+          conflictMeta,
+        });
+      } else {
+        await syncPracticeAppointmentStatus('confirmed');
+      }
+
+      if (!appointment.isManual) {
+        sendPatientNotification(appointment.patientId, {
+          type: 'booking_rescheduled',
+          title: 'Appointment Rescheduled',
+          body: `Your appointment has been moved to ${startAt.toLocaleDateString('en-ZA', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+          })} at ${timeLabel}.`,
+          appointmentId: appointment.id,
+          doctorId: appointment.doctorId,
+        }).catch(() => {});
+      }
+
+      onReschedule?.(appointment.id, startAt, timeLabel);
+      onStatusChange?.(appointment.id, 'confirmed');
       setShowRescheduleModal(false);
       onClose();
     } catch (err) {
-      ;
-      setError('Failed to reschedule appointment');
+      console.error('Error rescheduling:', err);
+      setError(err instanceof Error ? err.message : 'Failed to reschedule appointment');
     } finally {
       setIsProcessing(false);
     }
@@ -417,134 +469,6 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
       state: { appointment },
     });
     onClose();
-    setIsGeneratingInvoice(true);
-    setError(null);
-
-    try {
-      const invoiceNumber = `INV-${appointment.id.slice(0, 8).toUpperCase()}`;
-      const issuedAt = new Date();
-      const issuedDate = issuedAt.toLocaleDateString('en-US');
-      const issuedTime = issuedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
-      const safePatientName = patientName.replace(/[&<>"']/g, (char) => {
-        const entities: Record<string, string> = {
-          '&': '&amp;',
-          '<': '&lt;',
-          '>': '&gt;',
-          '"': '&quot;',
-          "'": '&#39;',
-        };
-        return entities[char] || char;
-      });
-
-      const safePatientEmail = patientEmail.replace(/[&<>"']/g, (char) => {
-        const entities: Record<string, string> = {
-          '&': '&amp;',
-          '<': '&lt;',
-          '>': '&gt;',
-          '"': '&quot;',
-          "'": '&#39;',
-        };
-        return entities[char] || char;
-      });
-
-      const doctorName = (user as any)?.displayName || 'Doctor';
-      const doctorEmail = (user as any)?.email || '';
-
-      const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-      if (!printWindow) {
-        throw new Error('Popup blocked. Please allow popups to print invoices.');
-      }
-
-      printWindow.document.write(`
-        <!doctype html>
-        <html>
-          <head>
-            <meta charset="utf-8" />
-            <title>${invoiceNumber}</title>
-            <style>
-              body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
-              .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
-              .title { font-size: 28px; font-weight: 700; margin: 0; }
-              .meta { font-size: 13px; color: #4b5563; line-height: 1.6; }
-              .card { border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
-              .section-title { font-size: 14px; font-weight: 700; color: #374151; margin: 0 0 8px 0; text-transform: uppercase; }
-              .table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-              .table th, .table td { border-bottom: 1px solid #e5e7eb; text-align: left; padding: 10px 8px; font-size: 14px; }
-              .table th { color: #4b5563; font-weight: 600; }
-              .footer { margin-top: 20px; font-size: 12px; color: #6b7280; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <div style="display:flex;align-items:center;gap:12px;">
-                <img src="/anixi.png" alt="Anixi" style="width:80px;height:auto;object-fit:contain;"/>
-                <div style="margin-left:6px;">
-                  <h1 class="title">Invoice</h1>
-                  <div class="meta">
-                    <div><strong>No:</strong> ${invoiceNumber}</div>
-                    <div><strong>Issued:</strong> ${issuedDate} ${issuedTime}</div>
-                  </div>
-                </div>
-              </div>
-              <div class="meta" style="text-align: right;">
-                <div><strong>Doctor:</strong> ${doctorName}</div>
-                <div>${doctorEmail}</div>
-              </div>
-            </div>
-
-            <div class="card">
-              <p class="section-title">Patient</p>
-              <div class="meta">
-                <div><strong>Name:</strong> ${safePatientName}</div>
-                <div><strong>Email:</strong> ${safePatientEmail}</div>
-              </div>
-            </div>
-
-            <div class="card">
-              <p class="section-title">Appointment</p>
-              <div class="meta">
-                <div><strong>Date:</strong> ${fullDateFormatted}</div>
-                <div><strong>Time:</strong> ${appointmentTime}</div>
-                <div><strong>Type:</strong> ${appointmentType}</div>
-                <div><strong>Status:</strong> ${appointmentStatus}</div>
-                
-              </div>
-            </div>
-
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Description</th>
-                  <th>Qty</th>
-                  <th>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Consultation</td>
-                  <td>1</td>
-                  <td>To be completed</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <p class="footer">Generated from appointment record.</p>
-            <script>
-              window.onload = function() {
-                window.print();
-              };
-            </script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to generate invoice';
-      setError(message);
-    } finally {
-      setIsGeneratingInvoice(false);
-    }
   };
 
   return (
@@ -639,7 +563,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               <div>
                 <p className="text-xs font-semibold text-gray-600 uppercase mb-1">Type</p>
                 <p className="text-gray-900 font-medium">
-                  {getTypeIcon(appointment.type)} {String(appointmentType)}
+                  {getTypeIcon(appointment.type)} {formatAppointmentTypeLabel(appointment)}
                 </p>
               </div>
               <div>
@@ -766,31 +690,25 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
 
               {/* Secondary Actions */}
               <div className="space-y-3">
-                {canStartConsultation && (
+                {isWhatsAppComingSoon(appointment) && (
+                  <div className="w-full rounded-xl border-2 border-amber-200 bg-amber-50 py-3 px-4 text-sm font-medium text-amber-900">
+                    WhatsApp consult — Coming soon
+                  </div>
+                )}
+
+                {!isWhatsAppComingSoon(appointment) && canDoctorStartVideoCall(appointment) && (
                   <button
                     onClick={handleOpenPostConsult}
-                    disabled={isProcessing || isGeneratingInvoice}
+                    disabled={isProcessing}
                     className="w-full flex items-center justify-between gap-3 rounded-xl py-3 px-4 bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                   >
                     <span className="flex items-center gap-2">
                       <span className="text-lg">🩺</span>
-                      {isGeneratingInvoice ? 'Starting...' : 'Start consultation'}
+                      Start Consultation
                     </span>
                     <span className="text-lg">→</span>
                   </button>
                 )}
-
-                <button
-                  onClick={handleOpenPostConsult}
-                  disabled={isProcessing || isPendingAppointment || isGeneratingInvoice}
-                  className="w-full flex items-center justify-between gap-3 rounded-xl py-3 px-4 border-2 border-gray-200 bg-white text-gray-900 font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="text-lg">📝</span>
-                    {isGeneratingInvoice ? 'Starting...' : 'Post-consult workflow'}
-                  </span>
-                  <span>→</span>
-                </button>
 
                 <button
                   onClick={() => setShowRescheduleModal(true)}

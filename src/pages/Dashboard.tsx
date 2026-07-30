@@ -1,6 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../hooks/useAuth';
-import { ImprovedDashboard } from '../components/dashboard';
+import { V2Dashboard } from '../components/dashboard/V2Dashboard';
 import { AddPatientModal } from '../components/patients/AddPatientModal';
 import { PageShell } from '../components/page-layout';
 import {
@@ -8,6 +6,8 @@ import {
 } from '../services/patientManagementService';
 import { useIncomingSharingRequests } from '../hooks/useIncomingSharingRequests';
 import { Patient } from '../types';
+import { useAuth } from '../hooks/useAuth';
+import React, { useState, useEffect } from 'react';
 
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
@@ -113,7 +113,7 @@ export const Dashboard: React.FC = () => {
 
   return (
     <PageShell>
-      <ImprovedDashboard
+      <V2Dashboard
         patients={patients}
         patientsLoading={patientsLoading}
         patientsError={patientsError}

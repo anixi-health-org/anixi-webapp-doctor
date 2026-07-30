@@ -6,6 +6,8 @@ import { Toast } from '../components/ui';
 import { useAuth } from '../hooks/AuthContext';
 import { AuthLayout } from '../components/auth/AuthLayout';
 import { RegisterPrompt } from '../components/auth/AuthLinks';
+import { doctorHomePath } from '../lib/doctorAccess';
+import type { Doctor } from '../types';
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -37,7 +39,12 @@ export const Login: React.FC = () => {
       return;
     }
 
-    navigate(user.role === 'caregiver' ? '/caregiver' : '/dashboard', { replace: true });
+    navigate(
+      user.role === 'caregiver'
+        ? '/caregiver'
+        : doctorHomePath(user as Doctor),
+      { replace: true }
+    );
   }, [isLoading, isAuthenticated, user, returnUrl, navigate]);
 
   useEffect(() => {

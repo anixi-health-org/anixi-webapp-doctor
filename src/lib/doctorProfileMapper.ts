@@ -206,10 +206,15 @@ export function firestoreToFormData(data: FirestoreDoctor): ProfessionalProfileF
       '',
     practiceType: practiceTypeToForm(data.practiceType),
     practiceName: typeof data.practiceName === 'string' ? data.practiceName : '',
+    timezone:
+      (typeof data.timezone === 'string' && data.timezone) ||
+      (typeof data.practiceTimezone === 'string' && data.practiceTimezone) ||
+      '',
     practiceNumber:
       (typeof data.practiceNumberBhf === 'string' && data.practiceNumberBhf) ||
       (typeof data.practiceNumber === 'string' && data.practiceNumber) ||
       '',
+    vatNumber: typeof data.vatNumber === 'string' ? data.vatNumber : '',
     practiceFacility: facilityToForm(
       typeof data.practiceFacility === 'string' ? data.practiceFacility : undefined
     ),
@@ -254,7 +259,10 @@ export function formDataToFirestore(
     practiceLicenseUrl: form.practiceLicenceUrl || null,
     practiceType: practiceTypeToFirestore(form.practiceType),
     practiceName: form.practiceName,
+    timezone: form.timezone || null,
+    practiceTimezone: form.timezone || null,
     practiceNumberBhf: form.practiceNumber || null,
+    vatNumber: form.vatNumber || null,
     practiceFacility: facilityToFirestore(form.practiceFacility),
     practiceProvince: form.province.toLowerCase(),
     practiceCity: form.city,

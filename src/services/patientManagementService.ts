@@ -176,10 +176,27 @@ export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> =>
           return null;
         }
         const userData = userSnap.data();
+        const composedName = [
+          userData.firstName,
+          userData.lastName,
+        ]
+          .filter((part) => typeof part === 'string' && part.trim())
+          .join(' ')
+          .trim();
+        const resolvedName =
+          (typeof userData.displayName === 'string' && userData.displayName.trim()) ||
+          (typeof userData.fullName === 'string' && userData.fullName.trim()) ||
+          (typeof userData.name === 'string' && userData.name.trim()) ||
+          composedName ||
+          (typeof userData.Username === 'string' && userData.Username.trim()) ||
+          (typeof userData.email === 'string' && userData.email.includes('@')
+            ? userData.email.split('@')[0]
+            : '') ||
+          'Patient';
         return {
           id: patientId,
           email: userData.email || '',
-          displayName: userData.displayName || 'Patient',
+          displayName: resolvedName,
           role: 'patient' as const,
           dateOfBirth: userData.dateOfBirth?.toDate?.() || undefined,
           gender: userData.gender || undefined,

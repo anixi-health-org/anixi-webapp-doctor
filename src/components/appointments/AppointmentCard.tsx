@@ -1,7 +1,7 @@
 import React from 'react';
 import { Appointment } from '../../types';
 import { convertTimestamp } from '../../utils/dateFormatter';
-import { customColors } from '../../lib/customColors';
+import { formatAppointmentTypeLabel, isWhatsAppComingSoon } from '../../utils/teleconsult';
 
 interface AppointmentCardProps {
   appointment: Appointment;
@@ -11,19 +11,20 @@ interface AppointmentCardProps {
 const getStatusColor = (status: Appointment['status']): string => {
   switch (status) {
     case 'confirmed':
-      return 'bg-green-100 text-green-800 border-green-300';
+      return 'bg-emerald-50 text-emerald-800 border-emerald-200';
     case 'pending':
-      return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      return 'bg-amber-50 text-amber-800 border-amber-200';
     case 'completed':
-      return 'bg-gray-100 text-gray-800 border-gray-300';
+      return 'bg-slate-100 text-slate-700 border-slate-200';
     case 'cancelled':
-      return 'bg-red-100 text-red-800 border-red-300';
+      return 'bg-red-50 text-red-700 border-red-200';
     case 'no_show':
-      return 'bg-orange-100 text-orange-800 border-orange-300';
+      return 'bg-orange-50 text-orange-800 border-orange-200';
     default:
-      return `bg-[${customColors.backgroundLight}] text-[${customColors.textPrimary}] border-[${customColors.borderLight}]`;
+      return 'bg-slate-50 text-slate-700 border-slate-200';
   }
 };
+
 const getTypeIcon = (type: Appointment['type']): string => {
   switch (type) {
     case 'In-Person':
@@ -31,54 +32,64 @@ const getTypeIcon = (type: Appointment['type']): string => {
     case 'Virtual':
       return '📹';
     case 'Phone':
-      return '📞';
+      return '💬';
     case 'Follow-up':
       return '📋';
     default:
       return '📅';
   }
 };
+
 export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, onClick }) => {
   const appointmentDate = convertTimestamp(appointment.date) || new Date();
-  const dateFormatted = appointmentDate.toLocaleDateString('en-US', {
+  const dateShort = appointmentDate.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
-    year: 'numeric',
   });
-  const timeDisplay = typeof appointment.time === 'string' ? appointment.time : '10:00 AM';
-  const createdAtDate = convertTimestamp(appointment.createdAt) || new Date();
-  const createdAtFormatted = createdAtDate.toLocaleDateString('en-US', {
-    month: '2-digit',
-    day: '2-digit',
-    year: 'numeric',
-  });
+  const timeDisplay = typeof appointment.time === 'string' ? appointment.time : '—';
+  const typeLabel = formatAppointmentTypeLabel(appointment);
+
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
-      className={`border rounded-3xl p-5 cursor-pointer transition-all duration-200 bg-white ${appointment.status === 'cancelled' ? 'opacity-80' : ''} shadow-sm hover:shadow-md`}
+      className={`grid w-full grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto] items-center gap-3 border-b border-[#eef2f6] px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-[#f4f7f5] sm:gap-4 sm:px-4 ${
+        appointment.status === 'cancelled' ? 'opacity-70' : ''
+      }`}
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3 min-w-0">
-          <div className="h-11 w-11 rounded-2xl bg-white/80 border border-white shadow-sm flex items-center justify-center text-xl">
-            {getTypeIcon(appointment.type)}
-          </div>
-          <div className="min-w-0">
-            <h3 className="font-semibold text-gray-900 text-sm truncate">👤 {String(appointment.patientName)}</h3>
-            <p className="text-xs text-gray-500 mt-1 truncate">{String(appointment.patientEmail)}</p>
-            <p className="text-[26px] leading-none font-bold text-[#0E2340] mt-2">{String(dateFormatted)}</p>
-            <p className="text-sm text-gray-700 mt-1">{String(timeDisplay)}</p>
-            <p className="text-xs text-gray-500 mt-2">Created {createdAtFormatted}</p>
-          </div>
-        </div>
-        <div className="flex flex-col items-end justify-between">
-          <span className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap border ${getStatusColor(appointment.status)}`}>{String(appointment.status)}</span>
-          <div className="text-sm text-gray-700 mt-4">{appointment.type}</div>
-        </div>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-[#0E2340]">{dateShort}</p>
+        <p className="mt-0.5 text-xs font-medium text-[#65758b]">{timeDisplay}</p>
       </div>
-      {appointment.notes && (
-        <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded mt-4 line-clamp-2 italic">"{appointment.notes}"</div>
-      )}
-    </div>
+
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-[#344256]">{appointment.patientName}</p>
+        <p className="mt-0.5 truncate text-xs text-[#94a3b8]">
+          {appointment.patientEmail || 'No email'}
+        </p>
+      </div>
+
+      <div className="hidden min-w-0 items-center gap-1.5 sm:flex">
+        <span className="text-sm leading-none" aria-hidden>
+          {getTypeIcon(appointment.type)}
+        </span>
+        <span
+          className={`truncate text-xs font-medium ${
+            isWhatsAppComingSoon(appointment) ? 'text-amber-700' : 'text-[#65758b]'
+          }`}
+        >
+          {typeLabel}
+        </span>
+      </div>
+
+      <span
+        className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize ${getStatusColor(
+          appointment.status
+        )}`}
+      >
+        {appointment.status.replace('_', ' ')}
+      </span>
+    </button>
   );
 };

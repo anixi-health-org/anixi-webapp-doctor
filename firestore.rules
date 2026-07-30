@@ -201,6 +201,13 @@ service cloud.firestore {
     match /doctors/{doctorId} {
       allow read: if isSignedIn();
       allow write: if isSignedIn() && (uid() == doctorId || isAdmin());
+
+      // Patient-readable availability (derived from practice clinic hours).
+      // Patients must not read practices/.../bookableBlocks directly.
+      match /settings/{settingsDocId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn() && (uid() == doctorId || isAdmin());
+      }
     }
 
     match /admins/{adminId} {
@@ -386,6 +393,41 @@ service cloud.firestore {
       match /dailySchedule/{dateId} {
         allow read: if isSignedIn() && isMember(practiceId);
         allow write: if isSignedIn() && isMember(practiceId);
+      }
+    }
+
+    // ─── Patient ↔ Doctor messaging (shared with mobile) ───────────────────────
+
+    function isConversationParticipant(participantIds) {
+      return isSignedIn() && request.auth.uid in participantIds;
+    }
+
+    match /conversations/{conversationId} {
+      allow read: if isConversationParticipant(resource.data.participantIds);
+      allow create: if isSignedIn()
+        && request.auth.uid in request.resource.data.participantIds
+        && request.resource.data.participantIds.size() == 2;
+      allow update: if isConversationParticipant(resource.data.participantIds)
+        && request.auth.uid in request.resource.data.participantIds;
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isConversationParticipant(
+          get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds
+        );
+        allow create: if isSignedIn()
+          && request.resource.data.senderId == request.auth.uid
+          && request.auth.uid in get(
+            /databases/$(database)/documents/conversations/$(conversationId)
+          ).data.participantIds;
+        allow update: if isSignedIn()
+          && request.auth.uid in get(
+            /databases/$(database)/documents/conversations/$(conversationId)
+          ).data.participantIds
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
+          && request.auth.uid in request.resource.data.readBy
+          && request.resource.data.readBy.hasAll(resource.data.readBy);
+        allow delete: if false;
       }
     }
   }
