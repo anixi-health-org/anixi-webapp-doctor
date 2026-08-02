@@ -44,7 +44,6 @@ export const AppointmentSummary: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showManage, setShowManage] = useState(false);
-  const [loadingComplete, setLoadingComplete] = useState(false);
   const [loadingConfirm, setLoadingConfirm] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
     visible: false,
@@ -104,19 +103,6 @@ export const AppointmentSummary: React.FC = () => {
 
   const onUpdated = (u: Partial<Appointment>) => {
     setAppointment((prev) => (prev ? { ...prev, ...u } : prev));
-  };
-
-  const markCompleted = async () => {
-    if (!user?.id || !appointment) return;
-    try {
-      setLoadingComplete(true);
-      await updateAppointment(user.id, appointment.id, { status: 'completed' });
-      setAppointment({ ...appointment, status: 'completed' });
-    } catch (err) {
-      setError('Failed to mark appointment completed');
-    } finally {
-      setLoadingComplete(false);
-    }
   };
 
   const confirmAppointment = async () => {
@@ -271,14 +257,6 @@ export const AppointmentSummary: React.FC = () => {
             className="inline-flex h-10 items-center justify-center rounded-[10px] border border-[#e1e7ef] bg-white px-4 text-sm font-semibold text-[#344256] hover:border-anixi-green/40 hover:text-anixi-green"
           >
             Manage appointment
-          </button>
-          <button
-            type="button"
-            onClick={markCompleted}
-            disabled={loadingComplete || appointment.status === 'completed'}
-            className="inline-flex h-10 items-center justify-center rounded-[10px] border border-[#e1e7ef] bg-white px-4 text-sm font-semibold text-[#344256] hover:border-anixi-green/40 disabled:opacity-50"
-          >
-            {loadingComplete ? 'Saving…' : appointment.status === 'completed' ? 'Visit completed' : 'Mark visit completed'}
           </button>
         </div>
       </div>
