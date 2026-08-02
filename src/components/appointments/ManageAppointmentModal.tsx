@@ -17,7 +17,17 @@ interface Props {
   onUpdated?: (updated: Partial<Appointment>) => void;
 }
 
-type ActionType = 'accept' | 'decline' | 'move' | 'cancel' | 'no_show' | 'invoice';
+type ActionType = 'accept' | 'decline' | 'move' | 'cancel' | 'no_show' | 'complete' | 'invoice';
+
+const ACTION_VISIBILITY: Record<ActionType, Appointment['status'][]> = {
+  accept: ['pending'],
+  decline: ['pending'],
+  move: ['pending', 'confirmed'],
+  cancel: ['pending', 'confirmed'],
+  no_show: ['confirmed'],
+  complete: ['confirmed'],
+  invoice: ['confirmed', 'completed'],
+};
 
 interface Action {
   id: ActionType;
@@ -286,6 +296,20 @@ export const ManageAppointmentModal: React.FC<Props> = ({ appointment, onClose, 
       },
     },
     {
+      id: 'complete',
+      label: 'Mark visit completed',
+      icon: '🏁',
+      description: 'Finish and close out this visit',
+      color: 'success',
+      handler: async () => {
+        if (!user?.id) return;
+        await updateAppointment(user.id, appointment.id, { status: 'completed' });
+        await syncAppointmentStatus(appointment.id);
+        await syncPracticeStatus('completed');
+        onUpdated?.({ status: 'completed' });
+      },
+    },
+    {
       id: 'invoice',
       label: 'Invoice',
       icon: '💰',
@@ -297,6 +321,10 @@ export const ManageAppointmentModal: React.FC<Props> = ({ appointment, onClose, 
       },
     },
   ];
+
+  const visibleActions = actions.filter((a) =>
+    ACTION_VISIBILITY[a.id].includes(appointment.status)
+  );
 
   const runAction = async (id: string) => {
     const a = actions.find((x) => x.id === id);
@@ -413,8 +441,11 @@ export const ManageAppointmentModal: React.FC<Props> = ({ appointment, onClose, 
               {error}
             </div>
           )}
+          {visibleActions.length === 0 && (
+            <p className="text-sm text-gray-500">No actions are available for this appointment.</p>
+          )}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {actions.map((act) => (
+            {visibleActions.map((act) => (
               <button
                 key={act.id}
                 onClick={() => void runAction(act.id)}
