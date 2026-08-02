@@ -1,10 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getAppointmentById, getDoctorAppointments, updateAppointment } from '../services/appointmentService';
+import {
+  getAppointmentById,
+  getDoctorAppointments,
+  updateAppointment,
+  syncAppointmentStatus,
+} from '../services/appointmentService';
+import { updateScheduledAppointmentStatus } from '../services/schedulingService';
+import { sendPatientNotification } from '../services/notificationService';
 import { useAuth } from '../hooks/useAuth';
+import { usePermissions } from '../hooks/usePermissions';
 import { Appointment } from '../types';
 import ManageAppointmentModal from '../components/appointments/ManageAppointmentModal';
-import { DetailPageSkeleton } from '../components/ui';
+import { DetailPageSkeleton, Toast } from '../components/ui';
 import { PageShell } from '../components/page-layout';
 import {
   formatAppointmentTypeLabel,
@@ -30,12 +38,19 @@ const statusClass = (status: Appointment['status']) => {
 
 export const AppointmentSummary: React.FC = () => {
   const { appointmentId } = useParams<{ appointmentId: string }>();
-  const { user } = useAuth();
+  const { user, practiceSession } = useAuth();
+  const { can } = usePermissions();
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showManage, setShowManage] = useState(false);
   const [loadingComplete, setLoadingComplete] = useState(false);
+  const [loadingConfirm, setLoadingConfirm] = useState(false);
+  const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -104,6 +119,45 @@ export const AppointmentSummary: React.FC = () => {
     }
   };
 
+  const confirmAppointment = async () => {
+    if (!user?.id || !appointment) return;
+    setLoadingConfirm(true);
+    try {
+      await updateAppointment(user.id, appointment.id, { status: 'confirmed' });
+      await syncAppointmentStatus(appointment.id);
+
+      const practiceId = appointment.practiceId ?? practiceSession?.practice?.id;
+      if (practiceId) {
+        await updateScheduledAppointmentStatus(practiceId, appointment.id, 'confirmed', {
+          doctorId: appointment.doctorId,
+          patientId: appointment.patientId,
+          startAt: appointment.startAt ?? appointment.date,
+        });
+      }
+
+      if (!appointment.isManual) {
+        sendPatientNotification(appointment.patientId, {
+          type: 'booking_confirmed',
+          title: 'Appointment Confirmed',
+          body: `Your appointment on ${appointment.date.toLocaleDateString('en-ZA', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+          })} at ${appointment.time} has been confirmed.`,
+          appointmentId: appointment.id,
+          doctorId: appointment.doctorId,
+        }).catch(() => {});
+      }
+
+      setAppointment({ ...appointment, status: 'confirmed' });
+      setToast({ visible: true, message: 'Appointment confirmed.', type: 'success' });
+    } catch (err) {
+      setToast({ visible: true, message: 'Failed to confirm appointment', type: 'error' });
+    } finally {
+      setLoadingConfirm(false);
+    }
+  };
+
   const dateLabel = appointment.date.toLocaleDateString(undefined, {
     weekday: 'long',
     month: 'short',
@@ -113,6 +167,13 @@ export const AppointmentSummary: React.FC = () => {
 
   return (
     <PageShell>
+      {toast.visible && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ visible: false, message: '', type: 'success' })}
+        />
+      )}
       <div className="mb-5 flex items-center gap-3">
         <button
           type="button"
@@ -178,6 +239,16 @@ export const AppointmentSummary: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-2 border-t border-[#eef2f6] bg-[#f8fafc] p-4 sm:flex-row sm:flex-wrap">
+          {appointment.status === 'pending' && can('manageAppointments') && (
+            <button
+              type="button"
+              onClick={confirmAppointment}
+              disabled={loadingConfirm}
+              className="inline-flex h-10 items-center justify-center rounded-[10px] bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {loadingConfirm ? 'Confirming…' : 'Confirm appointment'}
+            </button>
+          )}
           {isWhatsAppComingSoon(appointment) ? (
             <div className="inline-flex h-10 items-center rounded-[10px] border border-amber-200 bg-amber-50 px-4 text-sm font-medium text-amber-900">
               WhatsApp — Coming soon
@@ -199,7 +270,7 @@ export const AppointmentSummary: React.FC = () => {
             onClick={() => setShowManage(true)}
             className="inline-flex h-10 items-center justify-center rounded-[10px] border border-[#e1e7ef] bg-white px-4 text-sm font-semibold text-[#344256] hover:border-anixi-green/40 hover:text-anixi-green"
           >
-            Reschedule / cancel
+            Manage appointment
           </button>
           <button
             type="button"
