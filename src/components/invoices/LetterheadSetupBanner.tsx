@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, ImageIcon } from 'lucide-react';
 import type { Doctor } from '../../types';
 
-/** Fields the invoice PDF letterhead is built from — see invoicePdfService. */
+/** Fields the invoice PDF letterhead is built from - see invoicePdfService. */
 export const LETTERHEAD_FIELDS = [
   { key: 'logoUrl', label: 'Practice logo' },
   { key: 'practiceName', label: 'Practice name' },

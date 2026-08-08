@@ -15,7 +15,7 @@ import {
 } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
-import { USERS_COLLECTION, APPOINTMENTS_COLLECTION } from '../shared/constants';
+import { USERS_COLLECTION, APPOINTMENTS_COLLECTION, PRACTICES_COLLECTION, PRACTICE_APPOINTMENTS_SUBCOLLECTION } from '../shared/constants';
 import { Appointment, AppointmentDocument, PostConsultAction, PostConsultActionType } from '../types';
 import { convertTimestamp } from '../utils/dateFormatter';
 
@@ -231,7 +231,7 @@ const mapAppointmentFields = (
   isManual: data.isManual ?? false,
   practiceId: data.practiceId || undefined,
   locationId: data.locationId || undefined,
-  consultType: data.consultType || undefined,
+  consultType: data.consultType || data.consultationType || undefined,
   teleconsult: normalizeTeleconsult(data.teleconsult),
   teleconsultConsent: data.teleconsultConsent
     ? {
@@ -412,6 +412,32 @@ export const getDoctorAppointments = async (doctorId: string): Promise<Appointme
     throw error;
   }
 };
+
+/** All appointments for a clinic/practice (clinic admin schedule view). */
+export const getPracticeWideAppointments = async (practiceId: string): Promise<Appointment[]> => {
+  try {
+    const ref = collection(
+      db,
+      PRACTICES_COLLECTION,
+      practiceId,
+      PRACTICE_APPOINTMENTS_SUBCOLLECTION
+    );
+    const snap = await getDocs(ref);
+    const appointments = snap.docs.map((docSnap) => {
+      const data = docSnap.data();
+      const doctorId =
+        typeof data.doctorId === 'string' && data.doctorId.trim()
+          ? data.doctorId
+          : 'unknown';
+      return mapAppointmentFields(docSnap.id, doctorId, data);
+    });
+    return appointments.sort((a, b) => b.date.getTime() - a.date.getTime());
+  } catch (error) {
+    console.error('Error in getPracticeWideAppointments:', error);
+    throw error;
+  }
+};
+
 export const getAppointmentById = async (
   doctorId: string,
   appointmentId: string
@@ -454,25 +480,32 @@ export const createAppointment = async (data: Omit<Appointment, 'id' | 'createdA
     
     
     const globalAppointmentRef = collection(db, APPOINTMENTS_COLLECTION);
+    const normalizedType = normalizeType(data.type);
+    const consultType = data.consultType;
+    // Dual-write consult fields so the patient app can detect video visits.
+    const consultationType = consultType || (data as any).consultationType;
     const basePayload = {
       doctorId: data.doctorId,
       patientId: data.patientId,
       patientName: data.patientName,
       patientEmail: data.patientEmail,
-      type: normalizeType(data.type),
+      type: normalizedType,
       status: data.requestedByRole === 'doctor' ? 'confirmed' : normalizeStatus(data.status),
       date: Timestamp.fromDate(data.date),
       time: data.time,
       notes: data.notes || '',
       isManual: data.isManual ?? false,
       practiceId: data.practiceId,
-      consultType: data.consultType,
+      consultType,
+      consultationType,
       locationId: data.locationId,
       startAt: data.startAt ? Timestamp.fromDate(data.startAt) : undefined,
       endAt: data.endAt ? Timestamp.fromDate(data.endAt) : undefined,
       requestedByRole: data.requestedByRole,
       overrideApplied: data.overrideApplied,
       conflictMeta: data.conflictMeta,
+      durationMinutes: (data as any).durationMinutes,
+      doctorName: (data as any).doctorName,
     };
 
     Object.keys(basePayload).forEach((key) => {
@@ -575,6 +608,10 @@ export const updateAppointment = async (
     }
     if (updates.type) {
       updateData.type = normalizeType(updates.type);
+    }
+    if (updates.consultType) {
+      updateData.consultType = updates.consultType;
+      updateData.consultationType = updates.consultType;
     }
     if (updates.date) {
       updateData.date = Timestamp.fromDate(updates.date);

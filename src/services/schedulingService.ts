@@ -436,6 +436,28 @@ export const updateScheduledAppointmentStatus = async (
   await updateDoc(bestMatch.ref, { status, updatedAt: serverTimestamp() });
 };
 
+export const getAllPracticeAppointments = async (practiceId: string): Promise<any[]> => {
+  const ref = collection(
+    db,
+    PRACTICES_COLLECTION,
+    practiceId,
+    PRACTICE_APPOINTMENTS_SUBCOLLECTION
+  );
+  const snap = await getDocs(ref);
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      ...data,
+      startAt: data.startAt instanceof Timestamp ? data.startAt.toDate() : data.startAt,
+      endAt: data.endAt instanceof Timestamp ? data.endAt.toDate() : data.endAt,
+      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
+      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
+      date: data.startAt instanceof Timestamp ? data.startAt.toDate() : data.date,
+    };
+  });
+};
+
 export const getPracticeAppointments = async (
   practiceId: string,
   doctorId: string

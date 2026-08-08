@@ -1,6 +1,6 @@
 import type { Appointment } from '../../types';
 
-/** Local YYYY-MM-DD — never use toISOString() (UTC shift). */
+/** Local YYYY-MM-DD - never use toISOString() (UTC shift). */
 export const toDateKey = (d: Date): string => {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');

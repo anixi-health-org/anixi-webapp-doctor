@@ -174,7 +174,7 @@ export const NotificationBell: React.FC = () => {
                     const dateObj = convertTimestamp(a.date) || a.date as Date;
                     return (
                       <li key={a.id} className="text-xs text-gray-700 truncate">
-                        {a.patientName} —{' '}
+                        {a.patientName} -{' '}
                         {dateObj instanceof Date ? dateObj.toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' }) : 'N/A'}
                       </li>
                     );
@@ -185,7 +185,7 @@ export const NotificationBell: React.FC = () => {
 
             {badgeCount === 0 && todaysApts.length === 0 && (
               <div className="px-4 py-6 text-center text-sm text-gray-400">
-                All clear — nothing to action.
+                All clear - nothing to action.
               </div>
             )}
           </div>

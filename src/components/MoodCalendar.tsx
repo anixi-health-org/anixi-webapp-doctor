@@ -149,7 +149,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ patientId }) => {
                 <span>{monthStats.avgScore}/5</span>
               </>
             ) : (
-              '—'
+              '-'
             )}
           </p>
         </div>
@@ -219,7 +219,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ patientId }) => {
                   {entries.length > 0 ? (
                     <span className="mt-0.5 text-lg leading-none">{getMoodEmoji(avgScore ?? entries[0].mood as string | number)}</span>
                   ) : (
-                    <span className="mt-1 text-[10px] text-gray-400">—</span>
+                    <span className="mt-1 text-[10px] text-gray-400">-</span>
                   )}
                   {styles.dot ? (
                     <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${styles.dot}`} aria-hidden />
@@ -233,7 +233,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ patientId }) => {
         <div className="flex flex-wrap items-center justify-center gap-4 border-t border-gray-100 bg-gray-50/60 px-4 py-3 text-xs text-gray-600 sm:px-6">
           <span className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
-            Positive (4–5)
+            Positive (4-5)
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
@@ -241,7 +241,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({ patientId }) => {
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
-            Low (1–2)
+            Low (1-2)
           </span>
           <span className="text-gray-400">· Tap a day for full details</span>
         </div>

@@ -25,6 +25,8 @@ interface DayAgendaViewProps {
   isLoading?: boolean;
   onSelectAppointment: (apt: Appointment) => void;
   onQuickAdd?: () => void;
+  doctorLabels?: Record<string, string>;
+  showDoctor?: boolean;
 }
 
 export const DayAgendaView: React.FC<DayAgendaViewProps> = ({
@@ -33,6 +35,8 @@ export const DayAgendaView: React.FC<DayAgendaViewProps> = ({
   isLoading = false,
   onSelectAppointment,
   onQuickAdd,
+  doctorLabels,
+  showDoctor = false,
 }) => {
   const hours = useMemo(
     () => Array.from({ length: VISIBLE_HOURS }, (_, i) => DAY_START_HOUR + i),
@@ -93,7 +97,7 @@ export const DayAgendaView: React.FC<DayAgendaViewProps> = ({
         <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-[#e1e7ef] bg-[#f8fafc] px-6 py-16 text-center">
           <p className="text-sm font-semibold text-[#0E2340]">No visits on this day</p>
           <p className="mt-1 max-w-xs text-[13px] leading-relaxed text-[#65758b]">
-            When patients are booked, they appear here in time order — like your clinic day list.
+            When patients are booked, they appear here in time order - like your clinic day list.
           </p>
           {onQuickAdd && (
             <button
@@ -135,6 +139,12 @@ export const DayAgendaView: React.FC<DayAgendaViewProps> = ({
                       </span>
                     </div>
                     <p className="mt-0.5 text-[12px] capitalize text-[#65758b]">
+                      {showDoctor && (
+                        <span className="font-medium text-[#344256]">
+                          {doctorLabels?.[apt.doctorId] || 'Doctor'}
+                          {' · '}
+                        </span>
+                      )}
                       {apt.consultType ?? apt.type}
                       {apt.time ? ` · ${apt.time}` : ''}
                       {apt.isManual ? ' · Manual booking' : ''}

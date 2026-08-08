@@ -1,24 +1,17 @@
 import React, { useEffect, useState } from 'react';
+import { ArrowRightIcon, CalendarDaysIcon } from '@heroicons/react/24/outline';
 import {
-  ArrowRightIcon,
-  BeakerIcon,
-  CalendarDaysIcon,
-  EnvelopeIcon,
-  ExclamationTriangleIcon,
-  MapPinIcon,
-  PhoneIcon,
-} from '@heroicons/react/24/outline';
-import { getDoctorMonthlyAdherenceDetails } from '../../services/adherenceService';
+  getDoctorAdherenceDetailsInRange,
+  getDoctorMonthlyAdherenceDetails,
+} from '../../services/adherenceService';
+import { getPatientMedications } from '../../services/logsService';
 import { Patient } from '../../types';
 import { getDateString } from '../../utils/dateFormatter';
 import {
   calculateAge,
   formatDate,
-  formatEmail,
   formatGender,
   formatName,
-  formatPhone,
-  isEmpty,
 } from '../../utils/dataFormatter';
 
 export interface PatientHealthSnapshot {
@@ -27,11 +20,14 @@ export interface PatientHealthSnapshot {
   missed: number;
   pending: number;
   weeklyTrend: number[];
+  /** Labels for each weeklyTrend bar (local weekday). */
+  weeklyLabels: string[];
+  /** Count from patient Pill Box (`Users/{id}/medications`). */
+  pillBoxMedicationCount: number;
 }
 
 interface PatientProfileIdentityCardProps {
   patient: Patient;
-  onEdit: () => void;
   onViewAllDetails: () => void;
   upcomingAppointments?: number;
   healthSnapshot?: PatientHealthSnapshot | null;
@@ -62,8 +58,8 @@ function MiniRing({ percent }: { percent: number }) {
   );
 }
 
-function WeeklyBars({ values }: { values: number[] }) {
-  const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+function WeeklyBars({ values, labels }: { values: number[]; labels?: string[] }) {
+  const fallback = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   return (
     <div className="flex items-end justify-between gap-1">
       {values.map((value, idx) => (
@@ -75,7 +71,9 @@ function WeeklyBars({ values }: { values: number[] }) {
               title={`${value}%`}
             />
           </div>
-          <span className="text-[9px] font-medium text-gray-400">{labels[idx]}</span>
+          <span className="text-[9px] font-medium text-gray-400">
+            {labels?.[idx] ?? fallback[idx]}
+          </span>
         </div>
       ))}
     </div>
@@ -84,7 +82,6 @@ function WeeklyBars({ values }: { values: number[] }) {
 
 export const PatientProfileIdentityCard: React.FC<PatientProfileIdentityCardProps> = ({
   patient,
-  onEdit,
   onViewAllDetails,
   upcomingAppointments = 0,
   healthSnapshot,
@@ -93,8 +90,6 @@ export const PatientProfileIdentityCard: React.FC<PatientProfileIdentityCardProp
   const name = formatName(patient.displayName) || 'Patient';
   const age = calculateAge(patient.dateOfBirth);
   const gender = formatGender(patient.gender);
-  const email = formatEmail(patient.email);
-  const phone = formatPhone(patient.phoneNumber);
   const initials = (name || patient.email || '?')
     .split(' ')
     .map((part) => part.charAt(0))
@@ -102,9 +97,6 @@ export const PatientProfileIdentityCard: React.FC<PatientProfileIdentityCardProp
     .slice(0, 2)
     .toUpperCase();
 
-  const allergies = (patient.allergies ?? []).filter((item) => !isEmpty(item));
-  const conditions = (patient.chronicDiseases ?? []).filter((item) => !isEmpty(item));
-  const treatmentCount = (patient.currentTreatments ?? []).filter((t) => t.name && !isEmpty(t.name)).length;
   const dobLabel = patient.dateOfBirth ? formatDate(patient.dateOfBirth, 'short') : null;
 
   const totalMeds =
@@ -138,68 +130,15 @@ export const PatientProfileIdentityCard: React.FC<PatientProfileIdentityCardProp
               .filter(Boolean)
               .join(' · ')}
           </p>
+          {patient.medicalAid?.provider && (
+            <p className="mt-2 text-xs text-gray-500">
+              Medical aid · {patient.medicalAid.provider}
+            </p>
+          )}
         </div>
       </div>
 
       <div className="flex-1 space-y-4 px-5 py-4">
-        <div className="grid grid-cols-3 gap-2">
-          <div className="rounded-lg border border-gray-100 bg-gray-50/80 px-2 py-2 text-center">
-            <p className="text-lg font-bold text-gray-900">{conditions.length}</p>
-            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Conditions</p>
-          </div>
-          <div className="rounded-lg border border-gray-100 bg-gray-50/80 px-2 py-2 text-center">
-            <p className="text-lg font-bold text-gray-900">{allergies.length}</p>
-            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Allergies</p>
-          </div>
-          <div className="rounded-lg border border-gray-100 bg-gray-50/80 px-2 py-2 text-center">
-            <p className="text-lg font-bold text-gray-900">{treatmentCount}</p>
-            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Meds</p>
-          </div>
-        </div>
-
-        <div className="space-y-2 text-sm text-gray-700">
-          {email && (
-            <div className="flex items-center gap-2.5">
-              <EnvelopeIcon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-              <span className="truncate text-xs">{email}</span>
-            </div>
-          )}
-          {phone && (
-            <div className="flex items-center gap-2.5">
-              <PhoneIcon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-              <span className="text-xs">{phone}</span>
-            </div>
-          )}
-          {patient.address && (
-            <div className="flex items-start gap-2.5">
-              <MapPinIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />
-              <span className="line-clamp-2 text-xs">{patient.address}</span>
-            </div>
-          )}
-          {patient.medicalAid?.provider && (
-            <div className="flex items-center gap-2.5">
-              <BeakerIcon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-              <span className="truncate text-xs">{patient.medicalAid.provider}</span>
-            </div>
-          )}
-        </div>
-
-        {allergies.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {allergies.slice(0, 3).map((item) => (
-              <span
-                key={item}
-                className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 ring-1 ring-rose-200"
-              >
-                {item}
-              </span>
-            ))}
-            {allergies.length > 3 && (
-              <span className="text-[10px] text-gray-400">+{allergies.length - 3} more</span>
-            )}
-          </div>
-        )}
-
         <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-3">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
@@ -236,7 +175,10 @@ export const PatientProfileIdentityCard: React.FC<PatientProfileIdentityCardProp
                   <span className="text-red-600">{healthSnapshot.missed} missed</span>
                   <span className="text-amber-600">{healthSnapshot.pending} pending</span>
                 </div>
-                <WeeklyBars values={healthSnapshot.weeklyTrend} />
+                <WeeklyBars
+                  values={healthSnapshot.weeklyTrend}
+                  labels={healthSnapshot.weeklyLabels}
+                />
               </div>
             </div>
           ) : (
@@ -244,37 +186,20 @@ export const PatientProfileIdentityCard: React.FC<PatientProfileIdentityCardProp
           )}
         </div>
 
-        <div className="flex items-center justify-between rounded-lg border border-sky-100 bg-sky-50/50 px-3 py-2">
+        <div className="flex items-center justify-between rounded-lg border border-sky-100 bg-sky-50/50 px-3 py-2.5">
           <div className="flex items-center gap-2">
             <CalendarDaysIcon className="h-4 w-4 text-sky-600" />
             <span className="text-xs font-medium text-gray-700">Upcoming visits</span>
           </div>
           <span className="text-sm font-bold text-sky-800">{upcomingAppointments}</span>
         </div>
-
-        {conditions.length > 0 && (
-          <div className="flex items-start gap-2 rounded-lg border border-amber-100 bg-amber-50/40 px-3 py-2">
-            <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-            <p className="text-[11px] leading-relaxed text-amber-900">
-              {conditions.slice(0, 2).join(', ')}
-              {conditions.length > 2 ? ` +${conditions.length - 2} more` : ''}
-            </p>
-          </div>
-        )}
       </div>
 
-      <div className="mt-auto flex flex-col gap-2 border-t border-gray-100 bg-gray-50/60 px-5 py-3 sm:flex-row">
-        <button
-          type="button"
-          onClick={onEdit}
-          className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-50"
-        >
-          Edit patient
-        </button>
+      <div className="mt-auto border-t border-gray-100 bg-gray-50/60 px-5 py-3">
         <button
           type="button"
           onClick={onViewAllDetails}
-          className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-anixi-green px-3 py-2 text-xs font-semibold text-white hover:opacity-90"
+          className="inline-flex w-full items-center justify-center gap-1 rounded-lg bg-anixi-green px-3 py-2.5 text-xs font-semibold text-white hover:opacity-90"
         >
           All details
           <ArrowRightIcon className="h-3.5 w-3.5" />
@@ -284,7 +209,7 @@ export const PatientProfileIdentityCard: React.FC<PatientProfileIdentityCardProp
   );
 };
 
-/** Loads monthly adherence snapshot for the identity card. */
+/** Loads monthly adherence + rolling 7-day trend from the same patient collections. */
 export function usePatientHealthSnapshot(patientId: string | undefined, doctorId: string | undefined) {
   const [snapshot, setSnapshot] = useState<PatientHealthSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -299,20 +224,32 @@ export function usePatientHealthSnapshot(patientId: string | undefined, doctorId
       setLoading(true);
       try {
         const now = new Date();
-        const details = await getDoctorMonthlyAdherenceDetails(
-          doctorId,
-          patientId,
-          now.getFullYear(),
-          now.getMonth()
-        );
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - 6);
+        weekStart.setHours(0, 0, 0, 0);
+        const weekEnd = new Date(now);
+        weekEnd.setHours(23, 59, 59, 999);
+
+        const [details, weekDetails, medications] = await Promise.all([
+          getDoctorMonthlyAdherenceDetails(
+            doctorId,
+            patientId,
+            now.getFullYear(),
+            now.getMonth()
+          ),
+          getDoctorAdherenceDetailsInRange(doctorId, patientId, weekStart, weekEnd),
+          getPatientMedications(patientId).catch(() => []),
+        ]);
 
         const weeklyTrend: number[] = [];
+        const weeklyLabels: string[] = [];
         for (let i = 6; i >= 0; i--) {
           const d = new Date(now);
           d.setDate(d.getDate() - i);
           const key = getDateString(d);
-          const day = details.dayMap.get(key);
+          const day = weekDetails.dayMap.get(key);
           weeklyTrend.push(day?.percentage ?? 0);
+          weeklyLabels.push(d.toLocaleDateString(undefined, { weekday: 'narrow' }));
         }
 
         setSnapshot({
@@ -321,6 +258,8 @@ export function usePatientHealthSnapshot(patientId: string | undefined, doctorId
           missed: details.monthStats.missedTotal,
           pending: details.monthStats.pendingTotal,
           weeklyTrend,
+          weeklyLabels,
+          pillBoxMedicationCount: Array.isArray(medications) ? medications.length : 0,
         });
       } catch {
         setSnapshot(null);

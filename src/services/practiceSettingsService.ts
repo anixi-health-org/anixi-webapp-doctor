@@ -32,9 +32,11 @@ import type {
   Practice,
   PracticeLocation,
   PracticeMember,
+  PracticeOrgType,
   PracticePermissions,
   SoftBlock,
 } from '../types';
+import { isClinicianRole, normalizePermissions, OWNER_PERMISSIONS } from '../lib/practiceRoles';
 
 
 
@@ -53,18 +55,14 @@ export const getPractice = async (practiceId: string): Promise<Practice | null> 
     name: d.name,
     timezone: d.timezone,
     ownerId: d.ownerId,
+    orgType: (d.orgType as PracticeOrgType) || 'solo',
+    tradingName: d.tradingName,
+    bhfPracticeNumber: d.bhfPracticeNumber,
     locations: d.locations ?? [],
     consultTypes: d.consultTypes ?? [],
     createdAt: toDate(d.createdAt),
     updatedAt: toDate(d.updatedAt),
   };
-};
-
-const OWNER_PERMISSIONS: PracticePermissions = {
-  manageAppointments: true,
-  manageSoftBlocks: true,
-  overrideConflicts: true,
-  editBookingPolicies: true,
 };
 
 const practiceFromSnapshot = (
@@ -76,6 +74,9 @@ const practiceFromSnapshot = (
     name: String(d.name ?? 'My Practice'),
     timezone: String(d.timezone ?? 'UTC'),
     ownerId: String(d.ownerId ?? ''),
+    orgType: (d.orgType as PracticeOrgType) || 'solo',
+    tradingName: d.tradingName ? String(d.tradingName) : undefined,
+    bhfPracticeNumber: d.bhfPracticeNumber ? String(d.bhfPracticeNumber) : undefined,
     locations: (d.locations as PracticeLocation[]) ?? [],
     consultTypes: (d.consultTypes as ConsultType[]) ?? [],
     createdAt: toDate(d.createdAt),
@@ -106,7 +107,8 @@ export const getPracticeByOwnerId = async (ownerId: string): Promise<Practice | 
 
 export const ensureOwnerMembership = async (
   practiceId: string,
-  ownerId: string
+  ownerId: string,
+  options?: { isClinician?: boolean }
 ): Promise<PracticeMember> => {
   const memberRef = doc(
     db,
@@ -116,7 +118,43 @@ export const ensureOwnerMembership = async (
     ownerId
   );
   const memberSnap = await getDoc(memberRef);
+  const isClinician = options?.isClinician !== false;
+
+  const [userSnap, doctorSnap] = await Promise.all([
+    getDoc(doc(db, USERS_COLLECTION, ownerId)),
+    getDoc(doc(db, DOCTORS_COLLECTION, ownerId)),
+  ]);
+  const userData = userSnap.exists() ? userSnap.data() : {};
+  const doctorData = doctorSnap.exists() ? doctorSnap.data() : {};
+  const displayName =
+    (typeof userData.displayName === 'string' && userData.displayName.trim()) ||
+    (typeof doctorData.fullName === 'string' && doctorData.fullName.trim()) ||
+    (typeof doctorData.displayName === 'string' && doctorData.displayName.trim()) ||
+    null;
+  const email =
+    (typeof userData.email === 'string' && userData.email.trim().toLowerCase()) ||
+    (typeof doctorData.email === 'string' && doctorData.email.trim().toLowerCase()) ||
+    null;
+
   if (memberSnap.exists() && memberSnap.data().status === 'active') {
+    const updates: {
+      updatedAt: ReturnType<typeof serverTimestamp>;
+      isClinician?: boolean;
+      displayName?: string;
+      email?: string;
+    } = { updatedAt: serverTimestamp() };
+    if (options?.isClinician !== undefined && memberSnap.data().isClinician !== isClinician) {
+      updates.isClinician = isClinician;
+    }
+    if (displayName && memberSnap.data().displayName !== displayName) {
+      updates.displayName = displayName;
+    }
+    if (email && memberSnap.data().email !== email) {
+      updates.email = email;
+    }
+    if (Object.keys(updates).length > 1) {
+      await updateDoc(memberRef, updates);
+    }
     return (await getPracticeMember(practiceId, ownerId))!;
   }
 
@@ -128,6 +166,9 @@ export const ensureOwnerMembership = async (
       role: 'owner',
       permissions: OWNER_PERMISSIONS,
       status: 'active',
+      isClinician,
+      displayName,
+      email,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     },
@@ -226,13 +267,17 @@ export type PracticeSessionBundle = {
 export const createPractice = async (
   ownerId: string,
   data: Pick<Practice, 'name' | 'timezone'> &
-    Partial<Pick<Practice, 'locations' | 'consultTypes'>>
+    Partial<Pick<Practice, 'locations' | 'consultTypes' | 'orgType' | 'tradingName' | 'bhfPracticeNumber'>>
 ): Promise<string> => {
+  const orgType: PracticeOrgType = data.orgType ?? 'solo';
   const ref = collection(db, PRACTICES_COLLECTION);
   const docRef = await addDoc(ref, {
     name: data.name,
     timezone: data.timezone,
     ownerId,
+    orgType,
+    tradingName: data.tradingName ?? null,
+    bhfPracticeNumber: data.bhfPracticeNumber ?? null,
     locations: data.locations ?? [],
     consultTypes: data.consultTypes ?? ['initial', 'follow-up'],
     createdAt: serverTimestamp(),
@@ -245,13 +290,9 @@ export const createPractice = async (
       uid: ownerId,
       practiceId: docRef.id,
       role: 'owner',
-      permissions: {
-        manageAppointments: true,
-        manageSoftBlocks: true,
-        overrideConflicts: true,
-        editBookingPolicies: true,
-      },
+      permissions: OWNER_PERMISSIONS,
       status: 'active',
+      isClinician: (data.orgType ?? 'solo') !== 'clinic',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }
@@ -276,7 +317,12 @@ export const createPractice = async (
 
 export const updatePractice = async (
   practiceId: string,
-  updates: Partial<Pick<Practice, 'name' | 'timezone' | 'locations' | 'consultTypes'>>
+  updates: Partial<
+    Pick<
+      Practice,
+      'name' | 'timezone' | 'locations' | 'consultTypes' | 'orgType' | 'tradingName' | 'bhfPracticeNumber'
+    >
+  >
 ): Promise<void> => {
   await updateDoc(doc(db, PRACTICES_COLLECTION, practiceId), {
     ...updates,
@@ -315,14 +361,18 @@ export const getPracticeMember = async (
   const snap = await getDoc(ref);
   if (!snap.exists()) return null;
   const d = snap.data();
+  const role = d.role;
   return {
     uid: snap.id,
     practiceId,
-    role: d.role,
-    permissions: d.permissions,
+    role,
+    permissions: normalizePermissions(d.permissions, role),
     status: d.status,
     displayName: d.displayName,
     email: d.email,
+    isClinician: d.isClinician ?? isClinicianRole(role),
+    invitedBy: d.invitedBy,
+    invitedAt: d.invitedAt ? toDate(d.invitedAt) : undefined,
     createdAt: toDate(d.createdAt),
     updatedAt: toDate(d.updatedAt),
   };
@@ -333,18 +383,61 @@ export const listPracticeMembers = async (practiceId: string): Promise<PracticeM
   const snap = await getDocs(query(ref, where('status', '==', 'active')));
   return snap.docs.map((d) => {
     const data = d.data();
+    const role = data.role;
     return {
       uid: d.id,
       practiceId,
-      role: data.role,
-      permissions: data.permissions,
+      role,
+      permissions: normalizePermissions(data.permissions, role),
       status: data.status,
       displayName: data.displayName,
       email: data.email,
+      isClinician: data.isClinician ?? isClinicianRole(role),
+      invitedBy: data.invitedBy,
+      invitedAt: data.invitedAt ? toDate(data.invitedAt) : undefined,
       createdAt: toDate(data.createdAt),
       updatedAt: toDate(data.updatedAt),
     };
   });
+};
+
+/** Doctors who can be selected when booking / managing diaries. */
+export const listPracticeClinicians = async (practiceId: string): Promise<PracticeMember[]> => {
+  const { enrichPracticeMembers } = await import('./practiceMemberService');
+  const members = await enrichPracticeMembers(await listPracticeMembers(practiceId));
+  return members.filter(
+    (m) =>
+      m.status === 'active' &&
+      (m.role === 'doctor' || (m.isClinician === true && m.role !== 'practice_manager'))
+  );
+};
+
+export const updatePracticeMember = async (
+  practiceId: string,
+  uid: string,
+  updates: Partial<Pick<PracticeMember, 'role' | 'permissions' | 'status' | 'displayName'>>
+): Promise<void> => {
+  const payload: Record<string, any> = {
+    ...updates,
+    updatedAt: serverTimestamp(),
+  };
+  if (updates.role) {
+    payload.isClinician = isClinicianRole(updates.role);
+    if (!updates.permissions) {
+      payload.permissions = normalizePermissions(undefined, updates.role);
+    }
+  }
+  await updateDoc(
+    doc(db, PRACTICES_COLLECTION, practiceId, PRACTICE_MEMBERS_SUBCOLLECTION, uid),
+    payload
+  );
+};
+
+export const deactivatePracticeMember = async (
+  practiceId: string,
+  uid: string
+): Promise<void> => {
+  await updatePracticeMember(practiceId, uid, { status: 'inactive' });
 };
 
 export const addDelegate = async (

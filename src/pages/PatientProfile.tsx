@@ -12,12 +12,14 @@ import { AppointmentList } from '../components/appointments/AppointmentList';
 import { useAuth } from '../hooks/useAuth';
 import { getDoctorPatients } from '../services/doctorService';
 import { Appointment, Patient } from '../types';
-import { updatePatient } from '../services/patientManagementService';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
-import { EditPatientModal } from '../components/patients/EditPatientModal';
 import { convertTimestamp } from '../utils/dateFormatter';
 import { formatName } from '../utils/dataFormatter';
 import { PatientProfileSkeleton } from '../components/ui';
+import {
+  getPatientWearableSummary,
+  type PatientWearableSummary,
+} from '../services/wearableService';
 
 export const PatientProfile: React.FC = () => {
   const navigate = useNavigate();
@@ -45,9 +47,7 @@ export const PatientProfile: React.FC = () => {
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
-  const [showEditPatientModal, setShowEditPatientModal] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [wearableSummary, setWearableSummary] = useState<PatientWearableSummary | null>(null);
 
   const logActivity = (
     actionType: string,
@@ -69,18 +69,6 @@ export const PatientProfile: React.FC = () => {
         ...(metadata || {}),
       },
     });
-  };
-
-  const handlePatientUpdate = async (updates: Partial<Patient>) => {
-    if (!user?.id || !patient?.id) return;
-    try {
-      setActionError(null);
-      await updatePatient(patient.id, updates);
-      setPatient({ ...patient, ...updates });
-      setActionSuccess('Patient details updated successfully.');
-    } catch (error: any) {
-      setActionError(error?.message || 'Failed to update patient');
-    }
   };
 
   useEffect(() => {
@@ -105,6 +93,12 @@ export const PatientProfile: React.FC = () => {
           foundPatient.displayName || foundPatient.email || foundPatient.id,
           foundPatient.email
         );
+        try {
+          const wearable = await getPatientWearableSummary(foundPatient.id);
+          setWearableSummary(wearable);
+        } catch {
+          setWearableSummary(null);
+        }
       } catch {
         setError('Failed to load patient profile');
       } finally {
@@ -296,26 +290,8 @@ export const PatientProfile: React.FC = () => {
             >
               Full record
             </button>
-            <button
-              type="button"
-              onClick={() => setShowEditPatientModal(true)}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-anixi-green px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f]"
-            >
-              Edit
-            </button>
           </div>
         </div>
-
-        {actionSuccess && (
-          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-            {actionSuccess}
-          </div>
-        )}
-        {actionError && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {actionError}
-          </div>
-        )}
 
         <div className="mb-5 rounded-xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -356,35 +332,77 @@ export const PatientProfile: React.FC = () => {
             <div className="grid grid-cols-1 gap-4 rounded-lg bg-[#f8fafc] px-4 py-3 text-sm sm:grid-cols-3">
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-wider text-[#8FA0B6]">Phone</p>
-                <p className="mt-0.5 font-medium text-[#0E2340]">{patient.phoneNumber || '—'}</p>
+                <p className="mt-0.5 font-medium text-[#0E2340]">{patient.phoneNumber || '-'}</p>
               </div>
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-wider text-[#8FA0B6]">Email</p>
-                <p className="mt-0.5 truncate font-medium text-[#0E2340]">{patient.email || '—'}</p>
+                <p className="mt-0.5 truncate font-medium text-[#0E2340]">{patient.email || '-'}</p>
               </div>
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-wider text-[#8FA0B6]">Address</p>
-                <p className="mt-0.5 font-medium text-[#0E2340]">{patient.address || '—'}</p>
+                <p className="mt-0.5 font-medium text-[#0E2340]">{patient.address || '-'}</p>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {[
-            ['Allergies', patient.allergies?.length ? patient.allergies.join(', ') : 'None'],
-            ['Conditions', patient.chronicDiseases?.length ? patient.chronicDiseases.join(', ') : 'None'],
-            ['Upcoming', String(appointmentStats.upcoming)],
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+          {(
             [
-              'Next visit',
-              appointmentStats.nextAppointment
-                ? (convertTimestamp(appointmentStats.nextAppointment.date) ?? new Date()).toLocaleDateString()
-                : '—',
-            ],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-xl border border-[#e1e7ef] bg-white px-4 py-3.5 shadow-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">{label}</p>
-              <p className="mt-1.5 truncate text-base font-semibold text-[#0E2340]">{value}</p>
+              {
+                label: 'Blood group',
+                value: patient.bloodGroup?.trim() || '—',
+                accent: 'border-rose-100 bg-gradient-to-b from-rose-50/80 to-white',
+              },
+              {
+                label: 'Weight',
+                value: patient.weight?.trim()
+                  ? /kg|lb/i.test(patient.weight)
+                    ? patient.weight
+                    : `${patient.weight} kg`
+                  : '—',
+                accent: 'border-sky-100 bg-gradient-to-b from-sky-50/80 to-white',
+              },
+              {
+                label: 'Allergies',
+                value: patient.allergies?.length ? patient.allergies.join(', ') : 'None',
+                accent: 'border-[#e1e7ef] bg-white',
+              },
+              {
+                label: 'Conditions',
+                value: patient.chronicDiseases?.length
+                  ? patient.chronicDiseases.join(', ')
+                  : 'None',
+                accent: 'border-[#e1e7ef] bg-white',
+              },
+              {
+                label: 'Steps',
+                value:
+                  wearableSummary?.steps != null
+                    ? wearableSummary.steps.toLocaleString()
+                    : '—',
+                accent: 'border-emerald-100 bg-gradient-to-b from-emerald-50/70 to-white',
+              },
+              {
+                label: 'Avg HR',
+                value:
+                  wearableSummary?.averageHeartRate != null
+                    ? `${wearableSummary.averageHeartRate} bpm`
+                    : '—',
+                accent: 'border-emerald-100 bg-gradient-to-b from-emerald-50/70 to-white',
+              },
+            ] as const
+          ).map(({ label, value, accent }) => (
+            <div
+              key={label}
+              className={`rounded-xl border px-4 py-3.5 shadow-sm ${accent}`}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                {label}
+              </p>
+              <p className="mt-1.5 truncate text-base font-semibold text-[#0E2340]" title={value}>
+                {value}
+              </p>
             </div>
           ))}
         </div>
@@ -393,7 +411,6 @@ export const PatientProfile: React.FC = () => {
           <div className="lg:col-span-5 xl:col-span-4 lg:sticky lg:top-6">
             <PatientProfileIdentityCard
               patient={patient}
-              onEdit={() => setShowEditPatientModal(true)}
               onViewAllDetails={() => navigate(`/patient-profile/${patient.id}/details`)}
               upcomingAppointments={appointmentStats.upcoming}
               healthSnapshot={healthSnapshot}
@@ -480,6 +497,7 @@ export const PatientProfile: React.FC = () => {
 
                 <AppointmentList
                   appointments={patientAppointments}
+                  pageSize={5}
                   onSelectAppointment={(appointment) => {
                     logActivity('open_appointment_details', 'Opened appointment details from patient profile.', {
                       selectedAppointmentId: appointment.id,
@@ -509,6 +527,10 @@ export const PatientProfile: React.FC = () => {
                 logActivity('open_vitals_history', 'Opened vitals history from patient profile.');
                 navigate(`/patient-profile/${patient.id}/vitals-history`);
               }}
+              onWearableData={() => {
+                logActivity('open_wearable_data', 'Opened wearable data from patient profile.');
+                navigate(`/patient-profile/${patient.id}/wearable`);
+              }}
               onScheduleFollowUp={openFollowUp}
             />
           </div>
@@ -530,13 +552,6 @@ export const PatientProfile: React.FC = () => {
           consultTypeDefault="follow-up"
         />
       )}
-
-      <EditPatientModal
-        isOpen={showEditPatientModal}
-        patient={patient}
-        onClose={() => setShowEditPatientModal(false)}
-        onSave={handlePatientUpdate}
-      />
 
       {selectedAppointment && (
         <AppointmentDetails

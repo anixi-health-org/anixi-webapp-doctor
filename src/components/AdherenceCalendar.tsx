@@ -339,7 +339,7 @@ export const AdherenceCalendar: React.FC<AdherenceCalendarProps> = ({
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-              Fair (50–79%)
+              Fair (50-79%)
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />

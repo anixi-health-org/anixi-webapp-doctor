@@ -57,20 +57,24 @@ export const getPatientMedications = async (patientId: string): Promise<any[]> =
     return [];
   }
 };
-export const getAdherenceRecordsForDate = async (patientId: string, dateStr: string): Promise<any> => {
+/** Patient app stores one doc per dose (auto-id), not `adherence_records/{yyyy-MM-dd}`. */
+export const getAdherenceRecordsForDate = async (patientId: string, dateStr: string): Promise<any[]> => {
   try {
-    const adherenceRef = doc(db, `Users/${patientId}/adherence_records`, dateStr);
-    const snapshot = await getDoc(adherenceRef);
-    if (snapshot.exists()) {
-      const adherenceData = snapshot.data();
-      const converted = convertAllTimestamps(adherenceData, 'adherenceRecord');
-      return converted;
-    } else {
-      return null;
-    }
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
+    const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
+    const adherenceRef = collection(db, `Users/${patientId}/adherence_records`);
+    const q = query(
+      adherenceRef,
+      where('scheduledTime', '>=', startOfDay),
+      where('scheduledTime', '<=', endOfDay)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((entry) =>
+      convertAllTimestamps({ id: entry.id, ...entry.data() }, `adherence_records/${entry.id}`)
+    );
   } catch (error) {
-    ;
-    return null;
+    return [];
   }
 };
 export const getMoodRecordsForDate = async (patientId: string, dateStr: string): Promise<any> => {
@@ -155,58 +159,58 @@ export const getMoodEntriesForMonth = async (patientId: string, year: number, mo
   }
 };
 
-export const getVitalsRecordsForDate = async (patientId: string, dateStr: string): Promise<any> => {
+/** Vital readings are logged on `adherence_records` with type `vital`. */
+export const getVitalsRecordsForDate = async (patientId: string, dateStr: string): Promise<any[]> => {
   try {
-    const vitalsRef = doc(db, `Users/${patientId}/vitals_records`, dateStr);
-    const snapshot = await getDoc(vitalsRef);
-    if (snapshot.exists()) {
-      const vitalsData = snapshot.data();
-      const converted = convertAllTimestamps(vitalsData, 'vitalsRecord');
-      return converted;
-    } else {
-      return null;
-    }
+    const records = await getAdherenceRecordsForDate(patientId, dateStr);
+    return records.filter((record) => (record.type ?? '') === 'vital');
   } catch (error) {
-    ;
-    return null;
+    return [];
   }
 };
+
 export const getCompleteDayData = async (patientId: string, dateStr: string) => {
   try {
-    const [medications, adherenceRecord, moodRecord, moodEntries, vitalsRecord] = await Promise.all([
+    const [medications, adherenceRecords, moodEntries, vitalsRecords] = await Promise.all([
       getPatientMedications(patientId),
       getAdherenceRecordsForDate(patientId, dateStr),
-      getMoodRecordsForDate(patientId, dateStr),
       getMoodEntriesForDate(patientId, dateStr),
       getVitalsRecordsForDate(patientId, dateStr),
     ]);
-    const convertedMedications = convertAllTimestamps(medications, 'medications');
-    const convertedAdherenceRecord = convertAllTimestamps(adherenceRecord, 'adherenceRecord');
-    const convertedMoodRecord = convertAllTimestamps(moodRecord, 'moodRecord');
-    const convertedVitalsRecord = convertAllTimestamps(vitalsRecord, 'vitalsRecord');
-    
-    const medicationsWithAdherence = convertedMedications.map((med: any) => {
-      const adheranceStatus = convertedAdherenceRecord?.medications?.[med.id];
+
+    const medicationRecords = adherenceRecords.filter(
+      (record) => (record.type ?? 'medication') === 'medication'
+    );
+
+    const statusByItemOrName = new Map<string, any>();
+    medicationRecords.forEach((record) => {
+      const key = record.itemId || record.medicationName;
+      if (key) statusByItemOrName.set(key, record);
+    });
+
+    const medicationsWithAdherence = medications.map((med: any) => {
+      const match = statusByItemOrName.get(med.id) || statusByItemOrName.get(med.name);
       return {
         ...med,
-        taken: adheranceStatus?.taken ?? null,
-        status: adheranceStatus?.status || 'unknown',
+        taken: match?.status === 'taken',
+        status: match?.status || 'pending',
       };
     });
 
-    const finalData = {
+    return {
       date: dateStr,
-      mood: convertedMoodRecord || null,
+      mood: moodEntries[0] || null,
       moodEntries: moodEntries || [],
-      medications: medicationsWithAdherence,
-      adherenceRecord: convertedAdherenceRecord || null,
-      vitals: convertedVitalsRecord || null,
-      hasData: !!convertedAdherenceRecord || !!convertedMoodRecord || (moodEntries && moodEntries.length > 0) || !!convertedVitalsRecord,
+      medications:
+        medicationsWithAdherence.length > 0 ? medicationsWithAdherence : medicationRecords,
+      adherenceRecord: { records: medicationRecords },
+      vitals: vitalsRecords,
+      hasData:
+        medicationRecords.length > 0 ||
+        vitalsRecords.length > 0 ||
+        (moodEntries && moodEntries.length > 0),
     };
-
-    return finalData;
   } catch (error) {
-    ;
     return {
       date: dateStr,
       mood: null,
@@ -220,33 +224,36 @@ export const getCompleteDayData = async (patientId: string, dateStr: string) => 
 };
 export const getDayAdherenceData = async (patientId: string, dateStr: string) => {
   try {
-    const [medications, adherenceRecord] = await Promise.all([
+    const [medications, adherenceRecords] = await Promise.all([
       getPatientMedications(patientId),
       getAdherenceRecordsForDate(patientId, dateStr),
     ]);
-    if (!medications || medications.length === 0) {
-      return {
-        date: dateStr,
-        medications: [],
-        adherenceRecord: null,
-      };
-    }
-    const medicationsWithAdherence = medications.map((med) => {
-      const adheranceStatus = adherenceRecord?.medications?.[med.id];
+    const medicationRecords = adherenceRecords.filter(
+      (record) => (record.type ?? 'medication') === 'medication'
+    );
+    const statusByKey = new Map<string, any>();
+    medicationRecords.forEach((record) => {
+      const key = record.itemId || record.medicationName;
+      if (key) statusByKey.set(key, record);
+    });
+
+    const medicationsWithAdherence = (medications || []).map((med) => {
+      const match = statusByKey.get(med.id) || statusByKey.get(med.name);
       return {
         ...med,
-        taken: adheranceStatus?.taken ?? null,
-        status: adheranceStatus?.status || 'unknown',
+        taken: match?.status === 'taken',
+        status: match?.status || 'pending',
       };
     });
+
     return {
       date: dateStr,
-      medications: medicationsWithAdherence,
-      adherenceRecord: adherenceRecord,
-      hasData: !!adherenceRecord,
+      medications:
+        medicationsWithAdherence.length > 0 ? medicationsWithAdherence : medicationRecords,
+      adherenceRecord: { records: medicationRecords },
+      hasData: medicationRecords.length > 0,
     };
   } catch (error) {
-    ;
     return {
       date: dateStr,
       medications: [],
@@ -257,98 +264,118 @@ export const getDayAdherenceData = async (patientId: string, dateStr: string) =>
 };
 export const getMoodLogs = async (patientId: string, year: number, month: number): Promise<MoodLog[]> => {
   try {
-    const startDate = new Date(year, month, 1);
-    const endDate = new Date(year, month + 1, 0);
-    try {
-      const moodLogsRef = collection(db, `patients/${patientId}/mood_logs`);
-      const q = query(moodLogsRef, orderBy('timestamp', 'desc'));
-      const snapshot = await getDocs(q);
-      const logs: MoodLog[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        const logDate = data.timestamp?.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
-        if (logDate >= startDate && logDate <= endDate) {
-          logs.push({
-            id: doc.id,
-            patientId,
-            mood: data.mood,
-            notes: data.notes,
-            timestamp: logDate,
-          });
-        }
-      });
-      return logs;
-    } catch (subcollectionError) {
-      return [];
-    }
+    // getMoodEntriesForMonth uses 1-based month; callers pass 0-based JS month.
+    const entries = await getMoodEntriesForMonth(patientId, year, month + 1);
+    return entries.map((entry) => {
+      const createdAt =
+        entry.createdAt instanceof Date ? entry.createdAt : new Date(entry.createdAt);
+      return {
+        id: entry.id,
+        patientId,
+        mood: entry.mood,
+        notes: entry.note ?? entry.notes,
+        timestamp: createdAt,
+      };
+    });
   } catch (error) {
-    ;
     return [];
   }
 };
+
 export const getAdherenceLogs = async (patientId: string, year: number, month: number): Promise<AdherenceLog[]> => {
   try {
-    const startDate = new Date(year, month, 1);
-    const endDate = new Date(year, month + 1, 0);
-    try {
-      const adherenceRef = collection(db, `patients/${patientId}/adherence_logs`);
-      const q = query(adherenceRef, orderBy('timestamp', 'desc'));
-      const snapshot = await getDocs(q);
-      const logs: AdherenceLog[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        const logDate = data.timestamp?.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
-        if (logDate >= startDate && logDate <= endDate) {
-          logs.push({
-            id: doc.id,
-            patientId,
-            medicationName: data.medicationName,
-            taken: data.taken,
-            timestamp: logDate,
-            notes: data.notes,
-          });
-        }
+    const startDate = new Date(year, month, 1, 0, 0, 0, 0);
+    const endDate = new Date(year, month + 1, 0, 23, 59, 59, 999);
+    const adherenceRef = collection(db, `Users/${patientId}/adherence_records`);
+    const q = query(
+      adherenceRef,
+      where('scheduledTime', '>=', startDate),
+      where('scheduledTime', '<=', endDate),
+      orderBy('scheduledTime', 'desc')
+    );
+    const snapshot = await getDocs(q);
+    const logs: AdherenceLog[] = [];
+    snapshot.forEach((entry) => {
+      const data = entry.data();
+      if (((data.type as string | undefined) ?? 'medication') !== 'medication') return;
+      const scheduled =
+        data.scheduledTime?.toDate?.() ??
+        (data.scheduledTime ? new Date(data.scheduledTime) : null);
+      const takenTime =
+        data.takenTime?.toDate?.() ?? (data.takenTime ? new Date(data.takenTime) : null);
+      const timestamp = takenTime || scheduled;
+      if (!timestamp) return;
+      logs.push({
+        id: entry.id,
+        patientId,
+        medicationName: data.medicationName,
+        taken: data.status === 'taken',
+        timestamp,
+        notes: data.notes,
       });
-      return logs;
-    } catch (subcollectionError) {
-      return [];
-    }
+    });
+    return logs;
   } catch (error) {
-    ;
     return [];
   }
 };
+
+const parseVitalValue = (name: string, value: string | null | undefined) => {
+  if (!value) return {};
+  const lower = name.toLowerCase();
+  if (lower.includes('blood pressure') || lower.includes('bp')) {
+    const [systolic, diastolic] = value.split(/[\/\-]/).map((part) => Number(part.trim()));
+    if (!Number.isNaN(systolic) && !Number.isNaN(diastolic)) {
+      return { bloodPressure: { systolic, diastolic } };
+    }
+  }
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return {};
+  if (lower.includes('heart') || lower.includes('pulse') || lower.includes('hr')) {
+    return { heartRate: numeric };
+  }
+  if (lower.includes('temp')) return { temperature: numeric };
+  if (lower.includes('glucose') || lower.includes('sugar') || lower.includes('blood sugar')) {
+    return { bloodSugar: numeric };
+  }
+  return {};
+};
+
 export const getVitalsLogs = async (patientId: string, year: number, month: number): Promise<VitalsLog[]> => {
   try {
-    const startDate = new Date(year, month, 1);
-    const endDate = new Date(year, month + 1, 0);
-    try {
-      const vitalsRef = collection(db, `patients/${patientId}/vitals_logs`);
-      const q = query(vitalsRef, orderBy('timestamp', 'desc'));
-      const snapshot = await getDocs(q);
-      const logs: VitalsLog[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        const logDate = data.timestamp?.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
-        if (logDate >= startDate && logDate <= endDate) {
-          logs.push({
-            id: doc.id,
-            patientId,
-            heartRate: data.heartRate,
-            bloodPressure: data.bloodPressure,
-            temperature: data.temperature,
-            bloodSugar: data.bloodSugar,
-            notes: data.notes,
-            timestamp: logDate,
-          });
-        }
+    const startDate = new Date(year, month, 1, 0, 0, 0, 0);
+    const endDate = new Date(year, month + 1, 0, 23, 59, 59, 999);
+    const adherenceRef = collection(db, `Users/${patientId}/adherence_records`);
+    const q = query(
+      adherenceRef,
+      where('scheduledTime', '>=', startDate),
+      where('scheduledTime', '<=', endDate),
+      orderBy('scheduledTime', 'desc')
+    );
+    const snapshot = await getDocs(q);
+    const logs: VitalsLog[] = [];
+    snapshot.forEach((entry) => {
+      const data = entry.data();
+      if ((data.type as string | undefined) !== 'vital') return;
+      if (data.status !== 'taken') return;
+      const scheduled =
+        data.scheduledTime?.toDate?.() ??
+        (data.scheduledTime ? new Date(data.scheduledTime) : null);
+      const takenTime =
+        data.takenTime?.toDate?.() ?? (data.takenTime ? new Date(data.takenTime) : null);
+      const timestamp = takenTime || scheduled;
+      if (!timestamp) return;
+      const name = data.medicationName || 'Vital';
+      logs.push({
+        id: entry.id,
+        patientId,
+        notes: data.notes || `${name}${data.recordedValue ? `: ${data.recordedValue}` : ''}${data.unit ? ` ${data.unit}` : ''}`,
+        timestamp,
+        ...parseVitalValue(name, data.recordedValue),
       });
-      return logs;
-    } catch (subcollectionError) {
-      return [];
-    }
+    });
+    return logs;
   } catch (error) {
-    ;
     return [];
   }
 };

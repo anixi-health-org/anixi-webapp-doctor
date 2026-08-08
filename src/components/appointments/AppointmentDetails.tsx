@@ -504,7 +504,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               </h2>
               {appointment.isManual ? (
                 <span className="text-xs font-medium px-2 py-1 rounded-full bg-gray-100 text-gray-500 border border-gray-200">
-                  Manual — no Anixi account
+                  Manual - no Anixi account
                 </span>
               ) : (
                 <button
@@ -691,7 +691,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               <div className="space-y-3">
                 {isWhatsAppComingSoon(appointment) && (
                   <div className="w-full rounded-xl border-2 border-amber-200 bg-amber-50 py-3 px-4 text-sm font-medium text-amber-900">
-                    WhatsApp consult — Coming soon
+                    WhatsApp consult - Coming soon
                   </div>
                 )}
 

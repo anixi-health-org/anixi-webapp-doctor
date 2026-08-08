@@ -8,7 +8,7 @@ import { PageHeader, PageShell } from '../components/page-layout';
 import { VitalsPageSkeleton } from '../components/ui';
 
 const formatBloodPressure = (log?: VitalsLog): string => {
-  if (!log?.bloodPressure) return '—';
+  if (!log?.bloodPressure) return '-';
   const { systolic, diastolic } = log.bloodPressure;
   return `${systolic}/${diastolic}`;
 };
@@ -100,19 +100,19 @@ export const VitalsHistoryPage: React.FC = () => {
               },
               {
                 label: 'Heart Rate',
-                value: latest?.heartRate ?? '—',
+                value: latest?.heartRate ?? '-',
                 unit: 'bpm',
                 tone: 'border-rose-100 bg-rose-50 text-rose-600',
               },
               {
                 label: 'Body Temperature',
-                value: latest?.temperature ?? '—',
+                value: latest?.temperature ?? '-',
                 unit: '°C',
                 tone: 'border-amber-100 bg-amber-50 text-amber-700',
               },
               {
                 label: 'Blood Sugar',
-                value: latest?.bloodSugar ?? '—',
+                value: latest?.bloodSugar ?? '-',
                 unit: 'mg/dL',
                 tone: 'border-emerald-100 bg-emerald-50 text-emerald-700',
               },

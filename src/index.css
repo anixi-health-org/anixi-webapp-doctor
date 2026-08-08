@@ -4,11 +4,15 @@
 
 @layer base {
   html {
-    @apply font-sans antialiased;
+    @apply h-full font-sans antialiased;
   }
 
   body {
-    @apply m-0 bg-[#F6FAEB] font-sans text-gray-900;
+    @apply m-0 h-full overflow-x-hidden bg-[#F6FAEB] font-sans text-gray-900;
+  }
+
+  #root {
+    @apply min-h-full;
   }
 
   h1,

@@ -241,6 +241,7 @@ export const AppointmentsPage: React.FC = () => {
 
       <AppointmentList
         appointments={filteredAppointments}
+        pageSize={10}
         onSelectAppointment={handleAppointmentClick}
         isLoading={isLoading}
       />

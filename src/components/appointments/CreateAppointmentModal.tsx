@@ -1,14 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { getPatientsByDoctorId } from '../../services/unifiedPatientDataSource';
 import { createAppointment } from '../../services/appointmentService';
 import { getAvailableSlots, validateSlot, createScheduledAppointment } from '../../services/schedulingService';
 import { createDoctorNotification } from '../../services/doctorNotificationService';
-import { Patient, AvailableSlot, ConsultType } from '../../types';
+import { Patient, AvailableSlot, ConsultType, PracticeMember } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Toast } from '../ui';
 import { modalityFromConsultType } from '../../utils/teleconsult';
+import { listPracticeClinicians } from '../../services/practiceSettingsService';
+import { listPracticePatients } from '../../services/practicePatientService';
+import { usesClinicAdminPortal } from '../../lib/doctorAccess';
+import { memberDisplayLabel } from '../../services/practiceMemberService';
 
 const CONSULT_TYPES: { value: ConsultType; label: string }[] = [
   { value: 'initial', label: 'Initial Consultation' },
@@ -48,8 +53,14 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
   consultTypeDefault,
 }) => {
   const { user, practiceSession } = useAuth();
-  const { can } = usePermissions();
+  const { permissions } = usePermissions();
+  const canManagePatients = Boolean(permissions.managePatients);
+  const canViewAllDoctors = Boolean(permissions.viewAllDoctors);
+  const canManageAppointments = Boolean(permissions.manageAppointments);
+  const canOverrideConflicts = Boolean(permissions.overrideConflicts);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [clinicians, setClinicians] = useState<PracticeMember[]>([]);
+  const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,40 +92,97 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
   });
 
   const practiceId = practiceSession?.practice?.id ?? null;
+  const isClinicAdmin = usesClinicAdminPortal(practiceSession);
   const hasBookableBlocks = !!practiceId;
+  const bookingDoctorId = selectedDoctorId || (isClinicAdmin ? '' : user?.id || '');
+  const canPickDoctor =
+    (isClinicAdmin && clinicians.length >= 1) ||
+    Boolean(canViewAllDoctors && clinicians.length > 1);
+  const canBook =
+    canManageAppointments &&
+    (!isClinicAdmin || (clinicians.length > 0 && Boolean(selectedDoctorId)));
   const isFollowUpFlow = consultTypeDefault === 'follow-up';
   const modalTitle = isFollowUpFlow ? 'Book Follow-up' : 'New Appointment';
   const submitLabel = isFollowUpFlow ? 'Book Follow-up' : 'Create Appointment';
 
   const loadPatients = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id || !isOpen) return;
     setIsLoading(true);
     try {
-      const doctorPatients = await getPatientsByDoctorId(user.id);
+      if (practiceId && (isClinicAdmin || canManagePatients)) {
+        const pool = await listPracticePatients(practiceId);
+        setPatients(pool);
+        return;
+      }
+      const doctorPatients = await getPatientsByDoctorId(bookingDoctorId || user.id);
       setPatients(doctorPatients);
     } catch {
       setPatients([]);
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, practiceId, bookingDoctorId, canManagePatients, isClinicAdmin, isOpen]);
 
   useEffect(() => {
-    if (isOpen && user?.id) loadPatients();
+    if (!isOpen || !practiceId) {
+      setClinicians([]);
+      setSelectedDoctorId(isClinicAdmin ? '' : user?.id || '');
+      return;
+    }
+    if (!isClinicAdmin && !canViewAllDoctors) {
+      setClinicians([]);
+      setSelectedDoctorId(user?.id || '');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await listPracticeClinicians(practiceId);
+        if (cancelled) return;
+        setClinicians(list);
+        setSelectedDoctorId((prev) => {
+          if (prev && list.some((c) => c.uid === prev)) return prev;
+          if (isClinicAdmin) return list[0]?.uid || '';
+          return user?.id || list[0]?.uid || '';
+        });
+      } catch {
+        if (!cancelled) setClinicians([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, practiceId, user?.id, canViewAllDoctors, isClinicAdmin]);
+
+  useEffect(() => {
+    if (isOpen && user?.id) {
+      void loadPatients();
+    }
   }, [isOpen, user?.id, loadPatients]);
 
   useEffect(() => {
-    if (!selectedDate || !practiceId || !user?.id) {
+    if (!selectedDate || !practiceId || !bookingDoctorId) {
       setAvailableSlots([]);
+      setLoadingSlots(false);
       return;
     }
+    let cancelled = false;
     setLoadingSlots(true);
     setSelectedSlot(null);
-    getAvailableSlots(practiceId, user.id, new Date(selectedDate), selectedConsultType)
-      .then(setAvailableSlots)
-      .catch(() => setAvailableSlots([]))
-      .finally(() => setLoadingSlots(false));
-  }, [selectedDate, selectedConsultType, practiceId, user?.id]);
+    getAvailableSlots(practiceId, bookingDoctorId, new Date(selectedDate), selectedConsultType)
+      .then((slots) => {
+        if (!cancelled) setAvailableSlots(slots);
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableSlots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSlots(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDate, selectedConsultType, practiceId, bookingDoctorId, user?.id]);
 
   useEffect(() => {
     if (!toast.visible) return;
@@ -143,15 +211,19 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
     const resolvedPatientName = bookingMode === 'anixi' ? formData.patientName : manualName.trim();
     const resolvedPatientEmail = bookingMode === 'anixi' ? formData.patientEmail : manualEmail.trim();
 
-    if (!user?.id || !resolvedPatientName || !selectedDate) {
-      setError('Please fill in all required fields');
+    if (!user?.id || !bookingDoctorId || !resolvedPatientName || !selectedDate) {
+      setError(
+        !bookingDoctorId && isClinicAdmin
+          ? 'Please select a doctor for this appointment'
+          : 'Please fill in all required fields'
+      );
       return;
     }
     if (bookingMode === 'anixi' && !formData.patientId) {
       setError('Please select a patient');
       return;
     }
-    if (!can('manageAppointments')) {
+    if (!canManageAppointments) {
       setError('You do not have permission to create appointments.');
       return;
     }
@@ -193,13 +265,13 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
         if (practiceId) {
           const validation = await validateSlot(
             practiceId,
-            user.id,
+            bookingDoctorId,
             startAt,
             endAt,
             selectedConsultType
           );
           if (!validation.valid) {
-            if (validation.reason === 'soft_block_conflict' && can('overrideConflicts')) {
+            if (validation.reason === 'soft_block_conflict' && canOverrideConflicts) {
               overrideApplied = true;
               conflictMeta = {
                 reason: `Soft block override: ${validation.softBlock?.title}`,
@@ -228,7 +300,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
           : 'pending';
 
       const appointmentId = await createAppointment({
-        doctorId: user.id,
+        doctorId: bookingDoctorId,
         patientId: resolvedPatientId,
         patientName: resolvedPatientName,
         patientEmail: resolvedPatientEmail,
@@ -255,7 +327,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
         await createScheduledAppointment({
           appointmentId,
           practiceId,
-          doctorId: user.id,
+          doctorId: bookingDoctorId,
           patientId: resolvedPatientId,
           patientName: resolvedPatientName,
           patientEmail: resolvedPatientEmail,
@@ -271,7 +343,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
         });
       }
 
-      await createDoctorNotification(user.id, {
+      await createDoctorNotification(bookingDoctorId, {
         type: appointmentStatus === 'pending' ? 'booking_request' : 'system',
         title: 'Appointment created',
         body: `Appointment created for ${resolvedPatientName} on ${startAt.toLocaleDateString('en-GB')} at ${timeStr}.`,
@@ -307,7 +379,12 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[1px]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[1px]"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       {toast.visible && (
         <Toast
           message={toast.message}
@@ -315,7 +392,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
           onClose={() => setToast({ visible: false, message: '', type: 'success' })}
         />
       )}
-      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-[#e1e7ef] bg-white shadow-xl">
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-[#e1e7ef] bg-white shadow-xl overscroll-contain">
         <Card className="border-0 shadow-none">
           <CardHeader className="relative border-b border-[#e1e7ef]">
             <CardTitle className="text-xl font-bold text-gray-900">{modalTitle}</CardTitle>
@@ -328,8 +405,55 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
             </button>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
               
+              {isClinicAdmin && (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Doctor *</label>
+                  {clinicians.length === 0 ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                      <p>No doctors on the team yet.</p>
+                      <Link
+                        to="/clinic/team"
+                        className="mt-1 inline-block font-semibold text-anixi-green hover:underline"
+                      >
+                        Invite doctors from Team & doctors →
+                      </Link>
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedDoctorId}
+                      onChange={(e) => setSelectedDoctorId(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    >
+                      {clinicians.map((c) => (
+                        <option key={c.uid} value={c.uid}>
+                          {memberDisplayLabel(c, practiceSession?.practice?.ownerId)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {!isClinicAdmin && canPickDoctor && (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Doctor *</label>
+                  <select
+                    value={selectedDoctorId}
+                    onChange={(e) => setSelectedDoctorId(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    {clinicians.map((c) => (
+                      <option key={c.uid} value={c.uid}>
+                        {memberDisplayLabel(c, practiceSession?.practice?.ownerId)}
+                        {c.uid === user?.id ? ' (you)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Booking Type</label>
@@ -361,16 +485,28 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
 
               
               {bookingMode === 'anixi' && (
-                <div>
+                <div className="min-h-[72px]">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Patient *</label>
                   {isLoading ? (
                     <p className="text-sm text-gray-500">Loading patients…</p>
+                  ) : patients.length === 0 ? (
+                    <div className="rounded-lg border border-[#e1e7ef] bg-[#f8fafc] px-3 py-3 text-sm text-[#65758b]">
+                      {isClinicAdmin ? (
+                        <>
+                          No patients in your clinic roster yet.{' '}
+                          <Link to="/clinic/patients" className="font-semibold text-anixi-green hover:underline">
+                            Import patients →
+                          </Link>
+                        </>
+                      ) : (
+                        'No patients found. Add patients first or use manual booking.'
+                      )}
+                    </div>
                   ) : (
                     <select
                       value={formData.patientId}
                       onChange={(e) => handlePatientChange(e.target.value)}
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required={bookingMode === 'anixi'}
                     >
                       <option value="">Select a patient</option>
                       {patients.map((p) => (
@@ -452,7 +588,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                   ) : availableSlots.length === 0 ? (
                     <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
                       No available slots within clinic hours on this date.
-                      {can('overrideConflicts') && (
+                      {canOverrideConflicts && (
                         <button
                           type="button"
                           onClick={() => setOverrideMode(true)}
@@ -547,14 +683,19 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 <button
                   type="submit"
                   className="flex-1 rounded-[10px] bg-anixi-green px-4 py-2 text-white transition-colors hover:bg-anixi-green/90 disabled:opacity-50"
-                  disabled={isSubmitting || !can('manageAppointments')}
+                  disabled={isSubmitting || !canBook}
                 >
                   {isSubmitting ? 'Saving…' : submitLabel}
                 </button>
               </div>
-              {!can('manageAppointments') && (
+              {!canManageAppointments && (
                 <p className="text-xs text-red-500 text-center">
-                  You don't have permission to create appointments.
+                  You don&apos;t have permission to create appointments.
+                </p>
+              )}
+              {isClinicAdmin && clinicians.length === 0 && (
+                <p className="text-xs text-center text-[#65758b]">
+                  Invite at least one doctor before booking appointments.
                 </p>
               )}
             </form>

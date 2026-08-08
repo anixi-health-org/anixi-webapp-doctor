@@ -144,7 +144,7 @@ export const ManageAppointmentModal: React.FC<Props> = ({ appointment, onClose, 
             validation.reason === 'outside_bookable_block' &&
             can('manageAppointments')
           ) {
-            // Doctor-initiated reschedule outside clinic hours — allow with override note.
+            // Doctor-initiated reschedule outside clinic hours - allow with override note.
             overrideApplied = true;
             conflictMeta = { reason: 'Rescheduled outside clinic hours by practitioner' };
           } else {

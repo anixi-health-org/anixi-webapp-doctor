@@ -19,7 +19,9 @@ import { db } from '../lib/firebase';
 import { buildPatientSignupLink } from '../lib/referralLinks';
 import { USERS_COLLECTION } from '../shared/constants';
 import { Patient, SharingRequest } from '../types';
+import { provisionPatientAccount } from './patientProvisioningService';
 import { getDoctorReferral, logInvitation } from './referralService';
+import { mapPatientRecord } from './patientRecordMapper';
 
 const IOS_APP_LINK = 'https://apps.apple.com/app/anixi-health';
 const ANDROID_APP_LINK = 'https://play.google.com/store/apps/details?id=com.anixi.health';
@@ -60,7 +62,7 @@ async function queuePatientAppDownloadInviteEmail(opts: {
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.5;">
       <p>${greeting}</p>
-      <p>Your doctor has invited you to join Anixi — a care coordination app.</p>
+      <p>Your doctor has invited you to join Anixi - a care coordination app.</p>
       <p>Sign up on the web: <a href="${signupLink}">${signupLink}</a></p>
       <p>Or download the app:</p>
       <ul>
@@ -68,7 +70,7 @@ async function queuePatientAppDownloadInviteEmail(opts: {
         <li><a href="${ANDROID_APP_LINK}">Get it on Google Play</a></li>
       </ul>
       <p>If you have any trouble, reply to this email.</p>
-      <p>— The Anixi team</p>
+      <p>- The Anixi team</p>
     </div>
   `.trim();
 
@@ -170,50 +172,20 @@ export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> =>
     const patients: Patient[] = [];
     const patientFetchPromises = patientIds.map(async (patientId) => {
       try {
-        const userRef = doc(db, 'Users', patientId);
-        const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) {
+        const [userSnap, patientSnap] = await Promise.all([
+          getDoc(doc(db, 'Users', patientId)),
+          getDoc(doc(db, 'patients', patientId)),
+        ]);
+        if (!userSnap.exists() && !patientSnap.exists()) {
           return null;
         }
-        const userData = userSnap.data();
-        const composedName = [
-          userData.firstName,
-          userData.lastName,
-        ]
-          .filter((part) => typeof part === 'string' && part.trim())
-          .join(' ')
-          .trim();
-        const resolvedName =
-          (typeof userData.displayName === 'string' && userData.displayName.trim()) ||
-          (typeof userData.fullName === 'string' && userData.fullName.trim()) ||
-          (typeof userData.name === 'string' && userData.name.trim()) ||
-          composedName ||
-          (typeof userData.Username === 'string' && userData.Username.trim()) ||
-          (typeof userData.email === 'string' && userData.email.includes('@')
-            ? userData.email.split('@')[0]
-            : '') ||
-          'Patient';
-        return {
-          id: patientId,
-          email: userData.email || '',
-          displayName: resolvedName,
-          role: 'patient' as const,
-          dateOfBirth: userData.dateOfBirth?.toDate?.() || undefined,
-          gender: userData.gender || undefined,
-          maritalStatus: userData.maritalStatus || undefined,
-          language: userData.language || undefined,
-          address: userData.address || undefined,
-          phoneNumber: userData.phoneNumber || undefined,
-          assignedDoctorId: userData.assignedDoctorId || doctorId,
-          emergencyContact: userData.emergencyContact || undefined,
-          medicalAid: userData.medicalAid || undefined,
-          chronicDiseases: userData.chronicDiseases || [],
-          allergies: userData.allergies || [],
-          currentTreatments: userData.currentTreatments || [],
-          createdAt: userData.createdAt?.toDate?.() || new Date(),
-          updatedAt: userData.updatedAt?.toDate?.() || new Date(),
-        } as Patient;
-      } catch (error) {
+        return mapPatientRecord(
+          patientId,
+          patientSnap.exists() ? (patientSnap.data() as Record<string, unknown>) : undefined,
+          userSnap.exists() ? (userSnap.data() as Record<string, unknown>) : undefined,
+          doctorId
+        );
+      } catch {
         return null;
       }
     });
@@ -456,6 +428,8 @@ export const addPatientManually = async (
     phoneNumber?: string;
     dateOfBirth?: Date;
     notes?: string;
+    /** When set, patient joins the practice-shared pool */
+    practiceId?: string;
   },
   // optional: invite the provided email after creating/linking patient
   inviteOptions?: { sendInvite?: boolean; inviteEmail?: string }
@@ -467,6 +441,19 @@ export const addPatientManually = async (
     let existingPatientId: string | null = null;
     let existingPatientData: any = null;
     const targetEmail = (inviteOptions?.inviteEmail || payload.email || '').trim().toLowerCase();
+
+    if (inviteOptions?.sendInvite && targetEmail) {
+      const provisioned = await provisionPatientAccount({
+        displayName: payload.displayName,
+        email: targetEmail,
+        phoneNumber: payload.phoneNumber,
+        practiceId: payload.practiceId,
+      });
+      return {
+        patientId: provisioned.patientId,
+        inviteQueued: provisioned.inviteQueued,
+      };
+    }
 
     const patientsRef = collection(db, 'patients');
 
@@ -566,6 +553,7 @@ export const addPatientManually = async (
         notes: payload.notes || '',
         isManual: true,
         assignedDoctorId: doctorId,
+        ...(payload.practiceId ? { practiceId: payload.practiceId } : {}),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -983,41 +971,20 @@ export const listenToDoctorPatients = (
         const patientDetailsPromises = approvedPatients.map(async (approvedPatient) => {
           const patientId = approvedPatient.id;
           try {
-            const patientRef = doc(db, 'patients', patientId);
-            const patientSnap = await getDoc(patientRef);
-            
-            if (!patientSnap.exists()) {
+            const [patientSnap, userSnap] = await Promise.all([
+              getDoc(doc(db, 'patients', patientId)),
+              getDoc(doc(db, USERS_COLLECTION, patientId)),
+            ]);
+            if (!patientSnap.exists() && !userSnap.exists()) {
               return null;
             }
-            
-            const patientData = patientSnap.data();
-
-            return {
-              id: patientSnap.id,
-              email: patientData?.email || '',
-              displayName: patientData?.fullName || patientData?.displayName || 'Patient',
-              role: 'patient' as const,
-              dateOfBirth: patientData?.dateOfBirth?.toDate?.() || null,
-              gender: patientData?.gender || null,
-              maritalStatus: patientData?.maritalStatus || undefined,
-              language: patientData?.language || undefined,
-              address: patientData?.address || undefined,
-              phoneNumber: patientData?.phoneNumber || undefined,
-              assignedDoctorId: doctorId,
-              emergencyContact: patientData?.emergencyContact || undefined,
-              medicalAid: patientData?.medicalAid || undefined,
-              chronicDiseases: patientData?.chronicDiseases || [],
-              allergies: patientData?.allergies || [],
-              currentTreatments: (patientData?.currentTreatments || []).map((treatment: any) => ({
-                name: treatment.name,
-                dosage: treatment.dosage,
-                frequency: treatment.frequency,
-                startDate: treatment.startDate?.toDate?.() || new Date(),
-              })),
-              createdAt: patientData?.createdAt?.toDate?.() || new Date(),
-              updatedAt: patientData?.updatedAt?.toDate?.() || new Date(),
-            } as Patient;
-          } catch (error) {
+            return mapPatientRecord(
+              patientId,
+              patientSnap.exists() ? (patientSnap.data() as Record<string, unknown>) : undefined,
+              userSnap.exists() ? (userSnap.data() as Record<string, unknown>) : undefined,
+              doctorId
+            );
+          } catch {
             return null;
           }
         });

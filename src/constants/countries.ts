@@ -4,7 +4,7 @@ export type PracticeCountry = {
   currency: string;
 };
 
-/** Countries supported at registration — ISO 3166-1 alpha-2 + default currency (ISO 4217). */
+/** Countries supported at registration - ISO 3166-1 alpha-2 + default currency (ISO 4217). */
 export const PRACTICE_COUNTRIES: PracticeCountry[] = [
   { code: 'ZA', name: 'South Africa', currency: 'ZAR' },
   { code: 'MA', name: 'Morocco', currency: 'MAD' },

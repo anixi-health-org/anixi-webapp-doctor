@@ -158,7 +158,7 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
         const moodRows: MoodRow[] = (moodEntries || [])
           .map((m: any) => ({
             timestamp: m.timestamp instanceof Date ? m.timestamp : new Date(m.timestamp || m.date),
-            mood: String(m.mood || m.score || '—'),
+            mood: String(m.mood || m.score || '-'),
             notes: m.notes,
           }))
           .sort((a: MoodRow, b: MoodRow) => b.timestamp.getTime() - a.timestamp.getTime());
@@ -197,7 +197,7 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
   if (isManual || patientId === 'unknown' || patientId === 'manual') {
     return (
       <div className="rounded-[14px] border border-dashed border-[#e1e7ef] bg-[#f8fafc] p-5 text-sm text-[#65758b]">
-        Manual patient — no linked Anixi chart. Confirm identity verbally, then start the call when ready.
+        Manual patient - no linked Anixi chart. Confirm identity verbally, then start the call when ready.
       </div>
     );
   }
@@ -345,7 +345,7 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
                   This month adherence
                 </p>
                 <p className="mt-2 text-2xl font-bold text-[#0E2340]">
-                  {adherencePct != null ? `${adherencePct}%` : '—'}
+                  {adherencePct != null ? `${adherencePct}%` : '-'}
                 </p>
                 <p className="mt-1 text-xs text-[#65758b]">
                   Taken {adherenceTaken} · Missed {adherenceMissed} · Pending {adherencePending}
@@ -425,7 +425,7 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
                     <li key={`${t.name}-${i}`}>
                       {t.name}
                       {[t.dosage, t.frequency].filter(Boolean).length
-                        ? ` — ${[t.dosage, t.frequency].filter(Boolean).join(', ')}`
+                        ? ` - ${[t.dosage, t.frequency].filter(Boolean).join(', ')}`
                         : ''}
                     </li>
                   ))}
@@ -485,11 +485,11 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
                           })}
                         </td>
                         <td className="px-3 py-2">
-                          {v.systolic && v.diastolic ? `${v.systolic}/${v.diastolic}` : '—'}
+                          {v.systolic && v.diastolic ? `${v.systolic}/${v.diastolic}` : '-'}
                         </td>
-                        <td className="px-3 py-2">{v.heartRate ?? '—'}</td>
-                        <td className="px-3 py-2">{v.bloodSugar ?? '—'}</td>
-                        <td className="px-3 py-2">{v.temperature ?? '—'}</td>
+                        <td className="px-3 py-2">{v.heartRate ?? '-'}</td>
+                        <td className="px-3 py-2">{v.bloodSugar ?? '-'}</td>
+                        <td className="px-3 py-2">{v.temperature ?? '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -528,7 +528,7 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
             <p className="text-sm text-[#65758b]">
               Month rate:{' '}
               <span className="font-semibold text-[#0E2340]">
-                {adherencePct != null ? `${adherencePct}%` : '—'}
+                {adherencePct != null ? `${adherencePct}%` : '-'}
               </span>
             </p>
           </div>

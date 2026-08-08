@@ -1,59 +1,65 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AnixiLogo } from '../components/brand/AnixiLogo';
 import ProfessionalProfileForm from '../components/ProfessionalProfileForm';
+import { OnboardingShell } from '../components/onboarding/OnboardingShell';
+import { getOnboardingStepMeta } from '../components/onboarding/OnboardingProgress';
+import { AppShellSkeleton } from '../components/ui/Skeleton';
 import { useAuth } from '../hooks/AuthContext';
-import { doctorHomePath, getDoctorAccessState } from '../lib/doctorAccess';
+import { clinicAdminHomePath, doctorHomePath, getDoctorAccessState, isClinicOwner } from '../lib/doctorAccess';
 import type { Doctor } from '../types';
 
+const PROFILE_SUB_LABELS = ['Personal details', 'Professional details', 'Practice details'];
+
+/** Doctor credential onboarding (HPCSA review). Separate from clinic bulk setup. */
 export const DoctorOnboardingPage: React.FC = () => {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, refreshUser, practiceSession, clinicOnboardingComplete } = useAuth();
   const navigate = useNavigate();
   const doctor = user?.role === 'doctor' ? (user as Doctor) : null;
+  const [profileStep, setProfileStep] = useState(1);
 
   useEffect(() => {
     if (!doctor) return;
+    if (isClinicOwner(practiceSession)) {
+      navigate(clinicOnboardingComplete ? clinicAdminHomePath() : '/clinic-setup', {
+        replace: true,
+      });
+      return;
+    }
     const state = getDoctorAccessState(doctor);
     if (state !== 'onboarding' && state !== 'rejected' && state !== 'suspended') {
       navigate(doctorHomePath(doctor), { replace: true });
     }
-  }, [doctor, navigate]);
+  }, [doctor, navigate, practiceSession, clinicOnboardingComplete]);
+
+  const stepMeta = getOnboardingStepMeta('solo', 1);
+
+  if (!doctor) {
+    return <AppShellSkeleton />;
+  }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc]">
-      <header className="border-b border-[#e1e7ef] bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <AnixiLogo variant="header" linkTo={null} />
-          <button
-            type="button"
-            onClick={async () => {
-              await logout();
-              navigate('/login', { replace: true });
-            }}
-            className="text-sm font-medium text-[#65758b] hover:text-[#344256]"
-          >
-            Sign out
-          </button>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-        <div className="mb-8 rounded-[12px] border border-[#427160]/15 bg-[#eef4f1] px-5 py-4">
-          <h1 className="text-xl font-bold text-[#344256]">Complete your doctor application</h1>
-          <p className="mt-1 text-sm leading-relaxed text-[#65758b]">
-            Fill in your personal details and practice information. Anixi Admin will review your
-            application before you can start managing patients, appointments, and tele-consultations.
-          </p>
-        </div>
-
-        <ProfessionalProfileForm
-          mode="onboarding"
-          onSubmitted={async () => {
-            await refreshUser();
-            navigate('/account-review', { replace: true });
-          }}
-        />
-      </div>
-    </div>
+    <OnboardingShell
+      flow="solo"
+      currentStep={1}
+      subProgress={{
+        current: profileStep,
+        total: 3,
+        label: PROFILE_SUB_LABELS[profileStep - 1] ?? 'Profile',
+      }}
+      title={stepMeta.title}
+      subtitle={stepMeta.subtitle}
+      maxWidth="full"
+      onBack={profileStep > 1 ? () => setProfileStep((s) => Math.max(1, s - 1)) : undefined}
+      backLabel="Back"
+    >
+      <ProfessionalProfileForm
+        mode="onboarding"
+        onStepChange={setProfileStep}
+        onSubmitted={async () => {
+          await refreshUser();
+          navigate('/account-review', { replace: true });
+        }}
+      />
+    </OnboardingShell>
   );
 };

@@ -19,9 +19,9 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   <div className={clsx('mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between', className)}>
     <div className="min-w-0">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold tracking-tight text-[#344256] sm:text-[30px]">
+        <h2 className="font-heading text-xl font-bold tracking-tight text-[#344256] sm:text-2xl">
           {title}
-        </h1>
+        </h2>
         {badge}
       </div>
       {description && (

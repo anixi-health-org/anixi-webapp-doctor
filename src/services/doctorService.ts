@@ -1,10 +1,11 @@
 import { collection, doc, getDoc, getDocs, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { DOCTORS_COLLECTION, USERS_COLLECTION } from '../shared/constants';
+import { queueDoctorOnboardingSubmittedEmail } from './onboardingEmailService';
 import { DashboardStats, Doctor, Patient } from '../types';
-import { convertTimestamp } from '../utils/dateFormatter';
 import { formDataToFirestore, firestoreToFormData } from '../lib/doctorProfileMapper';
 import type { ProfessionalProfileFormData } from '../types/doctorProfile';
+import { mapPatientRecord } from './patientRecordMapper';
 
 function mapDoctorDoc(id: string, doctorData: Record<string, unknown>): Doctor {
     return {
@@ -108,6 +109,19 @@ export const saveDoctorProfileForm = async (
         },
         { merge: true }
     );
+
+    if (options?.submitForReview) {
+        const userSnap = await getDoc(doc(db, USERS_COLLECTION, doctorId));
+        const doctorEmail =
+            (userSnap.exists() ? String(userSnap.data()?.email ?? '') : '') ||
+            String(form.emailAddress ?? '').trim();
+        if (doctorEmail) {
+            await queueDoctorOnboardingSubmittedEmail({
+                to: doctorEmail,
+                displayName: form.fullName,
+            });
+        }
+    }
 };
 
 export const updateDoctorProfile = async (doctorId: string, updates: Partial<Doctor>): Promise<void> => {
@@ -158,50 +172,23 @@ export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> =>
         const patients: Patient[] = [];
         const patientFetches = patientIds.map(async (patientId) => {
             try {
-                const patientDoc = await getDoc(doc(db, 'patients', patientId));
-                if (patientDoc.exists()) {
-                    const patientData = patientDoc.data();
-                    const userDoc = await getDoc(doc(db, USERS_COLLECTION, patientId));
-                    const userData = userDoc.exists() ? userDoc.data() : {};
-                    const photoURL =
-                        (typeof userData.photoURL === 'string' && userData.photoURL) ||
-                        (typeof patientData.photoURL === 'string' && patientData.photoURL) ||
-                        (typeof patientData.photoUrl === 'string' && patientData.photoUrl) ||
-                        (typeof patientData.profileImageUrl === 'string' && patientData.profileImageUrl) ||
-                        undefined;
-                    const fullName = patientData.fullName || patientData.displayName || '';
-                    const email = patientData.email || '';
-                    const createdAtConverted = convertTimestamp(patientData.createdAt);
-                    const updatedAtConverted = convertTimestamp(patientData.updatedAt);
-                    patients.push({
-                        id: patientDoc.id,
-                        email: email,
-                        displayName: fullName,
-                        photoURL,
-                        role: 'patient',
-                        gender: patientData.gender,
-                        phoneNumber: patientData.phoneNumber,
-                        address: patientData.address,
-                        maritalStatus: patientData.maritalStatus,
-                        language: patientData.language,
-                        dateOfBirth: convertTimestamp(patientData.dateOfBirth),
-                        assignedDoctorId: doctorId,
-                        emergencyContact: patientData.emergencyContact,
-                        medicalAid: patientData.medicalAid,
-                        chronicDiseases: patientData.chronicDiseases,
-                        allergies: patientData.allergies,
-                        currentTreatments: (patientData.currentTreatments || []).map((treatment: any) => ({
-                            name: treatment.name,
-                            dosage: treatment.dosage,
-                            frequency: treatment.frequency,
-                            startDate: convertTimestamp(treatment.startDate),
-                        })),
-                        createdAt: createdAtConverted,
-                        updatedAt: updatedAtConverted,
-                    } as Patient);
-                } else {
+                const [patientDoc, userDoc] = await Promise.all([
+                    getDoc(doc(db, 'patients', patientId)),
+                    getDoc(doc(db, USERS_COLLECTION, patientId)),
+                ]);
+                if (!patientDoc.exists() && !userDoc.exists()) {
+                    return;
                 }
-            } catch (error) {
+                patients.push(
+                    mapPatientRecord(
+                        patientId,
+                        patientDoc.exists() ? (patientDoc.data() as Record<string, unknown>) : undefined,
+                        userDoc.exists() ? (userDoc.data() as Record<string, unknown>) : undefined,
+                        doctorId
+                    )
+                );
+            } catch {
+                // Skip patients the doctor cannot read
             }
         });
         await Promise.all(patientFetches);

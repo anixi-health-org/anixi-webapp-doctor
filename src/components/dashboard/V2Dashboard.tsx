@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import {
   CalendarDaysIcon,
   ChartBarIcon,
@@ -12,6 +12,10 @@ import clsx from 'clsx';
 import { Patient, Appointment } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { getDoctorAppointments } from '../../services/appointmentService';
+import {
+  getPracticeDashboardStats,
+  type PracticeDashboardStats,
+} from '../../services/practiceDashboardService';
 import { DashboardPageSkeleton } from '../ui/Skeleton';
 import { PageHeader } from '../page-layout/PageHeader';
 
@@ -128,11 +132,13 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
   onAddPatient,
 }) => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, practiceSession } = useAuth();
   const firstName = user?.displayName?.split(' ')[0] || 'Doctor';
+  const isClinic = practiceSession?.practice?.orgType === 'clinic';
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(true);
+  const [practiceStats, setPracticeStats] = useState<PracticeDashboardStats | null>(null);
   const [recordsTab, setRecordsTab] = useState<'patients' | 'appointments'>('patients');
   const [dateRange, setDateRange] = useState<DateRangeKey>('today');
   const [rangeOpen, setRangeOpen] = useState(false);
@@ -159,6 +165,24 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
       cancelled = true;
     };
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!isClinic || !practiceSession?.practice?.id) {
+      setPracticeStats(null);
+      return;
+    }
+    let cancelled = false;
+    getPracticeDashboardStats(practiceSession.practice.id)
+      .then((stats) => {
+        if (!cancelled) setPracticeStats(stats);
+      })
+      .catch(() => {
+        if (!cancelled) setPracticeStats(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isClinic, practiceSession?.practice?.id]);
 
   useEffect(() => {
     if (!rangeOpen) return;
@@ -259,7 +283,7 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
     if (items.length === 0) {
       items.push({
         label: 'No recent activity yet',
-        time: '—',
+        time: '-',
         tone: 'bg-slate-300',
       });
     }
@@ -285,10 +309,22 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
     <div className="space-y-6">
       <PageHeader
         title="Dashboard Overview"
-        description={`Welcome back, Dr. ${firstName}. Here's your practice summary.`}
+        description={
+          isClinic
+            ? `Welcome back, Dr. ${firstName}. Here's ${practiceSession?.practice?.name || 'your clinic'} at a glance.`
+            : `Welcome back, Dr. ${firstName}. Here's your practice summary.`
+        }
         className="mb-0"
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {isClinic && (
+              <Link
+                to="/practice-settings?tab=team"
+                className="btn-secondary h-10 px-4 text-sm font-semibold"
+              >
+                Manage team
+              </Link>
+            )}
             <div className="relative" ref={rangeMenuRef}>
               <button
                 type="button"
@@ -339,6 +375,27 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
           </div>
         }
       />
+
+      {isClinic && practiceStats && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Today', value: practiceStats.appointmentsToday },
+            { label: 'This week', value: practiceStats.appointmentsThisWeek },
+            { label: 'Pending', value: practiceStats.pendingAppointments },
+            { label: 'Completed (month)', value: practiceStats.completedThisMonth },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="rounded-[12px] border border-[#e1e7ef] bg-white px-4 py-3 shadow-sm"
+            >
+              <p className="text-xs font-medium uppercase tracking-wide text-[#65758b]">
+                {stat.label}
+              </p>
+              <p className="mt-1 text-2xl font-bold text-[#344256]">{stat.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {patientsError && (
         <div className="rounded-[12px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -584,7 +641,7 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
                   {patients.slice(0, 8).map((patient) => {
                     const age = ageFromDob(patient.dateOfBirth);
                     const status = patientStatus(patient, inactiveIds);
-                    const condition = patient.chronicDiseases?.[0] || '—';
+                    const condition = patient.chronicDiseases?.[0] || '-';
                     const initials = (patient.displayName || patient.email || '?')
                       .split(' ')
                       .map((p) => p[0])
@@ -605,7 +662,7 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
                         </td>
                         <td className="px-3 py-3 text-[#65758b]">{patient.id.slice(0, 8).toUpperCase()}</td>
                         <td className="px-3 py-3 text-[#65758b]">
-                          {age != null ? `${age}` : '—'}
+                          {age != null ? `${age}` : '-'}
                           {patient.gender ? ` / ${patient.gender}` : ''}
                         </td>
                         <td className="px-3 py-3 text-[#344256]">{condition}</td>

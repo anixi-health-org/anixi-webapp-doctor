@@ -237,7 +237,7 @@ export const AppointmentSummary: React.FC = () => {
           )}
           {isWhatsAppComingSoon(appointment) ? (
             <div className="inline-flex h-10 items-center rounded-[10px] border border-amber-200 bg-amber-50 px-4 text-sm font-medium text-amber-900">
-              WhatsApp — Coming soon
+              WhatsApp - Coming soon
             </div>
           ) : (
             <button

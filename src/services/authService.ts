@@ -9,8 +9,8 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { DOCTORS_COLLECTION, USERS_COLLECTION } from '../shared/constants';
 import { linkCaregiverToNominatedPatients } from './caregiverService';
-import { Caregiver, Doctor, ProfessionalUser } from '../types';
-import { AuthRole } from '../types/auth';
+import { Caregiver, Doctor, ProfessionalUser, StaffUser } from '../types';
+import { AuthRole, JoinPath } from '../types/auth';
 import { getCurrencyForCountry } from '../constants/countries';
 
 async function resolveAccountRole(uid: string): Promise<AuthRole | null> {
@@ -21,7 +21,7 @@ async function resolveAccountRole(uid: string): Promise<AuthRole | null> {
     const userData = userDoc.data();
     const accountType = (userData.accountType || userData.role) as string | undefined;
 
-    if (accountType === 'doctor' || accountType === 'caregiver') {
+    if (accountType === 'doctor' || accountType === 'caregiver' || accountType === 'staff') {
       return accountType;
     }
 
@@ -100,6 +100,23 @@ async function mapCaregiverUser(firebaseUser: User): Promise<Caregiver> {
   };
 }
 
+async function mapStaffUser(firebaseUser: User): Promise<StaffUser> {
+  const userRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
+  const userDoc = await getDoc(userRef);
+  const userData = userDoc.exists() ? userDoc.data() : {};
+
+  return {
+    id: firebaseUser.uid,
+    email: firebaseUser.email || userData.email || '',
+    displayName: userData.displayName || firebaseUser.displayName || undefined,
+    role: 'staff',
+    phoneNumber: userData.phoneNumber,
+    primaryPracticeId: userData.primaryPracticeId,
+    createdAt: userData.createdAt?.toDate() || new Date(),
+    updatedAt: userData.updatedAt?.toDate() || new Date(),
+  };
+}
+
 async function ensureUserRoleDoc(firebaseUser: User, role: AuthRole): Promise<void> {
   const userRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
   const userDoc = await getDoc(userRef);
@@ -145,10 +162,13 @@ export const registerProfessional = async (
   password: string,
   displayName: string,
   role: AuthRole,
-  countryCode?: string
+  countryCode?: string,
+  joinPath?: JoinPath
 ): Promise<void> => {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   await updateProfile(userCredential.user, { displayName });
+
+  const skipPracticeProvision = joinPath === 'clinic' || joinPath === 'invite';
 
   await setDoc(
     doc(db, USERS_COLLECTION, userCredential.user.uid),
@@ -158,6 +178,8 @@ export const registerProfessional = async (
       displayName,
       role,
       accountType: role,
+      ...(joinPath ? { joinIntent: joinPath } : {}),
+      ...(skipPracticeProvision ? { skipPracticeProvision: true } : {}),
       createdAt: new Date(),
       updatedAt: new Date(),
     },
@@ -206,7 +228,7 @@ export const loginProfessional = async (
     if (!resolvedRole) {
       await signOut(auth);
       throw new Error(
-        'Access denied. Please register as a doctor or caregiver before signing in.'
+        'Access denied. Please register as a doctor, clinic staff, or caregiver before signing in.'
       );
     }
 
@@ -225,6 +247,9 @@ export const loginProfessional = async (
 
     if (resolvedRole === 'doctor') {
       return mapDoctorUser(firebaseUser);
+    }
+    if (resolvedRole === 'staff') {
+      return mapStaffUser(firebaseUser);
     }
 
     return mapCaregiverUser(firebaseUser);
@@ -255,11 +280,30 @@ export const getCurrentProfessional = async (
     if (resolvedRole === 'doctor') {
       return mapDoctorUser(firebaseUser);
     }
+    if (resolvedRole === 'staff') {
+      return mapStaffUser(firebaseUser);
+    }
 
     return mapCaregiverUser(firebaseUser);
   } catch {
     return null;
   }
+};
+
+/** Retries while Firestore profile docs catch up after registration. */
+export const getCurrentProfessionalWithRetry = async (
+  firebaseUser: User,
+  attempts = 6,
+  delayMs = 250
+): Promise<ProfessionalUser | null> => {
+  for (let i = 0; i < attempts; i++) {
+    const professional = await getCurrentProfessional(firebaseUser);
+    if (professional) return professional;
+    if (i < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return null;
 };
 
 export const getCurrentDoctor = async (firebaseUser: User): Promise<Doctor | null> => {

@@ -39,7 +39,7 @@ export const queueDelegateInvitationEmail = async (opts: {
       <p><a href="${acceptUrl}">Accept invitation</a></p>
       <p>Or copy this link: ${acceptUrl}</p>
       <p>If you did not expect this invitation, you can ignore this email.</p>
-      <p>— The Anixi team</p>
+      <p>- The Anixi team</p>
     </div>
   `.trim();
 

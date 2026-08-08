@@ -208,7 +208,7 @@ const InvoiceDetails: React.FC = () => {
                             {li.icd10Code && (
                               <div className="text-xs text-gray-500">
                                 ICD-10: {li.icd10Code}
-                                {li.icd10Description ? ` — ${li.icd10Description}` : ''}
+                                {li.icd10Description ? ` - ${li.icd10Description}` : ''}
                               </div>
                             )}
                           </div>

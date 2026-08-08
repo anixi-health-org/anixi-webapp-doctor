@@ -5,7 +5,7 @@ interface SkeletonProps {
   className?: string;
 }
 
-/** Base shimmer block — use Inter context via parent; decorative only. */
+/** Base shimmer block - use Inter context via parent; decorative only. */
 export const Skeleton: React.FC<SkeletonProps> = ({ className }) => (
   <div
     className={clsx('animate-pulse rounded-lg bg-gradient-to-r from-gray-200/80 via-gray-100/90 to-gray-200/80', className)}

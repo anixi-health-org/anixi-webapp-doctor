@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Patient } from '../../types';
-import { calculateAge, updatePatient } from '../../services/patientManagementService';
+import { calculateAge } from '../../services/patientManagementService';
 import { formatTimestamp } from '../../utils/dateFormatter';
-import { EditMedicalInfoModal } from './EditMedicalInfoModal';
 
 interface PatientDetailModalProps {
   patient: Patient | null;
@@ -15,34 +14,13 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
   patient,
   isOpen,
   onClose,
-  onPatientUpdated,
 }) => {
-  const [showEditMedical, setShowEditMedical] = useState(false);
-  const [localPatient, setLocalPatient] = useState<Patient | null>(patient);
+  if (!isOpen || !patient) return null;
 
-  React.useEffect(() => {
-    setLocalPatient(patient);
-  }, [patient]);
-
-  if (!isOpen || !localPatient) return null;
-
-  const displayPatient = localPatient;
+  const displayPatient = patient;
   
   const age = calculateAge(displayPatient.dateOfBirth);
 
-  const hasMedicalData =
-    displayPatient.medicalAid ||
-    (displayPatient.chronicDiseases && displayPatient.chronicDiseases.length > 0) ||
-    (displayPatient.allergies && displayPatient.allergies.length > 0) ||
-    (displayPatient.currentTreatments && displayPatient.currentTreatments.length > 0);
-
-  const handleSaveMedical = async (updates: Partial<Patient>) => {
-    await updatePatient(displayPatient.id, updates);
-    const updated: Patient = { ...displayPatient, ...updates };
-    setLocalPatient(updated);
-    onPatientUpdated?.(updated);
-  };
-  
   const formatDate = (date: any): string => {
     if (!date) return 'Not available';
     return formatTimestamp(date, 'long');
@@ -131,22 +109,32 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
 
           
           <div>
-            <div className="flex items-center justify-between gap-3 mb-4">
+            <div className="mb-4">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                 <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 Medical Information
               </h3>
-              <button
-                type="button"
-                onClick={() => setShowEditMedical(true)}
-                className="text-sm font-medium text-[#425950] px-3 py-1.5 rounded-lg border border-[#D7E0DC] hover:bg-[#F3F7F5] transition-colors shrink-0"
-              >
-                {hasMedicalData ? 'Edit' : 'Add'}
-              </button>
+              <p className="mt-1 text-xs text-gray-500">View only — patient manages this data in the app.</p>
             </div>
             <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white rounded-2xl p-4 border border-[#E7EDF4] shadow-sm">
+                  <p className="text-xs font-semibold text-gray-500 mb-1">BLOOD GROUP</p>
+                  <p className="text-gray-900 font-medium">{displayPatient.bloodGroup || 'Not recorded'}</p>
+                </div>
+                <div className="bg-white rounded-2xl p-4 border border-[#E7EDF4] shadow-sm">
+                  <p className="text-xs font-semibold text-gray-500 mb-1">WEIGHT</p>
+                  <p className="text-gray-900 font-medium">
+                    {displayPatient.weight
+                      ? /kg|lb/i.test(displayPatient.weight)
+                        ? displayPatient.weight
+                        : `${displayPatient.weight} kg`
+                      : 'Not recorded'}
+                  </p>
+                </div>
+              </div>
               {displayPatient.medicalAid ? (
                 <div className="bg-[#F3F7F5] rounded-2xl p-4 border border-[#D7E0DC] shadow-sm">
                   <p className="text-xs font-semibold text-[#425950] mb-2">MEDICAL AID</p>
@@ -224,13 +212,6 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
           </button>
         </div>
       </div>
-
-      <EditMedicalInfoModal
-        isOpen={showEditMedical}
-        patient={displayPatient}
-        onClose={() => setShowEditMedical(false)}
-        onSave={handleSaveMedical}
-      />
     </div>
   );
 };

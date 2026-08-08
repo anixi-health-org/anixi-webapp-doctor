@@ -297,11 +297,11 @@ export const Patients: React.FC = () => {
                               <span className="truncate">{patient.email}</span>
                             </p>
                           )}
-                          {!patient.phoneNumber && !patient.email && '—'}
+                          {!patient.phoneNumber && !patient.email && '-'}
                         </div>
                       </td>
                       <td className="px-4 py-4 text-[#344256]">
-                        {patient.chronicDiseases?.[0] || '—'}
+                        {patient.chronicDiseases?.[0] || '-'}
                       </td>
                       <td className="px-4 py-4">
                         <span className={clsx('rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize', statusClass(status))}>

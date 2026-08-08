@@ -92,7 +92,7 @@ interface CalendarGridViewProps {
   onStatusChange?: (appointmentId: string, newStatus: Appointment['status']) => void;
   showCreateButton?: boolean;
   showLegend?: boolean;
-  /** YYYY-MM-DD — keeps the week grid aligned with the mini-calendar selection */
+  /** YYYY-MM-DD - keeps the week grid aligned with the mini-calendar selection */
   focusDate?: string;
   /** Bump to force a reload after external creates/edits */
   reloadToken?: number;
@@ -188,7 +188,7 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
       .filter((w) => w.end > w.start);
   };
 
-  /** Outside clinic hours — shaded like non-working time on Google Calendar. */
+  /** Outside clinic hours - shaded like non-working time on Google Calendar. */
   const outsideClinicRanges = (day: Date): { start: number; end: number }[] => {
     const windows = clinicWindowsForDay(day).sort((a, b) => a.start - b.start);
     const dayStart = DAY_START_HOUR * 60;
@@ -360,7 +360,7 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
                         key={block.id}
                         className={`absolute flex flex-col justify-center overflow-hidden rounded border px-1 py-0.5 text-xs ${colorClass}`}
                         style={{ ...style, opacity: 0.9 }}
-                        title={`${block.title} (blocked — manage in Settings)`}
+                        title={`${block.title} (blocked - manage in Settings)`}
                       >
                         <span className="truncate font-medium">{block.title}</span>
                         <span className="text-[10px] uppercase opacity-70">

@@ -13,10 +13,9 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { PageShell } from '../components/page-layout';
 import { PatientProfileSkeleton } from '../components/ui';
-import { EditPatientModal } from '../components/patients/EditPatientModal';
 import { useAuth } from '../hooks/useAuth';
 import { getDoctorPatients } from '../services/doctorService';
-import { updatePatient, removePatientFromDoctor } from '../services/patientManagementService';
+import { removePatientFromDoctor } from '../services/patientManagementService';
 import { Patient } from '../types';
 import {
   calculateAge,
@@ -78,7 +77,6 @@ export const PatientFullDetailsPage: React.FC = () => {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showEditModal, setShowEditModal] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
 
@@ -106,12 +104,6 @@ export const PatientFullDetailsPage: React.FC = () => {
     };
     void load();
   }, [user?.id, patientId]);
-
-  const handleUpdate = async (updates: Partial<Patient>) => {
-    if (!patient?.id) return;
-    await updatePatient(patient.id, updates);
-    setPatient({ ...patient, ...updates });
-  };
 
   const handleRemove = async () => {
     if (!user?.id || !patient?.id) return;
@@ -174,20 +166,12 @@ export const PatientFullDetailsPage: React.FC = () => {
         Back to patient overview
       </button>
 
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">Patient record</h1>
-          <p className="mt-1 text-[13px] text-[#65758b]">
-            Complete clinical and demographic profile for {name}.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowEditModal(true)}
-          className="inline-flex h-9 items-center rounded-lg bg-anixi-green px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f]"
-        >
-          Edit record
-        </button>
+      <div className="mb-6">
+        <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">Patient record</h1>
+        <p className="mt-1 text-[13px] text-[#65758b]">
+          Read-only clinical and demographic profile for {name}. Patient data is managed in the
+          patient app.
+        </p>
       </div>
 
       {actionError && (
@@ -234,6 +218,17 @@ export const PatientFullDetailsPage: React.FC = () => {
             <InfoField label="Gender" value={formatGender(patient.gender)} />
             <InfoField label="Marital status" value={patient.maritalStatus} />
             <InfoField label="Language" value={patient.language} />
+            <InfoField label="Blood group" value={patient.bloodGroup} />
+            <InfoField
+              label="Weight"
+              value={
+                patient.weight?.trim()
+                  ? /kg|lb/i.test(patient.weight)
+                    ? patient.weight
+                    : `${patient.weight} kg`
+                  : undefined
+              }
+            />
             <InfoField
               label="Member since"
               value={patient.createdAt ? formatDate(patient.createdAt, 'short') ?? undefined : undefined}
@@ -335,12 +330,12 @@ export const PatientFullDetailsPage: React.FC = () => {
                   {treatments.map((treatment) => (
                     <tr key={`${treatment.name}-${treatment.startDate}`}>
                       <td className="py-3 pr-4 font-medium text-gray-900">{treatment.name}</td>
-                      <td className="py-3 pr-4 text-gray-600">{treatment.dosage || '—'}</td>
-                      <td className="py-3 pr-4 text-gray-600">{treatment.frequency || '—'}</td>
+                      <td className="py-3 pr-4 text-gray-600">{treatment.dosage || '-'}</td>
+                      <td className="py-3 pr-4 text-gray-600">{treatment.frequency || '-'}</td>
                       <td className="py-3 text-gray-600">
                         {treatment.startDate
-                          ? formatDate(treatment.startDate, 'short') ?? '—'
-                          : '—'}
+                          ? formatDate(treatment.startDate, 'short') ?? '-'
+                          : '-'}
                       </td>
                     </tr>
                   ))}
@@ -359,6 +354,7 @@ export const PatientFullDetailsPage: React.FC = () => {
               { label: 'Adherence calendar', path: 'adherence-calendar' },
               { label: 'Adherence logs', path: 'adherence-logs' },
               { label: 'Vitals history', path: 'vitals-history' },
+              { label: 'Wearable data', path: 'wearable' },
             ].map((link) => (
               <button
                 key={link.path}
@@ -395,12 +391,6 @@ export const PatientFullDetailsPage: React.FC = () => {
         </CardContent>
       </Card>
 
-      <EditPatientModal
-        isOpen={showEditModal}
-        patient={patient}
-        onClose={() => setShowEditModal(false)}
-        onSave={handleUpdate}
-      />
     </PageShell>
   );
 };
