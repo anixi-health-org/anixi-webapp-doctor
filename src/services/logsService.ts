@@ -324,7 +324,7 @@ const parseVitalValue = (name: string, value: string | null | undefined) => {
   if (!value) return {};
   const lower = name.toLowerCase();
   if (lower.includes('blood pressure') || lower.includes('bp')) {
-    const [systolic, diastolic] = value.split(/[\/\-]/).map((part) => Number(part.trim()));
+    const [systolic, diastolic] = value.split(/[/-]/).map((part) => Number(part.trim()));
     if (!Number.isNaN(systolic) && !Number.isNaN(diastolic)) {
       return { bloodPressure: { systolic, diastolic } };
     }
