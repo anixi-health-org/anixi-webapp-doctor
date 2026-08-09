@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BulkPatientImportPanel } from '../../components/onboarding/BulkPatientImportPanel';
 import { PageHeader, PageShell } from '../../components/page-layout';
 import { useAuth } from '../../hooks/AuthContext';
@@ -16,7 +16,7 @@ export const ClinicAdminPatientsPage: React.FC = () => {
 
   const canManagePatients = can('managePatients');
 
-  const loadPatients = async () => {
+  const loadPatients = useCallback(async () => {
     if (!practice?.id) return;
     setLoading(true);
     try {
@@ -25,11 +25,11 @@ export const ClinicAdminPatientsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [practice?.id]);
 
   useEffect(() => {
     void loadPatients();
-  }, [practice?.id]);
+  }, [loadPatients]);
 
   const filteredPatients = useMemo(() => {
     const q = search.trim().toLowerCase();
