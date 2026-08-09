@@ -29,7 +29,7 @@ export const AnixiLogo: React.FC<AnixiLogoProps> = ({
       <img
         src="/anixi.png"
         alt="Anixi Health"
-        className="mx-auto h-20 w-20 object-contain"
+        className="mx-auto mb-1.5 h-14 w-14 object-contain sm:h-16 sm:w-16"
       />
     );
     return linkTo ? <Link to={linkTo} onClick={onClick}>{img}</Link> : img;

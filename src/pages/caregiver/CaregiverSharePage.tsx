@@ -12,7 +12,7 @@ export const CaregiverSharePage: React.FC = () => {
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
 
-  const inviteMessage = `Join me on Anixi Health — a platform that helps families and caregivers stay connected to patient health.\n\nPatient sign-up: ${PATIENT_SIGNUP}\n\nDownload the app:\niOS: ${IOS_APP_LINK}\nAndroid: ${ANDROID_APP_LINK}`;
+  const inviteMessage = `Join me on Anixi Health - a platform that helps families and caregivers stay connected to patient health.\n\nPatient sign-up: ${PATIENT_SIGNUP}\n\nDownload the app:\niOS: ${IOS_APP_LINK}\nAndroid: ${ANDROID_APP_LINK}`;
 
   const handleCopy = async () => {
     try {

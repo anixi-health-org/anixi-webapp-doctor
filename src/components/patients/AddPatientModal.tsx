@@ -9,7 +9,7 @@ interface Props {
 }
 
 export const AddPatientModal: React.FC<Props> = ({ isOpen, onClose, onAdded }) => {
-  const { user } = useAuth();
+  const { user, practiceSession } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -43,6 +43,7 @@ export const AddPatientModal: React.FC<Props> = ({ isOpen, onClose, onAdded }) =
           displayName: name.trim(),
           email: email.trim() || undefined,
           phoneNumber: phone.trim() || undefined,
+          practiceId: practiceSession?.practice?.id,
         },
         {
           sendInvite: sendInvite,

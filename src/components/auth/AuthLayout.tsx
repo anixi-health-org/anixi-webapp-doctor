@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { UsersIcon, SparklesIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import { AnixiLogo } from '../brand/AnixiLogo';
 
@@ -7,14 +8,16 @@ interface AuthLayoutProps {
   title: string;
   subtitle?: string;
   titleClassName?: string;
-  maxWidth?: 'md' | 'lg' | 'xl';
+  maxWidth?: 'md' | 'lg' | 'xl' | '2xl';
+  /** Denser spacing so join / auth steps fit a single viewport */
+  compact?: boolean;
 }
 
 const HERO_SLIDES = [
   {
     heading: 'Chronic care, made continuous',
     description:
-      'Support your Warriors between visits — track medication adherence, mood, and vitals in one clinical dashboard.',
+      'Support your Warriors between visits. Track medication adherence, mood, and vitals in one clinical dashboard.',
     caption: 'Continuous monitoring',
     image: '/hero-care.png',
   },
@@ -51,8 +54,7 @@ const AuthHero: React.FC = () => {
   }, []);
 
   return (
-    <div className="relative hidden overflow-hidden bg-[#0d1310] lg:flex lg:flex-col lg:p-12 xl:p-14">
-      {/* Crossfading background images */}
+    <div className="relative hidden h-full min-h-0 overflow-hidden bg-[#0d1310] lg:flex lg:flex-col lg:p-7 xl:p-9">
       {HERO_SLIDES.map((slide, index) => (
         <div
           key={slide.image}
@@ -64,7 +66,6 @@ const AuthHero: React.FC = () => {
         />
       ))}
 
-      {/* Directional scrims — keep photo visible, text legible */}
       <div
         aria-hidden
         className="absolute inset-0 bg-gradient-to-t from-[#0a0f0c]/85 via-[#0a0f0c]/15 to-transparent"
@@ -73,11 +74,9 @@ const AuthHero: React.FC = () => {
         aria-hidden
         className="absolute inset-0 bg-gradient-to-r from-[#0a0f0c]/90 via-[#0a0f0c]/35 to-transparent"
       />
-      {/* Subtle brand tint + vignette */}
       <div aria-hidden className="absolute inset-0 bg-[#132018]/15" />
 
-      {/* Rotating headline */}
-      <div className="relative z-10 flex flex-1 items-center">
+      <div className="relative z-10 flex min-h-0 flex-1 items-center">
         {HERO_SLIDES.map((slide, index) => (
           <div
             key={slide.heading}
@@ -87,29 +86,28 @@ const AuthHero: React.FC = () => {
                 : 'pointer-events-none translate-y-3 opacity-0'
             }`}
           >
-            <h2 className="max-w-xl font-heading text-4xl font-semibold leading-[1.08] tracking-tight text-white [text-shadow:0_2px_18px_rgba(0,0,0,0.55)] xl:text-[3.25rem]">
+            <h2 className="max-w-xl font-heading text-3xl font-semibold leading-[1.08] tracking-tight text-white [text-shadow:0_2px_18px_rgba(0,0,0,0.55)] xl:text-[2.35rem]">
               {slide.heading}
             </h2>
-            <p className="mt-5 max-w-md text-base leading-relaxed text-white/90 [text-shadow:0_1px_10px_rgba(0,0,0,0.5)]">
+            <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/90 [text-shadow:0_1px_10px_rgba(0,0,0,0.5)] xl:text-base">
               {slide.description}
             </p>
           </div>
         ))}
       </div>
 
-      {/* Stats + carousel controls */}
-      <div className="relative z-10 space-y-7">
-        <div className="grid grid-cols-3 gap-3">
+      <div className="relative z-10 shrink-0 space-y-3.5">
+        <div className="grid grid-cols-3 gap-2.5">
           {HERO_STATS.map(({ icon: Icon, value, label }) => (
             <div
               key={label}
-              className="rounded-2xl border border-white/15 bg-white/10 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-md"
+              className="rounded-xl border border-white/15 bg-white/10 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-md"
             >
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/20">
-                <Icon className="h-4 w-4 text-[#e7ce8f]" />
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/20">
+                <Icon className="h-3.5 w-3.5 text-[#e7ce8f]" />
               </span>
-              <p className="mt-3 font-heading text-2xl font-semibold text-white">{value}</p>
-              <p className="mt-0.5 text-xs leading-snug text-white/75">{label}</p>
+              <p className="mt-2 font-heading text-xl font-semibold text-white">{value}</p>
+              <p className="mt-0.5 text-[11px] leading-snug text-white/75">{label}</p>
             </div>
           ))}
         </div>
@@ -143,18 +141,24 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
   subtitle,
   titleClassName = 'font-heading',
   maxWidth = 'md',
+  compact = false,
 }) => {
   const widthClass = {
     md: 'max-w-md',
     lg: 'max-w-lg',
-    xl: 'max-w-xl',
+    xl: 'max-w-2xl',
+    '2xl': 'max-w-3xl',
   }[maxWidth];
 
   return (
-    <div className="min-h-screen w-full bg-anixi-beige lg:grid lg:grid-cols-2">
-      {/* Form panel */}
-      <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 py-10 sm:px-6 lg:px-8">
-        {/* Decorative brand backdrop */}
+    <div className="h-dvh max-h-dvh w-full overflow-hidden bg-anixi-beige lg:grid lg:grid-cols-2">
+      <div
+        className={`relative flex h-full min-h-0 flex-col items-center justify-center overflow-x-hidden px-4 sm:px-6 lg:px-8 ${
+          compact
+            ? 'overflow-hidden py-4 sm:py-5'
+            : 'overflow-y-auto py-6 sm:py-8 lg:overflow-y-auto'
+        }`}
+      >
         <div aria-hidden className="pointer-events-none absolute inset-0">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_28%_18%,rgba(66,89,80,0.07),transparent_55%),radial-gradient(circle_at_82%_88%,rgba(231,206,143,0.16),transparent_52%)]" />
           <div className="absolute -left-24 -top-24 h-72 w-72 rounded-full bg-anixi-green/15 blur-[70px]" />
@@ -162,26 +166,37 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
           <div className="absolute inset-0 opacity-50 [background-image:radial-gradient(rgba(66,89,80,0.12)_1px,transparent_1px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_72%)] [-webkit-mask-image:radial-gradient(ellipse_at_center,black,transparent_72%)]" />
         </div>
 
-        <div className={`relative ${widthClass} w-full space-y-8`}>
+        <div
+          className={`relative ${widthClass} w-full ${compact ? 'space-y-3' : 'space-y-5'}`}
+        >
           <div className="flex flex-col items-center text-center">
             <AnixiLogo variant="auth" linkTo={null} showWordmark={false} />
-            <h1 className={`text-3xl font-semibold text-anixi-green ${titleClassName}`}>{title}</h1>
+            <h1
+              className={`font-semibold text-anixi-green ${titleClassName} ${
+                compact ? 'text-2xl sm:text-[1.75rem]' : 'text-3xl'
+              }`}
+            >
+              {title}
+            </h1>
             {subtitle && (
-              <p className="mt-3 max-w-sm font-sans text-sm leading-relaxed text-gray-600">
+              <p
+                className={`max-w-md font-sans leading-relaxed text-gray-600 ${
+                  compact ? 'mt-1.5 text-sm' : 'mt-2 text-sm'
+                }`}
+              >
                 {subtitle}
               </p>
             )}
           </div>
           {children}
-          <p className="text-center text-xs text-gray-500">
-            <a href="/privacy" className="text-anixi-green hover:underline">
+          <p className="text-center text-sm text-gray-500">
+            <Link to="/privacy" className="font-medium text-anixi-green hover:underline">
               Privacy notice (POPIA)
-            </a>
+            </Link>
           </p>
         </div>
       </div>
 
-      {/* Hero panel */}
       <AuthHero />
     </div>
   );

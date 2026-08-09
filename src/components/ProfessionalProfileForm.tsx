@@ -56,11 +56,14 @@ const btnSecondaryClass =
 interface ProfessionalProfileFormProps {
   mode?: 'settings' | 'onboarding';
   onSubmitted?: () => void | Promise<void>;
+  /** Fires when the user moves between Personal / Professional / Practice tabs */
+  onStepChange?: (step: number) => void;
 }
 
 const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
   mode = 'settings',
   onSubmitted,
+  onStepChange,
 }) => {
   const isOnboarding = mode === 'onboarding';
   const { user, practiceSession, refreshPracticeSession } = useAuth();
@@ -245,6 +248,10 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    onStepChange?.(currentStep);
+  }, [currentStep, onStepChange]);
 
   const renderTabNavigation = () => {
     const tabs = [

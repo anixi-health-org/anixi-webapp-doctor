@@ -137,7 +137,7 @@ const DeleteAccount: React.FC = () => {
           <p className="font-medium">POPIA &amp; clinical record retention</p>
           <p className="mt-2">
             Invoices, appointment records, and clinical documents linked to patient care may be
-            retained for periods required by law, regulation, or legitimate clinical audit — even
+            retained for periods required by law, regulation, or legitimate clinical audit - even
             after your account is deleted. See our{' '}
             <Link to="/privacy" className="font-medium text-anixi-green underline">
               privacy notice

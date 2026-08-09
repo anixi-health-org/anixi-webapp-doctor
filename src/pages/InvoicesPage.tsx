@@ -429,7 +429,7 @@ export const InvoicesPage: React.FC = () => {
         <p className="text-[13px] leading-relaxed text-[#344256]">
           <span className="font-semibold">How it works:</span> Invoices are created when you
           complete an appointment. Track Issued, Outstanding, and Paid status and resend invoices
-          to patients. Anixi does not process payments — funds go directly to you via Phase 2
+          to patients. Anixi does not process payments - funds go directly to you via Phase 2
           payment integrations.
         </p>
       </div>

@@ -6,6 +6,8 @@ import { formatAppointmentTypeLabel, isWhatsAppComingSoon } from '../../utils/te
 interface AppointmentCardProps {
   appointment: Appointment;
   onClick: () => void;
+  doctorLabel?: string;
+  showDoctor?: boolean;
 }
 
 const getStatusColor = (status: Appointment['status']): string => {
@@ -40,23 +42,30 @@ const getTypeIcon = (type: Appointment['type']): string => {
   }
 };
 
-export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, onClick }) => {
+export const AppointmentCard: React.FC<AppointmentCardProps> = ({
+  appointment,
+  onClick,
+  doctorLabel,
+  showDoctor = false,
+}) => {
   const appointmentDate = convertTimestamp(appointment.date) || new Date();
   const dateShort = appointmentDate.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
   });
-  const timeDisplay = typeof appointment.time === 'string' ? appointment.time : '—';
+  const timeDisplay = typeof appointment.time === 'string' ? appointment.time : '-';
   const typeLabel = formatAppointmentTypeLabel(appointment);
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`grid w-full grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto] items-center gap-3 border-b border-[#eef2f6] px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-[#f4f7f5] sm:gap-4 sm:px-4 ${
-        appointment.status === 'cancelled' ? 'opacity-70' : ''
-      }`}
+      className={`grid w-full items-center gap-3 border-b border-[#eef2f6] px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-[#f4f7f5] sm:gap-4 sm:px-4 ${
+        showDoctor
+          ? 'grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.9fr)_auto]'
+          : 'grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto]'
+      } ${appointment.status === 'cancelled' ? 'opacity-70' : ''}`}
     >
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-[#0E2340]">{dateShort}</p>
@@ -69,6 +78,14 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
           {appointment.patientEmail || 'No email'}
         </p>
       </div>
+
+      {showDoctor && (
+        <div className="hidden min-w-0 sm:block">
+          <p className="truncate text-sm font-medium text-[#344256]">
+            {doctorLabel || 'Doctor'}
+          </p>
+        </div>
+      )}
 
       <div className="hidden min-w-0 items-center gap-1.5 sm:flex">
         <span className="text-sm leading-none" aria-hidden>

@@ -165,7 +165,7 @@ const InvoiceCreate: React.FC = () => {
             <p className="text-sm font-semibold text-[#0E2340]">Invoice details</p>
             <p className="mt-1 text-[13px] leading-relaxed text-[#65758b]">
               Enter amounts exclusive of VAT. HPCSA, BHF, and VAT numbers from your profile are
-              printed on the PDF. Payment is tracked as EFT — Anixi does not process card payments.
+              printed on the PDF. Payment is tracked as EFT - Anixi does not process card payments.
             </p>
           </div>
 
@@ -243,7 +243,7 @@ const InvoiceCreate: React.FC = () => {
                 <option value="">None</option>
                 {COMMON_ICD10_CODES.map((entry) => (
                   <option key={entry.code} value={entry.code}>
-                    {entry.code} — {entry.description}
+                    {entry.code} - {entry.description}
                   </option>
                 ))}
               </select>

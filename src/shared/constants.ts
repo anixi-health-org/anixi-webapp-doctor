@@ -6,6 +6,7 @@ export const APPOINTMENTS_COLLECTION = 'appointments';
 
 export const PRACTICES_COLLECTION = 'practices';
 export const PRACTICE_MEMBERS_SUBCOLLECTION = 'members';
+export const PRACTICE_INVITES_SUBCOLLECTION = 'invites';
 export const BOOKABLE_BLOCKS_SUBCOLLECTION = 'bookableBlocks';
 export const SOFT_BLOCKS_SUBCOLLECTION = 'softBlocks';
 export const PRACTICE_APPOINTMENTS_SUBCOLLECTION = 'appointments';

@@ -102,21 +102,57 @@ const getAdherenceCollectionRef = (patientId: string) => {
   return collection(db, USERS_COLLECTION, patientId, 'adherence_records');
 };
 
+type AdherenceRecordType = 'medication' | 'vital' | 'mood';
+
+type AdherenceQueryOptions = {
+  /** Match patient app: medication adherence excludes vitals/mood. */
+  type?: AdherenceRecordType;
+  /**
+   * When true (default), month/range % ignores future pending doses
+   * so doctor stats match patient “through today” math.
+   */
+  excludeFuturePendingFromStats?: boolean;
+};
+
+const endOfToday = () => {
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  return end;
+};
+
+const formatDosage = (dosage: unknown, dosageUnit?: unknown): string => {
+  if (dosage == null || dosage === '') return 'Not specified';
+  const unit = typeof dosageUnit === 'string' && dosageUnit.trim() ? ` ${dosageUnit}` : '';
+  return `${dosage}${unit}`;
+};
+
+/** Align client access checks with Firestore rules (any of three link docs). */
 const ensureDoctorPatientAccess = async (
   doctorId: string,
   patientId: string
 ): Promise<void> => {
-  const approvedRef = doc(db, USERS_COLLECTION, doctorId, 'approved_patients', patientId);
-  const approvedSnapshot = await getDoc(approvedRef);
-  if (!approvedSnapshot.exists()) {
-    throw new Error('Access denied: patient is not approved for this doctor.');
+  const approvedPatientSnap = await getDoc(
+    doc(db, USERS_COLLECTION, doctorId, 'approved_patients', patientId)
+  );
+  if (approvedPatientSnap.exists()) {
+    const status = approvedPatientSnap.data()?.status as string | undefined;
+    if (!status || status === 'active') return;
   }
 
-  const approvedData = approvedSnapshot.data();
-  const status = approvedData?.status as string | undefined;
-  if (status && status !== 'active') {
-    throw new Error('Access denied: patient approval is not active.');
+  const approvedShareSnap = await getDoc(
+    doc(db, USERS_COLLECTION, patientId, 'approved_shares', doctorId)
+  );
+  if (approvedShareSnap.exists()) return;
+
+  const approvedDoctorSnap = await getDoc(
+    doc(db, USERS_COLLECTION, patientId, 'approved_doctors', doctorId)
+  );
+  if (approvedDoctorSnap.exists()) {
+    const status = approvedDoctorSnap.data()?.status as string | undefined;
+    if (!status || status === 'active') return;
   }
+
+  throw new Error('Access denied: patient is not linked to this doctor.');
 };
 
 const parseDoctorLog = (id: string, data: Record<string, any>): DoctorAdherenceLog => {
@@ -127,7 +163,7 @@ const parseDoctorLog = (id: string, data: Record<string, any>): DoctorAdherenceL
   return {
     id,
     medicationName: data.medicationName || 'Unknown',
-    dosage: data.dosage || 'Not specified',
+    dosage: formatDosage(data.dosage, data.dosageUnit),
     status: normalizeStatus(data.status),
     scheduledTime,
     takenTime,
@@ -136,29 +172,33 @@ const parseDoctorLog = (id: string, data: Record<string, any>): DoctorAdherenceL
   };
 };
 
-const getMonthlyAdherenceDetailsCore = async (
-  patientId: string,
-  year: number,
-  month: number
-): Promise<MonthlyAdherenceDetailsResult> => {
-  const { startDate, endDate } = getStartAndEndOfMonth(year, month);
-
-  const adherenceQuery = query(
-    getAdherenceCollectionRef(patientId),
-    where('scheduledTime', '>=', startDate),
-    where('scheduledTime', '<=', endDate)
-  );
-
-  const snapshot = await getDocs(adherenceQuery);
+const buildAdherenceDetailsFromDocs = (
+  docs: Array<{ id: string; data: () => Record<string, any> }>,
+  options: AdherenceQueryOptions = {}
+): MonthlyAdherenceDetailsResult => {
+  const {
+    type = 'medication',
+    excludeFuturePendingFromStats = true,
+  } = options;
+  const statsCutoff = endOfToday();
   const dayMap = new Map<string, DayAdherenceDetails>();
 
-  snapshot.docs.forEach((entryDoc) => {
+  let takenTotal = 0;
+  let missedTotal = 0;
+  let pendingTotal = 0;
+  let rateTaken = 0;
+  let rateDenom = 0;
+
+  docs.forEach((entryDoc) => {
     const data = entryDoc.data();
+    const recordType = (data.type as AdherenceRecordType | undefined) ?? 'medication';
+    if (type && recordType !== type) return;
+
     const scheduledTime = convertTimestamp(data.scheduledTime);
     if (!scheduledTime) return;
 
-    const dateKey = toDateKey(scheduledTime);
     const status = normalizeStatus(data.status);
+    const dateKey = toDateKey(scheduledTime);
 
     if (!dayMap.has(dateKey)) {
       dayMap.set(dateKey, {
@@ -177,13 +217,26 @@ const getMonthlyAdherenceDetailsCore = async (
     if (status === 'missed') day.missed += 1;
     if (status === 'pending') day.pending += 1;
     day.percentage = day.total > 0 ? Math.round((day.taken / day.total) * 100) : 0;
-  });
 
-  const dayValues = Array.from(dayMap.values());
-  const takenTotal = dayValues.reduce((sum, day) => sum + day.taken, 0);
-  const missedTotal = dayValues.reduce((sum, day) => sum + day.missed, 0);
-  const pendingTotal = dayValues.reduce((sum, day) => sum + day.pending, 0);
-  const totalCount = takenTotal + missedTotal + pendingTotal;
+    const includeInStats =
+      !excludeFuturePendingFromStats ||
+      status !== 'pending' ||
+      scheduledTime.getTime() <= statsCutoff.getTime();
+
+    if (!includeInStats) return;
+
+    if (status === 'taken') {
+      takenTotal += 1;
+      rateTaken += 1;
+      rateDenom += 1;
+    } else if (status === 'missed') {
+      missedTotal += 1;
+      rateDenom += 1;
+    } else {
+      pendingTotal += 1;
+      rateDenom += 1;
+    }
+  });
 
   return {
     dayMap,
@@ -191,9 +244,38 @@ const getMonthlyAdherenceDetailsCore = async (
       takenTotal,
       missedTotal,
       pendingTotal,
-      adherencePercentage: totalCount > 0 ? Math.round((takenTotal / totalCount) * 100) : 0,
+      adherencePercentage: rateDenom > 0 ? Math.round((rateTaken / rateDenom) * 100) : 0,
     },
   };
+};
+
+export const getAdherenceDetailsInRange = async (
+  patientId: string,
+  startDate: Date,
+  endDate: Date,
+  options: AdherenceQueryOptions = {}
+): Promise<MonthlyAdherenceDetailsResult> => {
+  const adherenceQuery = query(
+    getAdherenceCollectionRef(patientId),
+    where('scheduledTime', '>=', startDate),
+    where('scheduledTime', '<=', endDate)
+  );
+  const snapshot = await getDocs(adherenceQuery);
+  return buildAdherenceDetailsFromDocs(snapshot.docs, options);
+};
+
+const getMonthlyAdherenceDetailsCore = async (
+  patientId: string,
+  year: number,
+  month: number,
+  options: AdherenceQueryOptions = {}
+): Promise<MonthlyAdherenceDetailsResult> => {
+  const { startDate, endDate } = getStartAndEndOfMonth(year, month);
+  return getAdherenceDetailsInRange(patientId, startDate, endDate, {
+    type: 'medication',
+    excludeFuturePendingFromStats: true,
+    ...options,
+  });
 };
 
 
@@ -242,6 +324,21 @@ export const getDoctorMonthlyAdherenceDetails = async (
   return getMonthlyAdherenceDetailsCore(patientId, year, month);
 };
 
+export const getDoctorAdherenceDetailsInRange = async (
+  doctorId: string,
+  patientId: string,
+  startDate: Date,
+  endDate: Date,
+  options: AdherenceQueryOptions = {}
+): Promise<MonthlyAdherenceDetailsResult> => {
+  await ensureDoctorPatientAccess(doctorId, patientId);
+  return getAdherenceDetailsInRange(patientId, startDate, endDate, {
+    type: 'medication',
+    excludeFuturePendingFromStats: true,
+    ...options,
+  });
+};
+
 export const getDoctorMonthlyAdherence = async (
   doctorId: string,
   patientId: string,
@@ -278,8 +375,35 @@ export const getDailyAdherence = async (
     const snapshot = await getDocs(q);
     const medications: AdherenceRecord[] = [];
 
-    snapshot.docs.forEach((doc) => {
-      const data = doc.data();
+    const NUMERIC_MOOD: Record<number, { emoji: string; label: string }> = {
+      5: { emoji: '😄', label: 'Very Happy' },
+      4: { emoji: '🙂', label: 'Happy' },
+      3: { emoji: '😐', label: 'Neutral' },
+      2: { emoji: '😔', label: 'Sad' },
+      1: { emoji: '😢', label: 'Very Sad' },
+    };
+
+    const STRING_MOOD_EMOJIS: Record<string, string> = {
+      happy: '😊',
+      neutral: '😐',
+      sad: '😔',
+      anxious: '😰',
+      tired: '😴',
+      frustrated: '😤',
+      calm: '😌',
+      thoughtful: '🤔',
+      excellent: '😄',
+      good: '🙂',
+      okay: '😐',
+      bad: '😟',
+      terrible: '😢',
+    };
+
+    snapshot.docs.forEach((entryDoc) => {
+      const data = entryDoc.data();
+      const recordType = (data.type as string | undefined) ?? 'medication';
+      if (recordType !== 'medication') return;
+
       const scheduledTime = convertTimestamp(data.scheduledTime) || new Date(date + 'T00:00:00');
       const takenTime = convertTimestamp(data.takenTime);
 
@@ -291,7 +415,7 @@ export const getDailyAdherence = async (
       const record: AdherenceRecord = {
         date: date,
         medicationName: data.medicationName || 'Unknown',
-        dosage: data.dosage,
+        dosage: formatDosage(data.dosage, data.dosageUnit),
         scheduledTime: scheduledTime,
         status: data.status || 'pending',
         takenTime: takenTime || undefined,
@@ -315,46 +439,68 @@ export const getDailyAdherence = async (
     const moodSnapshot = await getDocs(moodQuery);
 
     if (!moodSnapshot.empty) {
-      moodSnapshot.docs.forEach((doc) => {
-        const data = doc.data();
+      moodSnapshot.docs.forEach((moodDoc) => {
+        const data = moodDoc.data();
         const createdAt = convertTimestamp(data.createdAt) || new Date(date + 'T00:00:00');
-        const hour = createdAt.getHours();
 
-        let timeSlot: 'morning' | 'afternoon' | 'evening' = 'morning';
-        if (hour >= 9 && hour < 17) timeSlot = 'afternoon';
-        else if (hour >= 17 || hour < 1) timeSlot = 'evening';
+        let timeSlot: 'morning' | 'afternoon' | 'evening' =
+          data.checkType === 'afternoon' || data.checkType === 'evening'
+            ? 'afternoon'
+            : data.checkType === 'morning'
+              ? 'morning'
+              : 'morning';
+
+        if (!data.checkType) {
+          const hour = createdAt.getHours();
+          if (hour >= 9 && hour < 17) timeSlot = 'afternoon';
+          else if (hour >= 17 || hour < 1) timeSlot = 'evening';
+        }
 
         if (!moodByTimeSlot[timeSlot]) {
-          const moodEmojis: Record<string, string> = {
-            happy: '😊',
-            neutral: '😐',
-            sad: '😔',
-            anxious: '😰',
-            tired: '😴',
-            frustrated: '😤',
-            calm: '😌',
-            thoughtful: '🤔',
-            excellent: '😄',
-            good: '🙂',
-            okay: '😐',
-            bad: '😟',
-            terrible: '😢',
-          };
+          const moodValue = data.mood;
+          const numericLevel = typeof moodValue === 'number' ? moodValue : Number(moodValue);
+          const numeric = NUMERIC_MOOD[numericLevel];
+          const emoji =
+            numeric?.emoji ||
+            (typeof moodValue === 'string' ? STRING_MOOD_EMOJIS[moodValue.toLowerCase()] : null) ||
+            '❓';
+          const level = numeric?.label || moodValue || 'Unknown';
 
           moodByTimeSlot[timeSlot] = {
-            emoji: moodEmojis[data.mood] || '❓',
-            level: data.mood || 'Unknown',
-            notes: data.notes,
+            emoji,
+            level,
+            notes: data.note ?? data.notes,
             timeSlot,
             createdAt: createdAt.toISOString(),
           };
         }
       });
-
-    } else {
     }
 
-    const vitals = await getVitalsRecordsForDate(patientId, date);
+    // Patient app stores vital readings on adherence_records (type=vital), not vitals_records/{date}.
+    const vitalRecords = snapshot.docs
+      .map((entryDoc) => {
+        const data = entryDoc.data();
+        if (((data.type as string | undefined) ?? '') !== 'vital') return null;
+        const scheduledTime = convertTimestamp(data.scheduledTime);
+        return {
+          id: entryDoc.id,
+          name: data.medicationName || 'Vital',
+          value: data.recordedValue ?? null,
+          unit: data.unit ?? null,
+          status: normalizeStatus(data.status),
+          scheduledTime,
+          takenTime: convertTimestamp(data.takenTime),
+          notes: data.notes,
+        };
+      })
+      .filter(Boolean);
+
+    const legacyVitals = await getVitalsRecordsForDate(patientId, date);
+    const vitals =
+      vitalRecords.length > 0
+        ? { readings: vitalRecords, legacy: legacyVitals }
+        : legacyVitals;
 
     const takenCount = medications.filter(m => m.status === 'taken').length;
     const missedCount = medications.filter(m => m.status === 'missed').length;
@@ -435,9 +581,11 @@ export const getDoctorPatientAdherenceSummary = async (
   since.setDate(since.getDate() - daysBack);
   since.setHours(0, 0, 0, 0);
 
+  const now = endOfToday();
   const adherenceQuery = query(
     getAdherenceCollectionRef(patientId),
     where('scheduledTime', '>=', since),
+    where('scheduledTime', '<=', now),
     orderBy('scheduledTime', 'desc')
   );
   const snapshot = await getDocs(adherenceQuery);
@@ -447,7 +595,10 @@ export const getDoctorPatientAdherenceSummary = async (
   let pendingCount = 0;
 
   snapshot.docs.forEach((entryDoc) => {
-    const status = normalizeStatus(entryDoc.data().status);
+    const data = entryDoc.data();
+    const recordType = (data.type as string | undefined) ?? 'medication';
+    if (recordType !== 'medication') return;
+    const status = normalizeStatus(data.status);
     if (status === 'taken') takenCount += 1;
     if (status === 'missed') missedCount += 1;
     if (status === 'pending') pendingCount += 1;
@@ -515,33 +666,11 @@ export const getAdherenceStats = async (
   averageAdherence: number;
 }> => {
   try {
-    const adherenceRef = collection(
-      db,
-      USERS_COLLECTION,
-      patientId,
-      'medication_adherence'
-    );
-
-    const q = query(
-      adherenceRef,
-      where('date', '>=', fromDate),
-      where('date', '<=', toDate)
-    );
-
-    const snapshot = await getDocs(q);
-    const dateMap = new Map<string, Map<string, string>>();
-
-    snapshot.docs.forEach((doc) => {
-      const data = doc.data();
-      const date = data.date;
-
-      if (!dateMap.has(date)) {
-        dateMap.set(date, new Map());
-      }
-
-      const dayMap = dateMap.get(date)!;
-      const med = data.medicationName || data.medication;
-      dayMap.set(med, data.taken === true ? 'taken' : 'missed');
+    const startDate = new Date(`${fromDate}T00:00:00`);
+    const endDate = new Date(`${toDate}T23:59:59`);
+    const details = await getAdherenceDetailsInRange(patientId, startDate, endDate, {
+      type: 'medication',
+      excludeFuturePendingFromStats: true,
     });
 
     let adherenceDays = 0;
@@ -549,28 +678,21 @@ export const getAdherenceStats = async (
     let pendingDays = 0;
     let totalAdherence = 0;
 
-    dateMap.forEach((dayMap) => {
-      const values = Array.from(dayMap.values());
-      const takenCount = values.filter((v) => v === 'taken').length;
-      const totalCount = values.length;
-
-      if (totalCount > 0) {
-        const dayAdherence = (takenCount / totalCount) * 100;
-        totalAdherence += dayAdherence;
-
-        if (dayAdherence === 100) {
-          adherenceDays++;
-        } else if (dayAdherence === 0) {
-          missedDays++;
-        } else {
-          pendingDays++;
-        }
+    details.dayMap.forEach((day) => {
+      if (day.total <= 0) return;
+      totalAdherence += day.percentage;
+      if (day.percentage === 100 && day.pending === 0) {
+        adherenceDays += 1;
+      } else if (day.taken === 0 && day.missed > 0) {
+        missedDays += 1;
+      } else {
+        pendingDays += 1;
       }
     });
 
-    const totalDays = dateMap.size;
+    const totalDays = details.dayMap.size;
     const averageAdherence =
-      totalDays > 0 ? Math.round(totalAdherence / totalDays) : 0;
+      totalDays > 0 ? Math.round(totalAdherence / totalDays) : details.monthStats.adherencePercentage;
 
     return {
       totalDays,
@@ -580,7 +702,6 @@ export const getAdherenceStats = async (
       averageAdherence,
     };
   } catch (err) {
-    ;
     throw err;
   }
 };

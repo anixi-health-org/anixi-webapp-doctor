@@ -7,6 +7,7 @@ import { BookableBlocksEditor } from '../components/practice/BookableBlocksEdito
 import { SoftBlocksEditor } from '../components/practice/SoftBlocksEditor';
 import { BookingPoliciesForm } from '../components/practice/BookingPoliciesForm';
 import { PracticePermissionsPanel } from '../components/practice/PracticePermissionsPanel';
+import { PracticeMembersPanel } from '../components/practice/PracticeMembersPanel';
 import { LetterheadSetupBanner } from '../components/invoices/LetterheadSetupBanner';
 import { Toast, SettingsPageSkeleton, CardSkeleton } from '../components/ui';
 import { TabPill } from '../components/ui/TabPill';
@@ -14,14 +15,15 @@ import { PageShell } from '../components/page-layout';
 import { updatePractice, provisionPracticeForDoctor } from '../services/practiceSettingsService';
 import type { ConsultType, Doctor, PracticeLocation } from '../types';
 
-type Tab = 'overview' | 'availability' | 'soft-blocks' | 'policies' | 'permissions';
+type Tab = 'overview' | 'availability' | 'soft-blocks' | 'policies' | 'permissions' | 'team';
 
 const TAB_CONFIG: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'availability', label: 'Clinic Hours' },
   { id: 'soft-blocks', label: 'Blocked Time' },
   { id: 'policies', label: 'Booking Rules' },
-  { id: 'permissions', label: 'Permissions' },
+  { id: 'team', label: 'Team' },
+  { id: 'permissions', label: 'Delegates' },
 ];
 
 const isValidTab = (value: string | null): value is Tab =>
@@ -510,6 +512,8 @@ const PracticeSettingsPage: React.FC = () => {
                 readOnly={!can('editBookingPolicies')}
               />
             )}
+
+            {activeTab === 'team' && <PracticeMembersPanel />}
 
             {activeTab === 'permissions' && (
               <PracticePermissionsPanel

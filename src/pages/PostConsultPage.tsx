@@ -692,7 +692,7 @@ const doctor = user?.role === 'doctor' ? user : null;
       return;
     }
     if (nappiCode.trim() && !isValidNappiCode(nappiCode)) {
-      setToast({ visible: true, message: 'NAPPI code must be 5–7 digits.', type: 'error' });
+      setToast({ visible: true, message: 'NAPPI code must be 5-7 digits.', type: 'error' });
       return;
     }
 
@@ -1471,7 +1471,7 @@ const doctor = user?.role === 'doctor' ? user : null;
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-[#0E2340]">Prescription</p>
                     <p className="mt-0.5 text-xs text-[#65758b]">
-                      {hasPrescription ? 'Draft on file — review or update' : 'Draft medications for this visit'}
+                      {hasPrescription ? 'Draft on file - review or update' : 'Draft medications for this visit'}
                     </p>
                   </div>
                   <span className="shrink-0 rounded-lg border border-[#e1e7ef] bg-white px-3 py-1.5 text-xs font-semibold text-[#344256] shadow-sm transition group-hover:border-anixi-green group-hover:text-anixi-green">
@@ -1490,7 +1490,7 @@ const doctor = user?.role === 'doctor' ? user : null;
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-[#0E2340]">Doctor letter / referral</p>
                     <p className="mt-0.5 text-xs text-[#65758b]">
-                      {hasLetter ? 'Draft on file — review or update' : 'Referral or to-whom-it-may-concern letter'}
+                      {hasLetter ? 'Draft on file - review or update' : 'Referral or to-whom-it-may-concern letter'}
                     </p>
                   </div>
                   <span className="shrink-0 rounded-lg border border-[#e1e7ef] bg-white px-3 py-1.5 text-xs font-semibold text-[#344256] shadow-sm transition group-hover:border-anixi-green group-hover:text-anixi-green">
@@ -1613,13 +1613,13 @@ const doctor = user?.role === 'doctor' ? user : null;
                 </p>
               ) : (
                 <p className="mt-2 text-sm text-[#94a3b8]">
-                  No agenda on this booking — confirm the reason for visit when you connect.
+                  No agenda on this booking - confirm the reason for visit when you connect.
                 </p>
               )}
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 {whatsappSoon && (
                   <div className="inline-flex h-11 items-center rounded-[10px] border border-amber-200 bg-amber-50 px-4 text-sm font-medium text-amber-900">
-                    WhatsApp visit — Coming soon
+                    WhatsApp visit - Coming soon
                   </div>
                 )}
                 <button
@@ -1754,7 +1754,7 @@ const doctor = user?.role === 'doctor' ? user : null;
                     type="text"
                     value={nappiCode}
                     onChange={(e) => setNappiCode(e.target.value.replace(/\D/g, '').slice(0, 7))}
-                    placeholder="5–7 digits"
+                    placeholder="5-7 digits"
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -1768,7 +1768,7 @@ const doctor = user?.role === 'doctor' ? user : null;
                     <option value="">Select diagnosis code</option>
                     {COMMON_ICD10_CODES.map((entry) => (
                       <option key={entry.code} value={entry.code}>
-                        {entry.code} — {entry.description}
+                        {entry.code} - {entry.description}
                       </option>
                     ))}
                     <option value="__custom__">Other (enter manually)</option>
@@ -1864,7 +1864,7 @@ const doctor = user?.role === 'doctor' ? user : null;
                   <option value="">Select diagnosis code</option>
                   {COMMON_ICD10_CODES.map((entry) => (
                     <option key={entry.code} value={entry.code}>
-                      {entry.code} — {entry.description}
+                      {entry.code} - {entry.description}
                     </option>
                   ))}
                   <option value="__custom__">Other (enter manually)</option>

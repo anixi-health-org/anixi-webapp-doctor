@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Toast } from '../components/ui';
 import { AuthLayout } from '../components/auth/AuthLayout';
 import { ChangeRoleLink, SignInPrompt } from '../components/auth/AuthLinks';
+import { useAuth } from '../hooks/AuthContext';
 import { registerProfessional } from '../services/authService';
-import { AUTH_ROLE_LABELS, parseAuthRole } from '../types/auth';
+import { AUTH_ROLE_LABELS, parseAuthRole, parseJoinPath } from '../types/auth';
 import {
   PRACTICE_COUNTRIES,
   detectDefaultCountryCode,
@@ -15,7 +16,11 @@ import {
 export const Register: React.FC = () => {
   const [searchParams] = useSearchParams();
   const role = parseAuthRole(searchParams.get('role'));
+  const joinPath =
+    parseJoinPath(searchParams.get('path')) ||
+    (role === 'caregiver' ? 'caregiver' : 'solo_doctor');
   const navigate = useNavigate();
+  const { refreshUser } = useAuth();
 
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -62,9 +67,20 @@ export const Register: React.FC = () => {
         password,
         displayName,
         role,
-        role === 'doctor' ? country : undefined
+        role === 'doctor' ? country : undefined,
+        joinPath
       );
-      navigate(role === 'caregiver' ? '/caregiver' : '/onboarding', { replace: true });
+
+      // Ensure AuthContext has the new profile before hitting ProtectedRoute
+      await refreshUser();
+
+      if (role === 'caregiver') {
+        navigate('/caregiver', { replace: true });
+      } else if (joinPath === 'clinic') {
+        navigate('/clinic-setup', { replace: true });
+      } else {
+        navigate('/onboarding', { replace: true });
+      }
     } catch (err: unknown) {
       const firebaseErr = err as { code?: string; message?: string };
       if (firebaseErr.code === 'auth/email-already-in-use') {
@@ -80,7 +96,11 @@ export const Register: React.FC = () => {
   return (
     <AuthLayout
       title="Create your account"
-      subtitle={`Registering as ${AUTH_ROLE_LABELS[role].toLowerCase()}`}
+      subtitle={
+        joinPath === 'clinic'
+          ? 'Registering as clinic owner'
+          : `Registering as ${AUTH_ROLE_LABELS[role].toLowerCase()}`
+      }
     >
       {toast.visible && (
         <Toast
@@ -199,7 +219,11 @@ export const Register: React.FC = () => {
               disabled={isLoading}
               className="w-full rounded-lg bg-anixi-green py-2.5 px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-anixi-green focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isLoading ? 'Creating account...' : 'Create account'}
+              {isLoading
+                ? 'Creating account...'
+                : joinPath === 'clinic'
+                  ? 'Continue to clinic setup'
+                  : 'Create account'}
             </button>
           </form>
           <div className="mt-6 space-y-3 pt-2">

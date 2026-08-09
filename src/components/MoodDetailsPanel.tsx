@@ -39,14 +39,14 @@ export const MoodDetailsPanel: React.FC<MoodDetailsPanelProps> = ({
     }) ?? selectedDate;
 
   const formatTime = (value: Date | string | null | undefined): string => {
-    if (!value) return '—';
+    if (!value) return '-';
     try {
       return new Date(value).toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
       });
     } catch {
-      return '—';
+      return '-';
     }
   };
 

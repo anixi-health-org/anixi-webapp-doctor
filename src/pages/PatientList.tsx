@@ -3,14 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PatientCard } from '../components/PatientCard';
 import { useAuth } from '../hooks/useAuth';
 import { Patient, PatientStatus } from '../types';
-import { getDoctorPatients, removePatientFromDoctor, updatePatient } from '../services/patientManagementService';
+import { getDoctorPatients, removePatientFromDoctor } from '../services/patientManagementService';
 import { getDashboardStats } from '../services/doctorService';
 import { DashboardStats } from '../types';
 import {
   getDoctorPatientsAdherenceSummary,
   type PatientAdherenceListSummary,
 } from '../services/adherenceService';
-import { EditPatientModal } from '../components/patients/EditPatientModal';
+
 export const PatientList: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -20,8 +20,6 @@ export const PatientList: React.FC = () => {
   const [adherenceByPatient, setAdherenceByPatient] = useState<Map<string, PatientAdherenceListSummary>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [showEditPatientModal, setShowEditPatientModal] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -112,13 +110,6 @@ export const PatientList: React.FC = () => {
     }
   };
 
-  const handleEditClick = (patient: Patient) => {
-    setSelectedPatient(patient);
-    setActionError(null);
-    setActionMessage(null);
-    setShowEditPatientModal(true);
-  };
-
   const handleRemoveClick = async (patient: Patient) => {
     if (!user) return;
     const confirmed = window.confirm(
@@ -138,22 +129,6 @@ export const PatientList: React.FC = () => {
     }
   };
 
-  const handleSavePatient = async (updates: Partial<Patient>) => {
-    if (!selectedPatient) return;
-    setActionError(null);
-    setActionMessage(null);
-
-    try {
-      await updatePatient(selectedPatient.id, updates);
-      setActionMessage('Patient updated successfully.');
-      setShowEditPatientModal(false);
-      setSelectedPatient(null);
-      await loadPatients();
-    } catch (err: any) {
-      setActionError(err?.message || 'Failed to update patient');
-      throw err;
-    }
-  };
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -225,7 +200,6 @@ export const PatientList: React.FC = () => {
                 onOpenAdherenceLogs={() =>
                   navigate(`/patient-profile/${patient.id}/adherence-logs`)
                 }
-                onEdit={() => handleEditClick(patient)}
                 onRemove={() => handleRemoveClick(patient)}
                 onClick={() => navigate(`/patient-profile/${patient.id}`)}
               />
@@ -233,16 +207,6 @@ export const PatientList: React.FC = () => {
           </div>
         </>
       )}
-
-      <EditPatientModal
-        isOpen={showEditPatientModal}
-        patient={selectedPatient || ({} as Patient)}
-        onClose={() => {
-          setShowEditPatientModal(false);
-          setSelectedPatient(null);
-        }}
-        onSave={handleSavePatient}
-      />
     </div>
   );
 };

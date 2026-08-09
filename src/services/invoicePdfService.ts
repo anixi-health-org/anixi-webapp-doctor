@@ -24,7 +24,7 @@ function fmtZAR(n: number): string {
 }
 
 function fmtDate(d?: Date): string {
-  if (!d) return '—';
+  if (!d) return '-';
   return new Date(d).toLocaleDateString('en-ZA', {
     day: '2-digit',
     month: 'short',
@@ -166,7 +166,7 @@ export async function generateInvoicePDF(
     const descLines: string[] = [item.description];
     if (item.icd10Code) {
       const icdLabel = item.icd10Description
-        ? `ICD-10: ${item.icd10Code} — ${item.icd10Description}`
+        ? `ICD-10: ${item.icd10Code} - ${item.icd10Description}`
         : `ICD-10: ${item.icd10Code}`;
       descLines.push(icdLabel);
     }

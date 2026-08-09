@@ -6,14 +6,13 @@ import { Toast } from '../components/ui';
 import { useAuth } from '../hooks/AuthContext';
 import { AuthLayout } from '../components/auth/AuthLayout';
 import { RegisterPrompt } from '../components/auth/AuthLinks';
-import { doctorHomePath } from '../lib/doctorAccess';
-import type { Doctor } from '../types';
+import { professionalHomePath } from '../lib/doctorAccess';
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { login, isLoading, isAuthenticated, user } = useAuth();
+  const { login, isLoading, isAuthenticated, user, practiceSession, joinIntent, clinicOnboardingComplete } = useAuth();
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [toast, setToast] = useState<{ message: string; visible: boolean }>({
@@ -40,12 +39,27 @@ export const Login: React.FC = () => {
     }
 
     navigate(
-      user.role === 'caregiver'
-        ? '/caregiver'
-        : doctorHomePath(user as Doctor),
+      professionalHomePath(user, {
+        joinIntent,
+        hasPractice: Boolean(practiceSession),
+        clinicOnboardingComplete,
+        isClinicOwner:
+          practiceSession?.practice?.orgType === 'clinic' &&
+          practiceSession?.member?.role === 'owner',
+        practiceSession,
+      }),
       { replace: true }
     );
-  }, [isLoading, isAuthenticated, user, returnUrl, navigate]);
+  }, [
+    isLoading,
+    isAuthenticated,
+    user,
+    returnUrl,
+    navigate,
+    joinIntent,
+    practiceSession,
+    clinicOnboardingComplete,
+  ]);
 
   useEffect(() => {
     if (toast.visible) {
@@ -60,19 +74,14 @@ export const Login: React.FC = () => {
     setSuccess('');
 
     try {
-      const user = await login(email, password);
+      const signedIn = await login(email, password);
 
-      if (!user) {
+      if (!signedIn) {
         setError('Invalid email or password');
         return;
       }
 
-      if (returnUrl && returnUrl.startsWith('/')) {
-        navigate(returnUrl);
-        return;
-      }
-
-      navigate(user.role === 'caregiver' ? '/caregiver' : '/dashboard');
+      // Redirect is handled by the authenticated useEffect once joinIntent is loaded
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
       if (msg.toLowerCase().includes('access denied') || msg.toLowerCase().includes('register')) {

@@ -136,7 +136,7 @@ export const MyDoctors: React.FC = () => {
             <ul className="space-y-2">
               {revoked.map((r) => (
                 <li key={r.id} className="text-sm text-gray-600">
-                  {r.doctorName} — declined
+                  {r.doctorName} - declined
                 </li>
               ))}
             </ul>

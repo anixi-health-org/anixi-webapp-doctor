@@ -401,7 +401,7 @@ const PracticeCalendarPage: React.FC = () => {
                           className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2"
                         >
                           <p className="text-[13px] font-semibold text-emerald-900">
-                            {formatClock(block.startTime)} – {formatClock(block.endTime)}
+                            {formatClock(block.startTime)} - {formatClock(block.endTime)}
                           </p>
                           <p className="text-[11px] text-emerald-800/80">
                             {block.slotDurationMinutes}-min slots
@@ -442,7 +442,7 @@ const PracticeCalendarPage: React.FC = () => {
                         >
                           <p className="text-[13px] font-semibold text-[#0E2340]">{block.title}</p>
                           <p className="mt-0.5 text-[12px] text-[#65758b]">
-                            {formatDateTime(block.startAt)} – {formatDateTime(block.endAt)}
+                            {formatDateTime(block.startAt)} - {formatDateTime(block.endAt)}
                             {block.category ? ` · ${block.category.replace(/_/g, ' ')}` : ''}
                           </p>
                         </li>

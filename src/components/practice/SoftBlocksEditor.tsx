@@ -21,6 +21,8 @@ interface Props {
   practiceId: string;
   softBlocks: SoftBlock[];
   onChanged: () => void;
+  /** When set, manage blocks for this doctor (clinic admin). Defaults to signed-in user. */
+  doctorId?: string;
 }
 
 interface SoftForm {
@@ -50,8 +52,14 @@ const defaultForm = (): SoftForm => {
   };
 };
 
-export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onChanged }) => {
+export const SoftBlocksEditor: React.FC<Props> = ({
+  practiceId,
+  softBlocks,
+  onChanged,
+  doctorId: doctorIdProp,
+}) => {
   const { user } = useAuth();
+  const doctorId = doctorIdProp || user?.id || '';
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<SoftForm>(defaultForm());
   const [saving, setSaving] = useState(false);
@@ -77,7 +85,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
     try {
       await createSoftBlock(practiceId, {
         practiceId,
-        doctorId: user!.id,
+        doctorId,
         title: form.title.trim(),
         category: form.category,
         startAt,
@@ -121,7 +129,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({ practiceId, softBlocks, onCh
         <div>
           <h3 className="text-lg font-semibold text-gray-900">Soft Blocks</h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            Non-bookable time — never visible to patients
+            Non-bookable time - never visible to patients
           </p>
         </div>
         <button

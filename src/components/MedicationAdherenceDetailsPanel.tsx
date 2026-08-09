@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getTimeSlot } from '../utils/dateFormatter';
+import { getDateString, getTimeSlot } from '../utils/dateFormatter';
 import { getDailyAdherence, getDoctorDailyAdherence } from '../services/adherenceService';
 import { ListRowsSkeleton } from './ui/Skeleton';
 
@@ -104,7 +104,7 @@ export const MedicationAdherenceDetailsPanel: React.FC<MedicationAdherenceDetail
 
       try {
         setIsLoading(true);
-        const selectedDateStr = selectedDate.toISOString().split('T')[0];
+        const selectedDateStr = getDateString(selectedDate);
         const dailyData = doctorId
           ? await getDoctorDailyAdherence(doctorId, patientId, selectedDateStr)
           : await getDailyAdherence(patientId, selectedDateStr);

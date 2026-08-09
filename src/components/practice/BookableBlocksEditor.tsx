@@ -72,6 +72,8 @@ interface Props {
   blocks: BookableBlock[];
   locations: { id: string; name: string }[];
   onChanged: () => void;
+  /** When set, manage hours for this doctor (clinic admin). Defaults to signed-in user. */
+  doctorId?: string;
 }
 
 export const BookableBlocksEditor: React.FC<Props> = ({
@@ -79,8 +81,10 @@ export const BookableBlocksEditor: React.FC<Props> = ({
   blocks,
   locations,
   onChanged,
+  doctorId: doctorIdProp,
 }) => {
   const { user } = useAuth();
+  const doctorId = doctorIdProp || user?.id || '';
   const [showForm, setShowForm] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [selectedDays, setSelectedDays] = useState<DayOfWeek[]>([1, 2, 3, 4, 5]);
@@ -103,11 +107,11 @@ export const BookableBlocksEditor: React.FC<Props> = ({
 
   // Backfill patient-facing availability from existing clinic hours.
   useEffect(() => {
-    if (!practiceId || !user?.id) return;
-    void syncDoctorPublicAvailability(practiceId, user.id).catch((error) => {
+    if (!practiceId || !doctorId) return;
+    void syncDoctorPublicAvailability(practiceId, doctorId).catch((error) => {
       console.warn('[BookableBlocksEditor] availability sync failed:', error);
     });
-  }, [practiceId, user?.id]);
+  }, [practiceId, doctorId]);
 
   const activeBlocks = useMemo(
     () =>
@@ -205,7 +209,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
       for (const dayOfWeek of selectedDays) {
         await createBookableBlock(practiceId, {
           practiceId,
-          doctorId: user.id,
+          doctorId,
           dayOfWeek,
           startTime,
           endTime,
@@ -219,7 +223,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
       }
       const dayNames = selectedDays.map((d) => DAY_LABELS[d]).join(', ');
       setSuccess(
-        `Saved ${dayNames} · ${formatClock(startTime)} – ${formatClock(endTime)}.`
+        `Saved ${dayNames} · ${formatClock(startTime)} - ${formatClock(endTime)}.`
       );
       closeForm();
       onChanged();
@@ -282,7 +286,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Compact week strip — only when hours exist and form is closed */}
+      {/* Compact week strip - only when hours exist and form is closed */}
       {!showForm && activeBlocks.length > 0 && (
         <div className="grid grid-cols-7 gap-1.5 rounded-xl border border-[#e1e7ef] bg-[#f8fafc] p-2.5">
           {WEEKDAYS.map((day) => {
@@ -310,7 +314,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
                     )}
                   </div>
                 ) : (
-                  <p className="mt-1 text-[10px] text-[#c5cdd8]">—</p>
+                  <p className="mt-1 text-[10px] text-[#c5cdd8]">-</p>
                 )}
               </div>
             );
@@ -324,7 +328,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
             <div>
               <p className="text-sm font-semibold text-[#0E2340]">New clinic session</p>
               <p className="mt-0.5 text-[12px] text-[#65758b]">
-                Pick days and hours — defaults work for most clinics.
+                Pick days and hours - defaults work for most clinics.
               </p>
             </div>
             <button
@@ -421,7 +425,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Visit length — always visible, one row */}
+          {/* Visit length - always visible, one row */}
           <div>
             <label className="mb-2 block text-[13px] font-semibold text-[#344256]">
               Appointment length
@@ -442,7 +446,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Location — only if more than one */}
+          {/* Location - only if more than one */}
           {locations.length === 0 ? (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
               Add a location under Overview before saving hours.
@@ -466,7 +470,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
             </div>
           ) : null}
 
-          {/* More options — collapsed by default */}
+          {/* More options - collapsed by default */}
           <div className="rounded-lg border border-[#eef2f6] bg-[#f8fafc]">
             <button
               type="button"
@@ -531,7 +535,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
           </div>
 
           <p className="text-[12px] leading-relaxed text-[#65758b]">
-            {daysSummary} · {formatClock(startTime)} – {formatClock(endTime)} · {appointmentLength}
+            {daysSummary} · {formatClock(startTime)} - {formatClock(endTime)} · {appointmentLength}
             -min visits
             {breakBetween > 0 ? ` · ${breakBetween}-min breaks` : ''} · ~{estimatedSlots} slots/day
           </p>
@@ -592,7 +596,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
                       <p className="text-sm font-semibold text-[#0E2340]">
                         {DAY_LABELS[b.dayOfWeek]}{' '}
                         <span className="font-medium text-[#65758b]">
-                          {formatClock(b.startTime)} – {formatClock(b.endTime)}
+                          {formatClock(b.startTime)} - {formatClock(b.endTime)}
                         </span>
                       </p>
                       <p className="mt-0.5 truncate text-[12px] text-[#8FA0B6]">

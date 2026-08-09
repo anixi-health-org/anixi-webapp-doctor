@@ -24,6 +24,7 @@ interface PatientCareQuickLinksProps {
   onAdherenceCalendar: () => void;
   onAdherenceLogs: () => void;
   onVitalsHistory: () => void;
+  onWearableData: () => void;
   onScheduleFollowUp: () => void;
 }
 
@@ -32,6 +33,7 @@ export const PatientCareQuickLinks: React.FC<PatientCareQuickLinksProps> = ({
   onAdherenceCalendar,
   onAdherenceLogs,
   onVitalsHistory,
+  onWearableData,
   onScheduleFollowUp,
 }) => {
   const monitoringLinks: QuickLink[] = [
@@ -70,6 +72,15 @@ export const PatientCareQuickLinks: React.FC<PatientCareQuickLinksProps> = ({
       onClick: onVitalsHistory,
       accent: 'hover:border-rose-200 hover:bg-rose-50/50',
       iconBg: 'bg-rose-50 text-rose-700',
+    },
+    {
+      id: 'wearable',
+      title: 'Wearable data',
+      description: 'Steps, heart rate & device sync',
+      icon: ChartBarIcon,
+      onClick: onWearableData,
+      accent: 'hover:border-teal-200 hover:bg-teal-50/50',
+      iconBg: 'bg-teal-50 text-teal-700',
     },
   ];
 

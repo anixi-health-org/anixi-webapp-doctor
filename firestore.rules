@@ -85,11 +85,24 @@ service cloud.firestore {
     }
 
     function isOwner(practiceId) {
-      return isMember(practiceId) && getMember(practiceId).role == 'owner';
+      return isMember(practiceId) && (
+        getMember(practiceId).role == 'owner' ||
+        getMember(practiceId).role == 'practice_manager'
+      );
     }
 
     function hasPerm(practiceId, perm) {
       return isMember(practiceId) && getMember(practiceId).permissions[perm] == true;
+    }
+
+    function canManagePracticePatients(practiceId) {
+      return isMember(practiceId) && (
+        hasPerm(practiceId, 'managePatients') ||
+        getMember(practiceId).role == 'owner' ||
+        getMember(practiceId).role == 'practice_manager' ||
+        getMember(practiceId).role == 'doctor' ||
+        getMember(practiceId).role == 'receptionist'
+      );
     }
 
     // ─── Legacy collections (unchanged for mobile compatibility) ────────────────
@@ -115,6 +128,16 @@ service cloud.firestore {
     }
 
     match /Users/{userId}/mood_records/{recordId} {
+      allow read: if isSignedIn() && (uid() == userId || canReadPatientHealthData(userId));
+      allow write: if isSignedIn() && uid() == userId;
+    }
+
+    match /Users/{userId}/healthRecords/{recordId} {
+      allow read: if isSignedIn() && (uid() == userId || canReadPatientHealthData(userId));
+      allow write: if isSignedIn() && uid() == userId;
+    }
+
+    match /Users/{userId}/heathSummary/{summaryId} {
       allow read: if isSignedIn() && (uid() == userId || canReadPatientHealthData(userId));
       allow write: if isSignedIn() && uid() == userId;
     }
@@ -230,23 +253,52 @@ service cloud.firestore {
     match /patients/{patientId} {
       allow create: if isSignedIn()
         && request.resource.data.isManual == true
-        && request.resource.data.assignedDoctorId == uid();
+        && (
+          request.resource.data.assignedDoctorId == uid() ||
+          (
+            request.resource.data.practiceId is string &&
+            canManagePracticePatients(request.resource.data.practiceId)
+          )
+        );
+      // Approved doctors may read medical profile (blood group, weight, etc.) for tracking.
+      // Doctors must not edit app-linked patient data — only the patient, or manual records.
       allow read: if isSignedIn() && (
         resource.data.assignedDoctorId == uid() ||
         uid() == patientId ||
+        canDoctorReadPatientHealthData(patientId) ||
         isLinkedCaregiverForPatient(patientId) ||
-        isNominatedCaregiverEmail()
+        isNominatedCaregiverEmail() ||
+        (
+          resource.data.practiceId is string &&
+          canManagePracticePatients(resource.data.practiceId)
+        )
       );
       allow update: if isSignedIn() && (
-        resource.data.assignedDoctorId == uid() ||
+        uid() == patientId ||
+        (
+          resource.data.isManual == true &&
+          (
+            resource.data.assignedDoctorId == uid() ||
+            (
+              resource.data.practiceId is string &&
+              canManagePracticePatients(resource.data.practiceId)
+            )
+          )
+        ) ||
         (
           isNominatedCaregiverEmail() &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['caregiverId', 'updatedAt'])
         )
       );
       allow delete: if isSignedIn()
-        && resource.data.assignedDoctorId == uid()
-        && resource.data.isManual == true;
+        && resource.data.isManual == true
+        && (
+          resource.data.assignedDoctorId == uid() ||
+          (
+            resource.data.practiceId is string &&
+            canManagePracticePatients(resource.data.practiceId)
+          )
+        );
     }
 
     // ─── Referrals / invitations (doctor-owned) ────────────────────────────────
@@ -299,12 +351,13 @@ service cloud.firestore {
       // ─── Members ──────────────────────────────────────────────────────────────
 
       match /members/{memberId} {
-        // Members can read their own record; owners can read all
+        // Members can read their own record; owners/managers can read all
         allow read: if isSignedIn() &&
-          (uid() == memberId || isOwner(practiceId));
-        // Owner bootstrap: allow creating your own owner membership on your own practice
+          (uid() == memberId || isOwner(practiceId) || hasPerm(practiceId, 'manageMembers'));
+        // Owner bootstrap + invited member self-activate + managers inviting
         allow create: if isSignedIn() && (
           isOwner(practiceId) ||
+          hasPerm(practiceId, 'manageMembers') ||
           (
             uid() == memberId &&
             get(/databases/$(database)/documents/practices/$(practiceId)).data.ownerId == uid() &&
@@ -312,19 +365,30 @@ service cloud.firestore {
           ) ||
           (
             uid() == memberId &&
-            request.resource.data.role == 'delegate' &&
             request.resource.data.status == 'active'
           )
         );
-        // Practice owner may repair their own membership record
         allow update: if isSignedIn() && (
           isOwner(practiceId) ||
+          hasPerm(practiceId, 'manageMembers') ||
           (
             uid() == memberId &&
             get(/databases/$(database)/documents/practices/$(practiceId)).data.ownerId == uid()
           )
         );
-        allow delete: if isSignedIn() && isOwner(practiceId);
+        allow delete: if isSignedIn() && (isOwner(practiceId) || hasPerm(practiceId, 'manageMembers'));
+      }
+
+      match /invites/{inviteId} {
+        // Invitees open the link before signing in; token is still required to accept
+        allow read: if true;
+        allow create, update: if isSignedIn() && (
+          isOwner(practiceId) || hasPerm(practiceId, 'manageMembers') ||
+          // Invitee may mark accepted after joining
+          (request.resource.data.status == 'accepted' &&
+            request.resource.data.acceptedByUid == uid())
+        );
+        allow delete: if isSignedIn() && (isOwner(practiceId) || hasPerm(practiceId, 'manageMembers'));
       }
 
       // ─── Bookable Blocks ───────────────────────────────────────────────────────

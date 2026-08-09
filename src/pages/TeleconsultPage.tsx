@@ -266,7 +266,7 @@ export const TeleconsultPage: React.FC = () => {
       : notesStatus === 'saved'
         ? 'Saved'
         : notesStatus === 'error'
-          ? 'Save failed — will retry'
+          ? 'Save failed - will retry'
           : 'Auto-saves as you type';
 
   return (

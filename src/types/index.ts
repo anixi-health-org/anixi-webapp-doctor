@@ -1,12 +1,35 @@
 
 
-export type PracticeRole = 'owner' | 'delegate';
+/**
+ * Practice membership roles for multi-doctor clinics.
+ * - owner: practice/clinic owner (billing + full control)
+ * - practice_manager: day-to-day clinic admin
+ * - doctor: clinician in the practice
+ * - receptionist: booking & front-desk
+ * - billing_clerk: invoices & claims prep
+ * - delegate: legacy scheduling staff (kept for backward compatibility)
+ */
+export type PracticeRole =
+    | 'owner'
+    | 'practice_manager'
+    | 'doctor'
+    | 'receptionist'
+    | 'billing_clerk'
+    | 'delegate';
 
 export interface PracticePermissions {
     manageAppointments: boolean;
     manageSoftBlocks: boolean;
     overrideConflicts: boolean;
     editBookingPolicies: boolean;
+    /** View/manage patients across the practice pool */
+    managePatients: boolean;
+    /** Invite/remove members and change roles */
+    manageMembers: boolean;
+    /** View all doctors' diaries and practice-wide calendar */
+    viewAllDoctors: boolean;
+    /** View practice revenue / invoice summaries */
+    viewBilling: boolean;
 }
 
 export interface PracticeMember {
@@ -14,14 +37,19 @@ export interface PracticeMember {
     practiceId: string;
     role: PracticeRole;
     permissions: PracticePermissions;
-    status: 'active' | 'inactive';
+    status: 'active' | 'inactive' | 'invited';
     displayName?: string;
     email?: string;
+    /** True when this member is a clinician who can be booked */
+    isClinician?: boolean;
+    invitedBy?: string;
+    invitedAt?: Date;
     createdAt: Date;
     updatedAt: Date;
 }
 
-
+/** Solo private practice vs multi-doctor clinic/branch */
+export type PracticeOrgType = 'solo' | 'clinic';
 
 export interface PracticeLocation {
     id: string;
@@ -43,10 +71,37 @@ export interface Practice {
     name: string;
     timezone: string;
     ownerId: string;
+    /** solo = private practitioner; clinic = multi-doctor establishment */
+    orgType?: PracticeOrgType;
+    /** Optional brand / trading name */
+    tradingName?: string;
+    /** BHF practice number at organisation level */
+    bhfPracticeNumber?: string;
     locations: PracticeLocation[];
     consultTypes: ConsultType[];
     createdAt: Date;
     updatedAt: Date;
+}
+
+/** Pending invite stored under practices/{id}/invites/{inviteId} */
+export type PracticeInviteStatus = 'pending' | 'accepted' | 'revoked' | 'expired';
+
+export interface PracticeInvite {
+    id: string;
+    practiceId: string;
+    practiceName: string;
+    email: string;
+    displayName?: string;
+    role: PracticeRole;
+    permissions: PracticePermissions;
+    invitedBy: string;
+    invitedByName?: string;
+    status: PracticeInviteStatus;
+    token: string;
+    createdAt: Date;
+    updatedAt: Date;
+    acceptedAt?: Date;
+    acceptedByUid?: string;
 }
 
 
@@ -133,7 +188,7 @@ export interface User {
     id: string;
     email: string;
     displayName?: string;
-    role: 'doctor' | 'patient' | 'caregiver';
+    role: 'doctor' | 'patient' | 'caregiver' | 'staff';
     createdAt: Date;
     updatedAt: Date;
 }
@@ -145,12 +200,12 @@ export interface Doctor extends User {
     officeAddress?: string;
     practiceName?: string;
     logoUrl?: string;
-    /** ISO 3166-1 alpha-2 — set at registration */
+    /** ISO 3166-1 alpha-2 - set at registration */
     country?: string;
-    /** ISO 4217 — derived from country at registration */
+    /** ISO 4217 - derived from country at registration */
     currency?: string;
     nationality?: string;
-    /** Admin verification — set at registration; updated by Anixi Admin */
+    /** Admin verification - set at registration; updated by Anixi Admin */
     verificationStatus?: 'pending' | 'approved' | 'rejected' | 'suspended';
     /** True once personal + practice details were submitted for review */
     applicationComplete?: boolean;
@@ -164,7 +219,13 @@ export interface Caregiver extends User {
     role: 'caregiver';
     phoneNumber?: string;
 }
-export type ProfessionalUser = Doctor | Caregiver;
+/** Clinic staff (receptionist, billing, practice manager) - portal access via practice membership */
+export interface StaffUser extends User {
+    role: 'staff';
+    phoneNumber?: string;
+    primaryPracticeId?: string;
+}
+export type ProfessionalUser = Doctor | Caregiver | StaffUser;
 export interface Patient extends User {
     role: 'patient';
     photoURL?: string;
@@ -175,6 +236,12 @@ export interface Patient extends User {
     address?: string;
     phoneNumber?: string;
     assignedDoctorId?: string;
+    /** Practice/clinic this patient belongs to (shared pool) */
+    practiceId?: string;
+    /** From patient medical profile (mobile app) — read-only for doctors */
+    bloodGroup?: string;
+    /** From patient medical profile (mobile app) — read-only for doctors */
+    weight?: string;
     emergencyContact?: {
         name: string;
         phone: string;

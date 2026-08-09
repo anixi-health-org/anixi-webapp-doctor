@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowRightOnRectangleIcon,
   ChevronDownIcon,
+  Cog6ToothIcon,
   LockClosedIcon,
   ShareIcon,
   TrashIcon,
   UserCircleIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../hooks/useAuth';
+import { usesClinicAdminPortal } from '../../lib/doctorAccess';
 
 interface UserProfileMenuProps {
   variant?: 'header' | 'mobile';
@@ -23,19 +25,22 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
   subtitle,
   displayLabel,
 }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, practiceSession } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isCaregiver = user?.role === 'caregiver';
+  const isClinicAdmin = usesClinicAdminPortal(practiceSession);
   const displayName = user?.displayName || (isCaregiver ? 'Caregiver' : 'Doctor');
   const initial = displayName.charAt(0).toUpperCase();
   const email = user?.email || '';
   const shortName = displayName.split(' ')[0];
   const headerLabel =
-    displayLabel || (isCaregiver ? shortName : `Dr. ${shortName}`);
-  const headerSubtitle = subtitle || (isCaregiver ? 'Caregiver' : 'Physician');
+    displayLabel ||
+    (isCaregiver || isClinicAdmin ? shortName : `Dr. ${shortName}`);
+  const headerSubtitle =
+    subtitle || (isCaregiver ? 'Caregiver' : isClinicAdmin ? 'Clinic admin' : 'Physician');
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -84,25 +89,42 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
           onClick: () => handleNavigate('/caregiver/change-password'),
         },
       ]
-    : [
-        {
-          label: 'Professional Profile',
-          icon: UserCircleIcon,
-          onClick: () => handleNavigate('/professional-profile'),
-        },
-        {
-          label: 'Share Anixi',
-          icon: ShareIcon,
-          onClick: () => handleNavigate('/share-anixi'),
-        },
-        {
-          label: 'Change Password',
-          icon: LockClosedIcon,
-          onClick: () => handleNavigate('/change-password'),
-        },
-      ];
+    : isClinicAdmin
+      ? [
+          {
+            label: 'Clinic settings',
+            icon: Cog6ToothIcon,
+            onClick: () => handleNavigate('/clinic/settings'),
+          },
+          {
+            label: 'Change Password',
+            icon: LockClosedIcon,
+            onClick: () => handleNavigate('/clinic/change-password'),
+          },
+        ]
+      : [
+          {
+            label: 'Professional Profile',
+            icon: UserCircleIcon,
+            onClick: () => handleNavigate('/professional-profile'),
+          },
+          {
+            label: 'Share Anixi',
+            icon: ShareIcon,
+            onClick: () => handleNavigate('/share-anixi'),
+          },
+          {
+            label: 'Change Password',
+            icon: LockClosedIcon,
+            onClick: () => handleNavigate('/change-password'),
+          },
+        ];
 
-  const deleteAccountPath = isCaregiver ? '/caregiver/delete-account' : '/delete-account';
+  const deleteAccountPath = isCaregiver
+    ? '/caregiver/delete-account'
+    : isClinicAdmin
+      ? '/clinic/delete-account'
+      : '/delete-account';
 
   if (variant === 'mobile') {
     return (
@@ -177,7 +199,7 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
               </div>
               <div className="min-w-0">
                 <p className="truncate font-sans text-sm font-semibold text-gray-900">
-                  {isCaregiver ? displayName : `Dr. ${displayName}`}
+                  {isCaregiver || isClinicAdmin ? displayName : `Dr. ${displayName}`}
                 </p>
                 <p className="truncate text-xs text-gray-500">{email}</p>
               </div>

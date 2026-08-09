@@ -219,15 +219,15 @@ export const CaregiverPatientDetailPage: React.FC = () => {
                 <div className="grid grid-cols-3 gap-3 pt-2">
                   <div className="rounded-lg bg-gray-50 p-3 text-center">
                     <p className="text-xs text-gray-500">BP</p>
-                    <p className="font-semibold text-gray-900">{latestVitals.bloodPressure || '—'}</p>
+                    <p className="font-semibold text-gray-900">{latestVitals.bloodPressure || '-'}</p>
                   </div>
                   <div className="rounded-lg bg-gray-50 p-3 text-center">
                     <p className="text-xs text-gray-500">HR</p>
-                    <p className="font-semibold text-gray-900">{latestVitals.heartRate ?? '—'}</p>
+                    <p className="font-semibold text-gray-900">{latestVitals.heartRate ?? '-'}</p>
                   </div>
                   <div className="rounded-lg bg-gray-50 p-3 text-center">
                     <p className="text-xs text-gray-500">Temp</p>
-                    <p className="font-semibold text-gray-900">{latestVitals.temperature ?? '—'}</p>
+                    <p className="font-semibold text-gray-900">{latestVitals.temperature ?? '-'}</p>
                   </div>
                 </div>
               )}
@@ -268,15 +268,15 @@ export const CaregiverPatientDetailPage: React.FC = () => {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="rounded-xl border border-gray-200 p-5">
                   <p className="text-sm text-gray-500">Blood pressure</p>
-                  <p className="mt-1 text-2xl font-bold text-gray-900">{latestVitals.bloodPressure || '—'}</p>
+                  <p className="mt-1 text-2xl font-bold text-gray-900">{latestVitals.bloodPressure || '-'}</p>
                 </div>
                 <div className="rounded-xl border border-gray-200 p-5">
                   <p className="text-sm text-gray-500">Heart rate</p>
-                  <p className="mt-1 text-2xl font-bold text-gray-900">{latestVitals.heartRate ?? '—'} bpm</p>
+                  <p className="mt-1 text-2xl font-bold text-gray-900">{latestVitals.heartRate ?? '-'} bpm</p>
                 </div>
                 <div className="rounded-xl border border-gray-200 p-5">
                   <p className="text-sm text-gray-500">Temperature</p>
-                  <p className="mt-1 text-2xl font-bold text-gray-900">{latestVitals.temperature ?? '—'}°C</p>
+                  <p className="mt-1 text-2xl font-bold text-gray-900">{latestVitals.temperature ?? '-'}°C</p>
                 </div>
               </div>
             ) : (

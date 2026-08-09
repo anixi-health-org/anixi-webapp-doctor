@@ -37,6 +37,15 @@ import DeleteAccount from './pages/DeleteAccount';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import { DoctorOnboardingPage } from './pages/DoctorOnboardingPage';
 import { AccountUnderReviewPage } from './pages/AccountUnderReviewPage';
+import ClinicSetupPage from './pages/ClinicSetupPage';
+import InviteAcceptPage from './pages/InviteAcceptPage';
+import { ClinicAdminLayout } from './components/ClinicAdminLayout';
+import { ClinicAdminRoute } from './components/ClinicAdminRoute';
+import ClinicAdminDashboard from './pages/clinic/ClinicAdminDashboard';
+import ClinicAdminTeamPage from './pages/clinic/ClinicAdminTeamPage';
+import ClinicAdminPatientsPage from './pages/clinic/ClinicAdminPatientsPage';
+import ClinicAdminSettingsPage from './pages/clinic/ClinicAdminSettingsPage';
+import ClinicAdminSchedulePage from './pages/clinic/ClinicAdminSchedulePage';
 import {
   AnalyticsPage,
   HealthMonitorPage,
@@ -49,6 +58,7 @@ import AdherenceCalendarPage from './pages/AdherenceCalendarPage';
 import AdherenceLogsPage from './pages/AdherenceLogsPage';
 import AdherenceDailyPage from './pages/AdherenceDailyPage';
 import VitalsHistoryPage from './pages/VitalsHistoryPage';
+import WearableDataPage from './pages/WearableDataPage';
 import PostConsultPage from './pages/PostConsultPage';
 import InvoicesPage from './pages/InvoicesPage';
 import InvoiceCreate from './pages/InvoiceCreate';
@@ -172,12 +182,58 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/join" element={<Join />} />
+          <Route path="/join/invite" element={<InviteAcceptPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/sign-up" element={<SignUpRedirect />} />
           <Route path="/delegate/accept" element={<DelegateAccept />} />
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route
+            path="/clinic-setup"
+            element={
+              <ProtectedRoute>
+                <ClinicSetupPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/onboarding"
+            element={
+              <ProtectedRoute>
+                <DoctorOnboardingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/account-review"
+            element={
+              <ProtectedRoute>
+                <AccountUnderReviewPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/clinic"
+            element={
+              <ProtectedRoute>
+                <ClinicAdminRoute>
+                  <ClinicAdminLayout />
+                </ClinicAdminRoute>
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<ClinicAdminDashboard />} />
+            <Route path="team" element={<ClinicAdminTeamPage />} />
+            <Route path="patients" element={<ClinicAdminPatientsPage />} />
+            <Route path="schedule" element={<ClinicAdminSchedulePage />} />
+            <Route path="appointments" element={<Navigate to="/clinic/schedule" replace />} />
+            <Route path="calendar" element={<Navigate to="/clinic/schedule" replace />} />
+            <Route path="settings" element={<ClinicAdminSettingsPage />} />
+            <Route path="support" element={<Support />} />
+            <Route path="change-password" element={<ChangePassword />} />
+            <Route path="delete-account" element={<DeleteAccount />} />
+          </Route>
           <Route
             path="/caregiver"
             element={
@@ -212,6 +268,7 @@ function App() {
                     <Route path="/patient-profile/:patientId/adherence-logs" element={<AdherenceLogsPage />} />
                     <Route path="/patient-profile/:patientId/adherence-daily/:date" element={<AdherenceDailyPage />} />
                     <Route path="/patient-profile/:patientId/vitals-history" element={<VitalsHistoryPage />} />
+                    <Route path="/patient-profile/:patientId/wearable" element={<WearableDataPage />} />
                     <Route path="/patients" element={<Patients />} />
                     <Route path="/appointments" element={<AppointmentsPage />} />
                     <Route path="/appointments/:appointmentId" element={<AppointmentSummary />} />
