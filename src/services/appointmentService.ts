@@ -95,15 +95,6 @@ const normalizeType = (type: any): Appointment['type'] => {
   };
   return typeMap[normalized] || 'In-Person';
 };
-const normalizeStatus = (status: any): Appointment['status'] => {
-  const parsed = parseAppointmentStatus(status);
-  if (!parsed) {
-    throw new Error(
-      `Unknown appointment status "${String(status)}". Refusing to coerce it to pending.`
-    );
-  }
-  return parsed;
-};
 
 const normalizeAppointmentDocuments = (value: any): AppointmentDocument[] => {
   if (!Array.isArray(value)) return [];
