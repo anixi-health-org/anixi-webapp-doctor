@@ -1,5 +1,10 @@
 rules_version = '2';
 
+// CANONICAL Firestore ruleset for project anixihealth24.
+// This file and anixi-mobile-expo/firestore.rules MUST stay identical.
+// Do not deploy one without the other. Do not add "if request.auth != null"
+// on patient clinical data.
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -148,11 +153,14 @@ service cloud.firestore {
       allow create, update: if isSignedIn()
         && uid() == doctorId
         && exists(/databases/$(database)/documents/Users/$(doctorId)/approved_patients/$(patientId));
+      allow delete: if isSignedIn() && (uid() == patientId || uid() == doctorId);
     }
 
-    // Doctor can read/write their approved_patients list
+    // Doctor can read/write their approved_patients list. A patient may only
+    // remove their own entry, which is how revoking access unlinks both sides.
     match /Users/{doctorId}/approved_patients/{patientId} {
       allow read, write: if isSignedIn() && uid() == doctorId;
+      allow delete: if isSignedIn() && uid() == patientId;
     }
 
     // Caregiver portal: patients linked to a caregiver account
@@ -185,6 +193,18 @@ service cloud.firestore {
     match /Users/{patientId}/approved_shares/{doctorId} {
       allow read: if isSignedIn() && (uid() == patientId || uid() == doctorId);
       allow create, update: if isSignedIn() && uid() == doctorId;
+      allow delete: if isSignedIn() && (uid() == patientId || uid() == doctorId);
+    }
+
+    // Persistent in-app notification center. The patient owns the feed;
+    // an authorized doctor may append events (never read another patient's).
+    match /Users/{patientId}/notifications/{notifId} {
+      allow read, update: if isSignedIn() && uid() == patientId;
+      allow create: if isSignedIn() && (
+        uid() == patientId ||
+        canDoctorReadPatientHealthData(patientId)
+      );
+      allow delete: if isSignedIn() && uid() == patientId;
     }
 
     match /Users/{doctorId}/practice_permissions/{docId} {
@@ -203,9 +223,26 @@ service cloud.firestore {
     match /appointments/{appointmentId} {
       allow read: if isSignedIn() &&
         (resource.data.doctorId == uid() || resource.data.patientId == uid());
-      allow create: if isSignedIn() && request.resource.data.doctorId == uid();
+      // Patients book from the mobile app and write the same shared record the
+      // portal reads, so either party may create it for themselves.
+      allow create: if isSignedIn() && (
+        request.resource.data.doctorId == uid() ||
+        (request.resource.data.patientId == uid() &&
+         request.resource.data.doctorId is string)
+      );
       allow update: if isSignedIn() &&
         (resource.data.doctorId == uid() || resource.data.patientId == uid());
+    }
+
+    // Patient-uploaded documents (x-rays, blood tests, notes). Owned by the
+    // patient; readable by a doctor the patient has shared their data with.
+    match /medical_files/{fileId} {
+      allow read: if isSignedIn() && (
+        resource.data.userId == uid() ||
+        canReadPatientHealthData(resource.data.userId)
+      );
+      allow create: if isSignedIn() && request.resource.data.userId == uid();
+      allow update, delete: if isSignedIn() && resource.data.userId == uid();
     }
 
     // ─── Invoices (doctor portal financial tracking) ───────────────────────────
@@ -244,7 +281,103 @@ service cloud.firestore {
 
     match /group_posts/{postId} {
       allow read: if isSignedIn();
-      allow create, update, delete: if isAdmin();
+      allow create: if isSignedIn()
+        && (isAdmin() || request.resource.data.userId == uid());
+      allow update: if isSignedIn() && (
+        isAdmin()
+        || resource.data.userId == uid()
+        || request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['likes', 'comments', 'commentCount'])
+      );
+      allow delete: if isSignedIn() && (isAdmin() || resource.data.userId == uid());
+    }
+
+    match /community_analytics/{eventId} {
+      allow read: if false;
+      allow create: if isSignedIn()
+        && request.resource.data.userId == uid()
+        && request.resource.data.event is string
+        && request.resource.data.params is map
+        && request.resource.data.createdAt != null;
+      allow update, delete: if false;
+    }
+
+    function isFollowerCountUpdate() {
+      return isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followerCount'])
+        && (
+          request.resource.data.followerCount == resource.data.followerCount + 1
+          || request.resource.data.followerCount == resource.data.followerCount - 1
+        );
+    }
+
+    match /community_profiles/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && uid() == userId;
+      allow update: if isSignedIn() && (uid() == userId || isFollowerCountUpdate());
+      allow delete: if isSignedIn() && uid() == userId;
+    }
+
+    match /community_follows/{followId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.followerId == uid();
+      allow delete: if isSignedIn() && resource.data.followerId == uid();
+      allow update: if false;
+    }
+
+    match /community_saved_posts/{savedId} {
+      allow read: if isSignedIn() && resource.data.userId == uid();
+      allow create: if isSignedIn() && request.resource.data.userId == uid();
+      allow delete: if isSignedIn() && resource.data.userId == uid();
+      allow update: if false;
+    }
+
+    match /community_blocks/{blockId} {
+      allow read: if isSignedIn() && resource.data.blockerId == uid();
+      allow create: if isSignedIn() && request.resource.data.blockerId == uid();
+      allow delete: if isSignedIn() && resource.data.blockerId == uid();
+      allow update: if false;
+    }
+
+    match /community_reports/{reportId} {
+      allow read: if false;
+      allow create: if isSignedIn() && request.resource.data.reporterId == uid();
+      allow update, delete: if false;
+    }
+
+    match /community_stories/{storyId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == uid();
+      allow delete: if isSignedIn() && resource.data.userId == uid();
+      allow update: if false;
+    }
+
+    match /UserGroups/{membershipId} {
+      allow read: if isSignedIn() && resource.data.user_id == uid();
+      allow create: if isSignedIn() && request.resource.data.user_id == uid();
+      allow delete: if isSignedIn() && resource.data.user_id == uid();
+      allow update: if false;
+    }
+
+    // Invitee may read/update only their own invite (email match). Never
+    // world-readable and never writable by any signed-in user.
+    match /delegate_invites/{inviteId} {
+      allow read: if isSignedIn() && (
+        resource.data.doctorId == uid() ||
+        resource.data.createdBy == uid() ||
+        resource.data.email == request.auth.token.email
+      );
+      allow create: if isSignedIn()
+        && request.resource.data.email is string
+        && (
+          request.resource.data.doctorId == uid() ||
+          request.resource.data.createdBy == uid()
+        );
+      allow update: if isSignedIn() && (
+        resource.data.doctorId == uid() ||
+        resource.data.email == request.auth.token.email
+      );
+      allow delete: if isSignedIn() && resource.data.doctorId == uid();
     }
 
     // ─── Patients (manual creation by doctors) ─────────────────────────────────

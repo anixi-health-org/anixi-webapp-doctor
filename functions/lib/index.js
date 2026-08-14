@@ -15,28 +15,18 @@ var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (
 }) : function(o, v) {
     o["default"] = v;
 });
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendReferralInvitationTest = exports.sendReferralInvitation = exports.sendReferralInvitationCallable = void 0;
+exports.applyAutoCancellationRules = exports.sendReferralInvitationTest = exports.sendReferralInvitation = exports.sendReferralInvitationCallable = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const mail_1 = __importDefault(require("@sendgrid/mail"));
@@ -146,30 +136,111 @@ exports.sendReferralInvitation = functions.firestore
         });
     }
 });
-// Temporary unsecured test endpoint — remove after debugging
-exports.sendReferralInvitationTest = functions.https.onRequest(async (req, res) => {
+// Previously an unauthenticated HTTP endpoint that sent referral email.
+// It must not remain publicly callable. Deploy this stub so existing URLs 403.
+exports.sendReferralInvitationTest = functions.https.onRequest(async (_req, res) => {
+    res.status(403).json({
+        error: 'This test endpoint is disabled. Use the authenticated referral invitation flow.',
+    });
+});
+/**
+ * Scheduled Cloud Function to apply auto-cancellation rule to pending appointments
+ * Runs every hour to catch appointments whose time has passed
+ */
+exports.applyAutoCancellationRules = functions.pubsub
+    .schedule('every 1 hours')
+    .onRun(async (context) => {
     try {
-        const { doctorId = '', targetEmail = '' } = req.method === 'GET' ? req.query : req.body;
-        const dId = String(doctorId || '');
-        const tEmail = String(targetEmail || '');
-        if (!dId || !tEmail) {
-            res.status(400).send('doctorId and targetEmail required');
-            return;
+        console.log('Starting auto-cancellation process for pending appointments');
+        const now = new Date();
+        let processedCount = 0;
+        let cancelledCount = 0;
+        let errorCount = 0;
+        // Query all pending appointments from global collection
+        const appointmentsRef = db.collection('appointments');
+        const query = appointmentsRef.where('status', '==', 'pending');
+        const snapshot = await query.get();
+        console.log(`Found ${snapshot.size} pending appointments to process`);
+        for (const doc of snapshot.docs) {
+            processedCount++;
+            try {
+                const data = doc.data();
+                const appointmentId = doc.id;
+                const doctorId = data.doctorId;
+                const patientId = data.patientId;
+                const currentStatus = String(data.status || '');
+                if (currentStatus === 'no_show' || currentStatus === 'confirmed' || currentStatus === 'completed') {
+                    continue;
+                }
+                if (currentStatus !== 'pending' && currentStatus !== 'rescheduled') {
+                    continue;
+                }
+                let appointmentDateTime = null;
+                if (data.scheduledAt instanceof admin.firestore.Timestamp) {
+                    appointmentDateTime = data.scheduledAt.toDate();
+                }
+                else if (data.startAt instanceof admin.firestore.Timestamp) {
+                    appointmentDateTime = data.startAt.toDate();
+                }
+                else if (data.date instanceof admin.firestore.Timestamp) {
+                    appointmentDateTime = data.date.toDate();
+                    const timeString = data.time;
+                    if (timeString && typeof timeString === 'string') {
+                        const timeMatch = timeString.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+                        if (timeMatch) {
+                            let hours = parseInt(timeMatch[1], 10);
+                            const minutes = parseInt(timeMatch[2], 10);
+                            const period = timeMatch[3];
+                            if (period) {
+                                if (period.toUpperCase() === 'PM' && hours !== 12)
+                                    hours += 12;
+                                else if (period.toUpperCase() === 'AM' && hours === 12)
+                                    hours = 0;
+                            }
+                            appointmentDateTime.setHours(hours, minutes, 0, 0);
+                        }
+                    }
+                }
+                if (!appointmentDateTime || appointmentDateTime > now) {
+                    continue;
+                }
+                const autoCancelPayload = {
+                    status: 'auto_cancelled',
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    autoCancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+                };
+                await doc.ref.update(autoCancelPayload);
+                if (doctorId) {
+                    const doctorRef = db.collection('Users').doc(doctorId).collection('appointments').doc(appointmentId);
+                    const doctorDoc = await doctorRef.get();
+                    if (doctorDoc.exists) {
+                        await doctorRef.update(autoCancelPayload);
+                    }
+                }
+                if (patientId && !String(patientId).startsWith('manual_')) {
+                    const patientRef = db.collection('Users').doc(patientId).collection('appointments').doc(appointmentId);
+                    const patientDoc = await patientRef.get();
+                    if (patientDoc.exists) {
+                        await patientRef.update(autoCancelPayload);
+                    }
+                }
+                cancelledCount++;
+                console.log(`Auto-cancelled appointment ${appointmentId} (Doctor: ${doctorId})`);
+            }
+            catch (error) {
+                errorCount++;
+                console.error(`Error processing appointment ${doc.id}:`, error?.message || error);
+            }
         }
-        if (!SENDGRID_API_KEY) {
-            res.status(500).send('SendGrid API key not configured');
-            return;
-        }
-        const refDoc = await db.collection('referrals').doc(dId).get();
-        const refData = refDoc.exists ? refDoc.data() : null;
-        const referralLink = refData?.referralLink || `${WEB_SIGNUP}?ref=${refData?.referralCode || dId}`;
-        const subject = `You're invited to join Anixi`;
-        const html = `\n      <p>Hello,</p>\n      <p>${refData?.doctorName || 'A doctor'} invited you to join Anixi — a care coordination app.</p>\n      <p>Sign up on the web: <a href="${referralLink}">${referralLink}</a></p>\n      <p>Or download the app:</p>\n      <ul>\n        <li><a href="${IOS_LINK}">Download on the App Store</a></li>\n        <li><a href="${ANDROID_LINK}">Get it on Google Play</a></li>\n      </ul>\n      <p>If you have any trouble, reply to this email.</p>\n      <p>— The Anixi team</p>\n    `;
-        await mail_1.default.send({ to: tEmail, from: FROM_EMAIL, subject, html });
-        res.status(200).json({ status: 'sent' });
+        console.log(`Auto-cancellation process completed. Processed: ${processedCount}, Cancelled: ${cancelledCount}, Errors: ${errorCount}`);
+        return {
+            processed: processedCount,
+            cancelled: cancelledCount,
+            errors: errorCount,
+        };
     }
-    catch (err) {
-        console.error('sendReferralInvitationTest error', err);
-        res.status(500).json({ error: err?.message || String(err) });
+    catch (error) {
+        console.error('Error in applyAutoCancellationRules:', error?.message || error);
+        throw error;
     }
 });

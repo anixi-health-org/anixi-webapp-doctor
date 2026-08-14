@@ -338,8 +338,8 @@ const PrivacyPolicyPage: React.FC = () => (
               confidential, use a strong unique password, and obtain appropriate telemedicine
               consent before virtual consultations in line with HPCSA guidance. Report suspected
               incidents to{' '}
-              <a href="mailto:privacy@anixi.health" className="text-anixi-green underline">
-                privacy@anixi.health
+            <a href="mailto:privacy@anixi.health" className="text-anixi-green underline">
+              privacy@anixi.health
               </a>{' '}
               promptly.
             </p>
@@ -380,7 +380,7 @@ const PrivacyPolicyPage: React.FC = () => (
               <li>Object to processing in the circumstances set out in POPIA section 11(3)</li>
               <li>Withdraw consent where processing is based on consent</li>
               <li>Request information about operators and third parties with whom we share data</li>
-            </ul>
+          </ul>
             <p>
               To exercise these rights, email{' '}
               <a href="mailto:privacy@anixi.health" className="text-anixi-green underline">
@@ -480,9 +480,9 @@ const PrivacyPolicyPage: React.FC = () => (
             <ul className="list-disc space-y-1 pl-5">
               <li>
                 Privacy:{' '}
-                <a href="mailto:privacy@anixi.health" className="text-anixi-green underline">
-                  privacy@anixi.health
-                </a>
+            <a href="mailto:privacy@anixi.health" className="text-anixi-green underline">
+              privacy@anixi.health
+            </a>
               </li>
               <li>
                 General:{' '}
@@ -499,8 +499,8 @@ const PrivacyPolicyPage: React.FC = () => (
 
           <div className="flex flex-wrap items-center justify-between gap-4 border-t border-gray-100 py-8">
             <Link to="/login" className="text-sm font-semibold text-anixi-green hover:underline">
-              Back to sign in
-            </Link>
+          Back to sign in
+        </Link>
             <Link to="/join" className="text-sm font-medium text-gray-600 hover:text-anixi-green">
               Create an account
             </Link>

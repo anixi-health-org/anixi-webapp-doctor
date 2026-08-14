@@ -43,35 +43,45 @@ async function resolveAccountRole(uid: string): Promise<AuthRole | null> {
 
 async function mapDoctorUser(firebaseUser: User): Promise<Doctor> {
   const ref = doc(db, DOCTORS_COLLECTION, firebaseUser.uid);
-  const doctorDoc = await getDoc(ref);
+  const [doctorDoc, userDoc] = await Promise.all([
+    getDoc(ref),
+    getDoc(doc(db, USERS_COLLECTION, firebaseUser.uid)),
+  ]);
 
-  if (!doctorDoc.exists()) {
+  const userData = userDoc.exists() ? userDoc.data() : {};
+  const accountType = (userData.accountType || userData.role) as string | undefined;
+  const isDoctorAccount =
+    doctorDoc.exists() || accountType === 'doctor';
+
+  if (!isDoctorAccount) {
     throw new Error('Access denied. This portal is for registered doctors only.');
   }
 
-  const doctorData = doctorDoc.data();
+  const doctorData = doctorDoc.exists() ? doctorDoc.data() : {};
   if (doctorData.role && doctorData.role !== 'doctor') {
     throw new Error('Access denied. This portal is for registered doctors only.');
   }
 
   return {
     id: firebaseUser.uid,
-    email: firebaseUser.email!,
+    email: firebaseUser.email || userData.email || '',
     displayName:
       doctorData.displayName ||
       doctorData.fullName ||
+      userData.displayName ||
+      userData.fullName ||
       firebaseUser.displayName ||
       undefined,
     role: 'doctor',
-    specialty: doctorData.specialty || doctorData.medicalSpecialty,
+    specialty: doctorData.specialty || doctorData.medicalSpecialty || userData.medicalSpecialty,
     licenseNumber: doctorData.licenseNumber || doctorData.hpcsaRegistrationNumber,
-    phoneNumber: doctorData.phoneNumber,
+    phoneNumber: doctorData.phoneNumber || userData.phoneNumber,
     officeAddress: doctorData.officeAddress || doctorData.practiceAddress,
     practiceName: doctorData.practiceName,
-    logoUrl: doctorData.logoUrl || doctorData.profileImageUrl,
+    logoUrl: doctorData.logoUrl || doctorData.profileImageUrl || userData.photoURL,
     practiceNumberBhf: doctorData.practiceNumberBhf || doctorData.practiceNumber,
     vatNumber: doctorData.vatNumber,
-    country: doctorData.country,
+    country: doctorData.country || userData.country,
     currency: doctorData.currency,
     nationality: doctorData.nationality,
     verificationStatus: doctorData.verificationStatus,
@@ -79,8 +89,8 @@ async function mapDoctorUser(firebaseUser: User): Promise<Doctor> {
     applicationSubmittedAt: doctorData.applicationSubmittedAt?.toDate?.() || undefined,
     verifiedAt: doctorData.verifiedAt?.toDate?.() || undefined,
     rejectionReason: doctorData.rejectionReason || doctorData.suspensionReason || undefined,
-    createdAt: doctorData.createdAt?.toDate() || new Date(),
-    updatedAt: doctorData.updatedAt?.toDate() || new Date(),
+    createdAt: doctorData.createdAt?.toDate() || userData.createdAt?.toDate() || new Date(),
+    updatedAt: doctorData.updatedAt?.toDate() || userData.updatedAt?.toDate() || new Date(),
   };
 }
 
@@ -220,8 +230,9 @@ export const loginProfessional = async (
   password: string,
   expectedRole?: AuthRole
 ): Promise<ProfessionalUser> => {
+  const trimmedEmail = email.trim();
   try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, password);
     const firebaseUser = userCredential.user;
     const resolvedRole = await resolveAccountRole(firebaseUser.uid);
 
@@ -254,10 +265,43 @@ export const loginProfessional = async (
 
     return mapCaregiverUser(firebaseUser);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Login failed';
-    throw new Error(message);
+    throw new Error(loginErrorMessage(error));
   }
 };
+
+function loginErrorMessage(error: unknown): string {
+  const code =
+    typeof error === 'object' && error && 'code' in error
+      ? String((error as { code?: string }).code)
+      : '';
+  const message = error instanceof Error ? error.message : '';
+  const haystack = `${code} ${message}`.toLowerCase();
+
+  if (
+    haystack.includes('invalid-credential') ||
+    haystack.includes('wrong-password') ||
+    haystack.includes('user-not-found') ||
+    haystack.includes('invalid-email') ||
+    haystack.includes('invalid-login')
+  ) {
+    return 'Invalid email or password.';
+  }
+  if (haystack.includes('too-many-requests')) {
+    return 'Too many sign-in attempts. Wait a few minutes, then try again.';
+  }
+  if (haystack.includes('network-request-failed') || haystack.includes('network error')) {
+    return 'Network error. Check your connection and try again.';
+  }
+  if (
+    haystack.includes('api-key') ||
+    haystack.includes('app-not-authorized') ||
+    haystack.includes('configuration-not')
+  ) {
+    return 'This portal could not reach Firebase. Refresh the page and try again.';
+  }
+  if (message) return message;
+  return 'Could not sign in. Please try again.';
+}
 
 export const loginDoctor = async (email: string, password: string): Promise<Doctor> => {
   const user = await loginProfessional(email, password, 'doctor');

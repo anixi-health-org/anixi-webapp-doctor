@@ -24,6 +24,7 @@ import {
   formatAppointmentTypeLabel,
   isWhatsAppComingSoon,
 } from '../../utils/teleconsult';
+import { needsDoctorConfirmation } from '../../services/appointmentCanonical';
 
 interface AppointmentDetailsProps {
   appointment: Appointment;
@@ -38,10 +39,12 @@ const getStatusColor = (status: Appointment['status']): string => {
     case 'confirmed':
       return 'bg-green-100 text-green-800 border-green-300';
     case 'pending':
+    case 'rescheduled':
       return 'bg-yellow-100 text-yellow-800 border-yellow-300';
     case 'completed':
       return 'bg-gray-100 text-gray-800 border-gray-300';
     case 'cancelled':
+    case 'auto_cancelled':
       return 'bg-red-100 text-red-800 border-red-300';
     case 'no_show':
       return 'bg-orange-100 text-orange-800 border-orange-300';
@@ -66,7 +69,7 @@ const getTypeIcon = (type: Appointment['type']): string => {
 
 const convertTo12Hour = (time24: string): string => {
   if (typeof time24 !== 'string') {
-    return '10:00 AM';
+    return 'Time unavailable';
   }
   const [hour, minute] = time24.split(':').map(Number);
   const period = hour >= 12 ? 'PM' : 'AM';
@@ -124,20 +127,30 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   const patientName = String(appointment.patientName || 'Unknown');
   const patientEmail = String(appointment.patientEmail || 'N/A');
   const appointmentStatus = String(appointment.status || 'pending');
-  const appointmentTime = typeof appointment.time === 'string' ? appointment.time : '10:00 AM';
+  const appointmentTime =
+    typeof appointment.time === 'string' && appointment.time.trim()
+      ? appointment.time
+      : 'Time unavailable';
   const appointmentNotes = String(appointment.notes || '');
 
-  const appointmentDateTime = (() => {
-    const base = convertTimestamp(appointment.date) ?? new Date();
-    const time24 = convertTo24Hour(appointmentTime);
-    const [h, m] = time24.split(':').map(Number);
-    const dt = new Date(base);
-    dt.setHours(Number.isFinite(h) ? h : 10, Number.isFinite(m) ? m : 0, 0, 0);
-    return dt;
-  })();
+  const appointmentDateTime =
+    appointment.scheduledAt ??
+    (() => {
+      const base = convertTimestamp(appointment.date);
+      if (!base) return new Date(0);
+      const time24 = convertTo24Hour(appointmentTime);
+      const [h, m] = time24.split(':').map(Number);
+      if (!Number.isFinite(h) || !Number.isFinite(m)) return base;
+      const dt = new Date(base);
+      dt.setHours(h, m, 0, 0);
+      return dt;
+    })();
 
   const hoursUntilAppointment = (appointmentDateTime.getTime() - Date.now()) / (60 * 60 * 1000);
-  const isTerminal = appointment.status === 'cancelled' || appointment.status === 'completed';
+  const isTerminal =
+    appointment.status === 'cancelled' ||
+    appointment.status === 'auto_cancelled' ||
+    appointment.status === 'completed';
   const canRescheduleAppointment = canManage && !isTerminal && appointment.status !== 'no_show';
   const canCancelAppointment = canManage && !isTerminal && appointment.status !== 'pending' && hoursUntilAppointment >= 1;
   const canNoShowAppointment =
@@ -147,7 +160,8 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     appointment.status !== 'no_show' &&
     appointment.status !== 'pending';
   const canGenerateInvoice = canManage;
-  const isPendingAppointment = appointment.status === 'pending';
+  const isPendingAppointment =
+    needsDoctorConfirmation(appointment);
 
   useEffect(() => {
     setDocuments(appointment.documents ?? []);

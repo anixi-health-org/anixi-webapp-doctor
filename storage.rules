@@ -1,0 +1,84 @@
+rules_version = '2';
+
+// CANONICAL Storage ruleset — keep identical to anixi-mobile-expo/storage.rules.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isImageUpload() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isVideoUpload() {
+      return request.resource.contentType.matches('video/.*');
+    }
+
+    function isMediaUpload() {
+      return isImageUpload() || isVideoUpload();
+    }
+
+    function canDoctorReadPatientFiles(userId) {
+      return isSignedIn() && (
+        firestore.exists(/databases/(default)/documents/Users/$(userId)/approved_shares/$(request.auth.uid))
+        || firestore.exists(/databases/(default)/documents/Users/$(request.auth.uid)/approved_patients/$(userId))
+      );
+    }
+
+    match /community-posts/{groupId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.resource.size < 100 * 1024 * 1024
+        && isMediaUpload();
+    }
+
+    match /community-profiles/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId)
+        && request.resource.size < 10 * 1024 * 1024
+        && isImageUpload();
+    }
+
+    match /community-stories/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId)
+        && request.resource.size < 50 * 1024 * 1024
+        && isMediaUpload();
+    }
+
+    match /medical-files/{userId}/{allPaths=**} {
+      allow read: if isOwner(userId) || canDoctorReadPatientFiles(userId);
+      allow write: if isOwner(userId)
+        && request.resource.size < 25 * 1024 * 1024;
+    }
+
+    match /medical_files/{userId}/{allPaths=**} {
+      allow read: if isOwner(userId) || canDoctorReadPatientFiles(userId);
+      allow write: if isOwner(userId)
+        && request.resource.size < 25 * 1024 * 1024;
+    }
+
+    match /appointments/{doctorId}/{appointmentId}/{allPaths=**} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == doctorId
+        || firestore.get(/databases/(default)/documents/Users/$(doctorId)/appointments/$(appointmentId)).data.patientId == request.auth.uid
+      );
+      allow write: if isSignedIn()
+        && request.auth.uid == doctorId
+        && request.resource.size < 25 * 1024 * 1024;
+    }
+
+    match /doctor-logos/{doctorId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.auth.uid == doctorId
+        && request.resource.size < 5 * 1024 * 1024
+        && isImageUpload();
+    }
+  }
+}

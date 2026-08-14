@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import { Card, CardContent } from '../components/ui/Card';
 import { Toast } from '../components/ui';
 import { useAuth } from '../hooks/AuthContext';
 import { AuthLayout } from '../components/auth/AuthLayout';
 import { RegisterPrompt } from '../components/auth/AuthLinks';
 import { professionalHomePath } from '../lib/doctorAccess';
+
+const inputClassName =
+  'mt-1.5 block w-full rounded-xl border border-[#d9e0da] bg-white px-3.5 py-3 text-[15px] text-[#1f2a26] placeholder:text-[#9aa59f] shadow-sm transition focus:border-anixi-green focus:outline-none focus:ring-2 focus:ring-anixi-green/20 disabled:bg-[#f4f6f5] [&:-webkit-autofill]:shadow-[inset_0_0_0_1000px_#fff]';
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -62,10 +65,9 @@ export const Login: React.FC = () => {
   ]);
 
   useEffect(() => {
-    if (toast.visible) {
-      const timer = setTimeout(() => setToast({ message: '', visible: false }), 5000);
-      return () => clearTimeout(timer);
-    }
+    if (!toast.visible) return;
+    const timer = setTimeout(() => setToast({ message: '', visible: false }), 5000);
+    return () => clearTimeout(timer);
   }, [toast.visible]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -74,29 +76,24 @@ export const Login: React.FC = () => {
     setSuccess('');
 
     try {
-      const signedIn = await login(email, password);
+      const signedIn = await login(email.trim(), password);
 
       if (!signedIn) {
-        setError('Invalid email or password');
-        return;
+        setError('Invalid email or password.');
       }
-
-      // Redirect is handled by the authenticated useEffect once joinIntent is loaded
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '';
+      const msg = err instanceof Error ? err.message : 'Could not sign in. Please try again.';
       if (msg.toLowerCase().includes('access denied') || msg.toLowerCase().includes('register')) {
         setToast({ message: msg, visible: true });
-      } else {
-        setError('Invalid email or password');
+        setError(msg);
+        return;
       }
+      setError(msg);
     }
   };
 
   return (
-    <AuthLayout
-      title="Sign in to your account"
-      subtitle="Anixi Health Portal"
-    >
+    <AuthLayout title="Welcome back" subtitle="Sign in to the Anixi Health portal">
       {toast.visible && (
         <Toast
           message={toast.message}
@@ -104,19 +101,24 @@ export const Login: React.FC = () => {
           onClose={() => setToast({ message: '', visible: false })}
         />
       )}
-      <Card className="!bg-white !shadow-lg border-gray-100">
-        <CardHeader>
-          <CardTitle className="text-center">Login</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Card className="border-[#e4ebe6] !bg-white !shadow-[0_18px_50px_rgba(31,49,42,0.08)]">
+        <CardContent className="px-6 py-7 sm:px-8">
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-anixi-green">
+              Secure sign in
+            </p>
+            <h2 className="mt-1.5 font-heading text-xl font-semibold text-[#1f2a26]">
+              Doctor & clinic portal
+            </h2>
+          </div>
           {success && (
-            <div className="mb-4 rounded-lg bg-green-50 px-3 py-2.5 text-sm text-green-700">
+            <div className="mb-4 rounded-xl bg-[#eef6f1] px-3.5 py-2.5 text-sm text-[#2f5a46]">
               {success}
             </div>
           )}
-          <form className="space-y-5" onSubmit={handleSubmit}>
+          <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="email" className="block text-sm font-medium text-[#3d4d46]">
                 Email address
               </label>
               <input
@@ -125,24 +127,24 @@ export const Login: React.FC = () => {
                 type="email"
                 autoComplete="email"
                 required
-                className="mt-1.5 block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:border-anixi-green focus:outline-none focus:ring-1 focus:ring-anixi-green sm:text-sm"
-                placeholder="Enter your email"
+                className={inputClassName}
+                placeholder="you@practice.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="password" className="block text-sm font-medium text-[#3d4d46]">
                 Password
               </label>
-              <div className="relative mt-1.5">
+              <div className="relative">
                 <input
                   id="password"
                   name="password"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   required
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:border-anixi-green focus:outline-none focus:ring-1 focus:ring-anixi-green sm:text-sm"
+                  className={`${inputClassName} pr-12`}
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -150,23 +152,30 @@ export const Login: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword((s) => !s)}
-                  className="absolute inset-y-0 right-2 flex items-center px-2 text-gray-400 hover:text-gray-600"
+                  className="absolute inset-y-0 right-2 mt-1.5 flex items-center px-2 text-[#8a9690] hover:text-[#425950]"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
                 </button>
               </div>
             </div>
-            {error && <div className="text-sm text-red-600">{error}</div>}
+            {error ? (
+              <div
+                role="alert"
+                className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700"
+              >
+                {error}
+              </div>
+            ) : null}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full rounded-lg bg-anixi-green py-2.5 px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-anixi-green focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-1 w-full rounded-xl bg-anixi-green py-3 px-4 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-anixi-green focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isLoading ? 'Signing in...' : 'Sign in'}
+              {isLoading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
-          <div className="mt-6 pt-2">
+          <div className="mt-6 border-t border-[#eef2ef] pt-5">
             <RegisterPrompt />
           </div>
         </CardContent>

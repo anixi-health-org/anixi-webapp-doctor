@@ -353,9 +353,17 @@ export interface Appointment {
     patientName: string;
     patientEmail: string;
     type: 'In-Person' | 'Virtual' | 'Phone' | 'Follow-up';
-    status: 'confirmed' | 'pending' | 'completed' | 'cancelled' | 'no_show';
+    status: 'confirmed' | 'pending' | 'rescheduled' | 'completed' | 'cancelled' | 'no_show' | 'auto_cancelled';
     date: Date;
     time: string;
+    /** Canonical visit instant (UTC). Display strings are derived from this. */
+    scheduledAt?: Date;
+    /** Patient edit scope: moving the slot vs correcting visit type only. */
+    editScope?: 'slot' | 'visit_type';
+    /** When false, a patient edit does not need doctor re-confirmation. */
+    requiresConfirmation?: boolean;
+    /** Slot the doctor last confirmed; used to detect true reschedules. */
+    confirmedScheduledAt?: Date;
     notes?: string;
     documents?: AppointmentDocument[];
     postConsultActions?: PostConsultAction[];

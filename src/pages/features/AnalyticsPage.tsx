@@ -41,7 +41,7 @@ export const AnalyticsPage: React.FC = () => {
   const navigate = useNavigate();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [avgAdherence, setAvgAdherence] = useState(0);
+  const [avgAdherence, setAvgAdherence] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,17 +57,19 @@ export const AnalyticsPage: React.FC = () => {
       setPatients(patientList);
       setAppointments(aptList);
 
-      const ids = patientList.slice(0, 20).map((p) => p.id);
+      const ids = patientList.map((p) => p.id);
       if (ids.length > 0) {
         const summary = await getDoctorPatientsAdherenceSummary(user.id, ids, 30);
         const rates = Array.from(summary.values())
           .filter((s) => s.statusLabel !== 'no-data')
           .map((s) => s.adherenceRate);
         setAvgAdherence(
-          rates.length > 0 ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : 0
+          rates.length > 0
+            ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length)
+            : null
         );
       } else {
-        setAvgAdherence(0);
+        setAvgAdherence(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load analytics');
@@ -175,9 +177,12 @@ export const AnalyticsPage: React.FC = () => {
           },
           {
             label: 'Avg adherence (30d)',
-            value: `${stats.avgAdherence}%`,
+            value: stats.avgAdherence == null ? '—' : `${stats.avgAdherence}%`,
             icon: HeartPulse,
-            hint: 'Sampled across roster',
+            hint:
+              stats.avgAdherence == null
+                ? 'No adherence records in the last 30 days'
+                : 'All authorized patients, last 30 days',
           },
         ].map((card) => (
           <div

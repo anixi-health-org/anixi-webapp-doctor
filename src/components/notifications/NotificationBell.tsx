@@ -27,7 +27,7 @@ const getSafeTimeLabel = (value: unknown): string => {
       hour12: true,
     });
   }
-  return '10:00 AM';
+  return 'Time unavailable';
 };
 
 export const NotificationBell: React.FC = () => {
@@ -67,7 +67,7 @@ export const NotificationBell: React.FC = () => {
 
   const today = new Date();
   const todaysApts = appointments.filter((a) => isSameDay(a.date, today));
-  const pending = appointments.filter((a) => a.status === 'pending');
+  const pending = appointments.filter((a) => a.status === 'pending' || a.status === 'rescheduled');
   const recentCancellations = appointments.filter(
     (a) => a.status === 'cancelled' && withinDays(a.updatedAt, 2)
   );

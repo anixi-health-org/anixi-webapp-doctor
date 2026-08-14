@@ -120,7 +120,7 @@ export const isSameLocalDay = (a: Date, b: Date): boolean => {
 };
 export const formatTimeFromDate = (timestamp: any): string => {
   const date = convertTimestamp(timestamp);
-  if (!date) return '10:00 AM';
+  if (!date) return 'Time unavailable';
   return date.toLocaleTimeString('en-US', { 
     hour: '2-digit', 
     minute: '2-digit',
