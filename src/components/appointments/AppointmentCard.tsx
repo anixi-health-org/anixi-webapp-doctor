@@ -2,6 +2,7 @@ import React from 'react';
 import { Appointment } from '../../types';
 import { convertTimestamp } from '../../utils/dateFormatter';
 import { formatAppointmentTypeLabel, isWhatsAppComingSoon } from '../../utils/teleconsult';
+import { formatAppointmentStatusLabel } from '../../services/appointmentCanonical';
 
 interface AppointmentCardProps {
   appointment: Appointment;
@@ -30,9 +31,7 @@ const getStatusColor = (status: Appointment['status']): string => {
 };
 
 const statusLabel = (status: Appointment['status']): string => {
-  if (status === 'rescheduled') return 'Change requested';
-  if (status === 'auto_cancelled') return 'Cancelled';
-  return status.replace('_', ' ');
+  return formatAppointmentStatusLabel(status);
 };
 
 const getTypeIcon = (type: Appointment['type']): string => {

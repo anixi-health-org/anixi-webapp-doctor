@@ -283,9 +283,9 @@ export const ManageAppointmentModal: React.FC<Props> = ({ appointment, onClose, 
     },
     {
       id: 'no_show',
-      label: 'No-show',
+      label: 'Missed appointment',
       icon: '⊗',
-      description: 'Mark as no-show',
+      description: 'Mark that this visit was missed',
       color: 'danger',
       handler: async () => {
         if (!user?.id) return;

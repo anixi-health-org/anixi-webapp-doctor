@@ -23,10 +23,12 @@ import { convertTimestamp } from '../utils/dateFormatter';
 import {
   assertAppointmentStatus,
   canAutoCancelStatus,
+  canAutoNoShowStatus,
   effectiveAppointmentStatus,
   formatAppointmentClock,
   parseAppointmentStatus,
   resolveScheduledAt,
+  shouldAutoMarkNoShow,
 } from './appointmentCanonical';
 
 const normalizeAppointmentTime = (data: Record<string, any>): string => {
@@ -235,6 +237,12 @@ const mapAppointmentFields = (
     virtualMeetingLink: typeof data.virtualMeetingLink === 'string' ? data.virtualMeetingLink : undefined,
     startAt: convertTimestamp(data.startAt) || undefined,
     endAt: convertTimestamp(data.endAt) || undefined,
+    durationMinutes:
+      typeof data.durationMinutes === 'number' &&
+      Number.isFinite(data.durationMinutes) &&
+      data.durationMinutes > 0
+        ? data.durationMinutes
+        : undefined,
     requestedByRole: data.requestedByRole || undefined,
     overrideApplied: data.overrideApplied ?? undefined,
     conflictMeta: data.conflictMeta || undefined,
@@ -315,6 +323,64 @@ const applyAutoCancellationToAppointment = async (
 };
 
 /**
+ * Marks a confirmed appointment as missed (no_show) once the booked slot has ended
+ * and no consult was started. Mirrors mobile auto-close behaviour.
+ */
+const applyAutoNoShowToAppointment = async (
+  appointment: Appointment,
+  doctorId: string
+): Promise<boolean> => {
+  try {
+    if (!shouldAutoMarkNoShow(appointment)) {
+      return false;
+    }
+    if (!canAutoNoShowStatus(appointment.status)) {
+      return false;
+    }
+
+    const noShowPayload = {
+      status: 'no_show' as const,
+      updatedAt: serverTimestamp(),
+      autoNoShowAt: serverTimestamp(),
+    };
+
+    const globalRef = doc(db, APPOINTMENTS_COLLECTION, appointment.id);
+    try {
+      await setDoc(globalRef, noShowPayload, { merge: true });
+    } catch (globalError) {
+      console.warn(`[Global Collection] Could not mark no-show ${appointment.id}:`, globalError);
+    }
+
+    const doctorRef = doc(db, USERS_COLLECTION, doctorId, 'appointments', appointment.id);
+    try {
+      await setDoc(doctorRef, noShowPayload, { merge: true });
+    } catch (doctorError) {
+      console.warn(`[Doctor Subcollection] Could not mark no-show ${appointment.id}:`, doctorError);
+    }
+
+    if (appointment.patientId && !appointment.patientId.startsWith('manual_') && !appointment.isManual) {
+      const patientRef = doc(
+        db,
+        USERS_COLLECTION,
+        appointment.patientId,
+        'appointments',
+        appointment.id
+      );
+      try {
+        await setDoc(patientRef, noShowPayload, { merge: true });
+      } catch (patientError) {
+        console.warn(`[Patient Subcollection] Could not mark no-show ${appointment.id}:`, patientError);
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`Error applying auto no-show to appointment ${appointment.id}:`, error);
+    return false;
+  }
+};
+
+/**
  * Processes a batch of appointments to apply auto-cancellation rules
  */
 const applyAutoCancellationBatch = async (
@@ -338,7 +404,7 @@ const applyAutoCancellationBatch = async (
   const results = await Promise.allSettled(cancellationPromises);
 
   // Create updated appointments list with cancelled status where applicable
-  const updatedAppointments = appointments.map((apt, index) => {
+  const afterAutoCancel = appointments.map((apt, index) => {
     const result = results[index];
     const wasUpdated = result?.status === 'fulfilled' && (result as PromiseFulfilledResult<boolean>).value === true;
     if (wasUpdated) {
@@ -347,7 +413,20 @@ const applyAutoCancellationBatch = async (
     return apt;
   });
 
-  return updatedAppointments;
+  const noShowResults = await Promise.allSettled(
+    afterAutoCancel.map((apt) => applyAutoNoShowToAppointment(apt, doctorId))
+  );
+
+  return afterAutoCancel.map((apt, index) => {
+    const result = noShowResults[index];
+    const wasUpdated =
+      result?.status === 'fulfilled' &&
+      (result as PromiseFulfilledResult<boolean>).value === true;
+    if (wasUpdated) {
+      return { ...apt, status: 'no_show' as const };
+    }
+    return apt;
+  });
 };
 
 export const getDoctorAppointments = async (doctorId: string): Promise<Appointment[]> => {
@@ -423,6 +502,7 @@ export const listenToDoctorAppointments = (
   const shared = new Map<string, Appointment>();
   const owned = new Map<string, Appointment>();
   const autoCancelChecked = new Set<string>();
+  const autoNoShowChecked = new Set<string>();
 
   const emit = () => {
     const merged = new Map(owned);
@@ -448,6 +528,14 @@ export const listenToDoctorAppointments = (
           apt.patientId,
           apt.scheduledAt
         );
+      });
+
+    // Confirmed visits whose slot has ended become missed unless a consult started.
+    appointments
+      .filter((apt) => shouldAutoMarkNoShow(apt) && !autoNoShowChecked.has(apt.id))
+      .forEach((apt) => {
+        autoNoShowChecked.add(apt.id);
+        void applyAutoNoShowToAppointment(apt, doctorId);
       });
   };
 
@@ -548,6 +636,12 @@ export const getAppointmentById = async (
 
     if (wasAutoCancelled) {
       appointment.status = 'auto_cancelled';
+      return appointment;
+    }
+
+    const wasAutoNoShow = await applyAutoNoShowToAppointment(appointment, doctorId);
+    if (wasAutoNoShow) {
+      appointment.status = 'no_show';
     }
 
     return appointment;

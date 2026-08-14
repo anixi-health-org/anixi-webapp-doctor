@@ -5,6 +5,7 @@ import {
   parseTimeToMinutes,
   appointmentSortMinutes,
 } from './calendarDateUtils';
+import { formatAppointmentStatusLabel } from '../../services/appointmentCanonical';
 
 const DAY_START_HOUR = 7;
 const DAY_END_HOUR = 20;
@@ -134,8 +135,8 @@ export const DayAgendaView: React.FC<DayAgendaViewProps> = ({
                   <div className="min-w-0 flex-1 px-4 py-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate text-sm font-semibold text-[#0E2340]">{apt.patientName}</p>
-                      <span className="rounded-md bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold capitalize text-[#65758b]">
-                        {apt.status.replace('_', ' ')}
+                      <span className="rounded-md bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-[#65758b]">
+                        {formatAppointmentStatusLabel(apt.status)}
                       </span>
                     </div>
                     <p className="mt-0.5 text-[12px] capitalize text-[#65758b]">

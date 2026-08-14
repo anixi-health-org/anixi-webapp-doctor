@@ -24,7 +24,7 @@ import {
   formatAppointmentTypeLabel,
   isWhatsAppComingSoon,
 } from '../../utils/teleconsult';
-import { needsDoctorConfirmation } from '../../services/appointmentCanonical';
+import { formatAppointmentStatusLabel, needsDoctorConfirmation } from '../../services/appointmentCanonical';
 
 interface AppointmentDetailsProps {
   appointment: Appointment;
@@ -126,7 +126,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   });
   const patientName = String(appointment.patientName || 'Unknown');
   const patientEmail = String(appointment.patientEmail || 'N/A');
-  const appointmentStatus = String(appointment.status || 'pending');
+  const appointmentStatusLabel = formatAppointmentStatusLabel(appointment.status || 'pending');
   const appointmentTime =
     typeof appointment.time === 'string' && appointment.time.trim()
       ? appointment.time
@@ -497,7 +497,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
                   appointment.status
                 )}`}
               >
-                {appointmentStatus}
+                {appointmentStatusLabel}
               </span>
             </p>
           </div>
@@ -586,7 +586,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
                     appointment.status
                   )}`}
                 >
-                  {String(appointmentStatus)}
+                  {appointmentStatusLabel}
                 </span>
               </div>
             </div>
@@ -754,7 +754,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
                 >
                   <span className="flex items-center gap-2">
                     <span className="text-lg">⊗</span>
-                    No-show
+                    Missed appointment
                   </span>
                   <span>→</span>
                 </button>
