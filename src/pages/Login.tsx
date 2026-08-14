@@ -104,12 +104,6 @@ export const Login: React.FC = () => {
       <Card className="border-[#e4ebe6] !bg-white !shadow-[0_18px_50px_rgba(31,49,42,0.08)]">
         <CardContent className="px-6 py-7 sm:px-8">
           <div className="mb-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-anixi-green">
-              Secure sign in
-            </p>
-            <h2 className="mt-1.5 font-heading text-xl font-semibold text-[#1f2a26]">
-              Doctor & clinic portal
-            </h2>
           </div>
           {success && (
             <div className="mb-4 rounded-xl bg-[#eef6f1] px-3.5 py-2.5 text-sm text-[#2f5a46]">
