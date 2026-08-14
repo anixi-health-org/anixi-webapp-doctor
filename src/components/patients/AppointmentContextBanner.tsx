@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { CalendarIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { formatAppointmentStatusLabel } from '../../services/appointmentCanonical';
 
 interface AppointmentContextState {
   appointmentId?: string;
@@ -31,7 +32,7 @@ export const AppointmentContextBanner: React.FC = () => {
   };
 
   const statusLabel = state.status
-    ? state.status.charAt(0).toUpperCase() + state.status.replace('_', ' ').slice(1)
+    ? formatAppointmentStatusLabel(state.status)
     : null;
 
   return (

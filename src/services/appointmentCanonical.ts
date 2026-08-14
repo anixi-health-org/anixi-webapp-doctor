@@ -158,6 +158,116 @@ export function canAutoCancelStatus(
   return status === 'pending' || status === 'rescheduled';
 }
 
+/** Confirmed visits that were never started can become no-shows after the slot ends. */
+export function canAutoNoShowStatus(
+  status: CanonicalAppointmentStatus | string | null | undefined
+): boolean {
+  return status === 'confirmed';
+}
+
+const DEFAULT_SLOT_DURATION_MINUTES = 30;
+
+export type AppointmentSlotTiming = {
+  endAt?: Date | null;
+  startAt?: Date | null;
+  scheduledAt?: Date | null;
+  date?: Date | null;
+  time?: string | null;
+  durationMinutes?: number | null;
+};
+
+/** End of the booked slot: prefer endAt, else start + duration (default 30 minutes). */
+export function resolveAppointmentEndAt(
+  appointment: AppointmentSlotTiming
+): Date | null {
+  if (appointment.endAt instanceof Date && !Number.isNaN(appointment.endAt.getTime())) {
+    return appointment.endAt;
+  }
+
+  const start =
+    (appointment.scheduledAt instanceof Date && !Number.isNaN(appointment.scheduledAt.getTime())
+      ? appointment.scheduledAt
+      : null) ??
+    (appointment.startAt instanceof Date && !Number.isNaN(appointment.startAt.getTime())
+      ? appointment.startAt
+      : null) ??
+    resolveScheduledAt({
+      date: appointment.date ?? undefined,
+      time: appointment.time ?? undefined,
+      startAt: appointment.startAt ?? undefined,
+      scheduledAt: appointment.scheduledAt ?? undefined,
+    });
+
+  if (!start) return null;
+
+  const minutes =
+    typeof appointment.durationMinutes === 'number' &&
+    Number.isFinite(appointment.durationMinutes) &&
+    appointment.durationMinutes > 0
+      ? appointment.durationMinutes
+      : DEFAULT_SLOT_DURATION_MINUTES;
+
+  return new Date(start.getTime() + minutes * 60_000);
+}
+
+export function hasConsultBeenStarted(appointment: {
+  status?: string | null;
+  teleconsult?: {
+    status?: string | null;
+    doctorJoinedAt?: Date | null;
+    patientJoinedAt?: Date | null;
+  } | null;
+}): boolean {
+  if (appointment.status === 'completed') return true;
+  const teleconsult = appointment.teleconsult;
+  if (!teleconsult) return false;
+  if (teleconsult.doctorJoinedAt || teleconsult.patientJoinedAt) return true;
+  const status = String(teleconsult.status ?? '').toLowerCase();
+  return status === 'waiting' || status === 'in_progress' || status === 'ended';
+}
+
+/** True when a confirmed visit's slot has ended and no consult was started. */
+export function shouldAutoMarkNoShow(
+  appointment: AppointmentSlotTiming & {
+    status?: string | null;
+    teleconsult?: {
+      status?: string | null;
+      doctorJoinedAt?: Date | null;
+      patientJoinedAt?: Date | null;
+    } | null;
+  },
+  now: Date = new Date()
+): boolean {
+  if (!canAutoNoShowStatus(appointment.status)) return false;
+  if (hasConsultBeenStarted(appointment)) return false;
+  const endAt = resolveAppointmentEndAt(appointment);
+  if (!endAt) return false;
+  return now.getTime() > endAt.getTime();
+}
+
+export function formatAppointmentStatusLabel(
+  status: CanonicalAppointmentStatus | string | null | undefined
+): string {
+  switch (status) {
+    case 'no_show':
+      return 'Missed';
+    case 'rescheduled':
+      return 'Change requested';
+    case 'auto_cancelled':
+      return 'Cancelled';
+    case 'confirmed':
+      return 'Confirmed';
+    case 'pending':
+      return 'Pending';
+    case 'completed':
+      return 'Completed';
+    case 'cancelled':
+      return 'Cancelled';
+    default:
+      return String(status ?? 'Unknown').replace(/_/g, ' ');
+  }
+}
+
 const toDate = (value: unknown): Date | null => {
   if (!value) return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;

@@ -18,6 +18,7 @@ import {
   formatAppointmentTypeLabel,
   isWhatsAppComingSoon,
 } from '../utils/teleconsult';
+import { formatAppointmentStatusLabel } from '../services/appointmentCanonical';
 
 const statusClass = (status: Appointment['status']) => {
   switch (status) {
@@ -212,11 +213,11 @@ export const AppointmentSummary: React.FC = () => {
                 <dt className="text-[#8FA0B6]">Status</dt>
                 <dd className="mt-1">
                   <span
-                    className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize ${statusClass(
+                    className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClass(
                       appointment.status
                     )}`}
                   >
-                    {appointment.status.replace('_', ' ')}
+                    {formatAppointmentStatusLabel(appointment.status)}
                   </span>
                 </dd>
               </div>

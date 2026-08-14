@@ -378,6 +378,8 @@ export interface Appointment {
     virtualMeetingLink?: string;
     startAt?: Date;
     endAt?: Date;
+    /** Visit length in minutes when endAt is not stored. */
+    durationMinutes?: number;
     requestedByRole?: 'patient' | 'doctor' | 'delegate';
     overrideApplied?: boolean;
     conflictMeta?: { softBlockId?: string; appointmentId?: string; reason?: string };
