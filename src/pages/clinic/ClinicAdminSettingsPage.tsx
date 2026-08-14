@@ -423,6 +423,8 @@ export const ClinicAdminSettingsPage: React.FC = () => {
                   practiceId={practice.id}
                   blocks={doctorBlocks}
                   locations={practice.locations}
+                  timezone={practice.timezone}
+                  practiceConsultTypes={practice.consultTypes}
                   onChanged={reload}
                   doctorId={selectedDoctorId}
                 />

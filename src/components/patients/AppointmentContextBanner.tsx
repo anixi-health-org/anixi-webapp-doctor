@@ -39,7 +39,7 @@ export const AppointmentContextBanner: React.FC = () => {
     <div className={`flex items-center gap-3 px-4 py-2.5 mb-4 rounded-xl border text-sm ${style.bg} ${style.text}`}>
       <CalendarIcon className="h-4 w-4 shrink-0" />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
-        <span className="font-semibold">Appointment context</span>
+        <span className="font-semibold">Today&apos;s Appointment</span>
         {state.appointmentDate && (
           <span className="flex items-center gap-1">
             <ClockIcon className="h-3.5 w-3.5" />
