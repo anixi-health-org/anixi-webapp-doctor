@@ -1,4 +1,4 @@
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { USERS_COLLECTION } from '../shared/constants';
 
@@ -7,7 +7,13 @@ export type PatientNotificationType =
   | 'booking_cancelled'
   | 'booking_rescheduled'
   | 'booking_reminder'
-  | 'invoice_resent';
+  | 'invoice_resent'
+  | 'appointment_completed'
+  | 'no_show'
+  | 'auto_cancelled'
+  | 'medical_document'
+  | 'doctor_message'
+  | 'teleconsult_reminder';
 
 export interface PatientNotificationPayload {
   type: PatientNotificationType;
@@ -19,18 +25,28 @@ export interface PatientNotificationPayload {
 
 /**
  * Writes a notification record to the patient's notifications subcollection.
- * The patient app reads from Users/{patientId}/notifications.
- * Skips silently for manual bookings (no Anixi account).
+ * Uses a deterministic id so reconnects and dual writers do not duplicate.
  */
 export const sendPatientNotification = async (
   patientId: string,
   payload: PatientNotificationPayload
 ): Promise<void> => {
   if (!patientId || patientId === 'manual' || patientId === 'unknown') return;
-  const notifRef = collection(db, USERS_COLLECTION, patientId, 'notifications');
-  await addDoc(notifRef, {
-    ...payload,
-    read: false,
-    createdAt: serverTimestamp(),
-  });
+  const notificationId = `${payload.appointmentId}_${payload.type}`;
+  const notifRef = doc(
+    db,
+    USERS_COLLECTION,
+    patientId,
+    'notifications',
+    notificationId
+  );
+  await setDoc(
+    notifRef,
+    {
+      ...payload,
+      read: false,
+      createdAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 };

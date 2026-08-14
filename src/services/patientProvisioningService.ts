@@ -1,8 +1,3 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import app from '../lib/firebase';
-
-const functions = getFunctions(app, 'europe-west1');
-
 export type ProvisionPatientAccountInput = {
   displayName: string;
   email: string;
@@ -17,14 +12,16 @@ export type ProvisionPatientAccountResult = {
   existingAccount: boolean;
 };
 
+/**
+ * Auth-user provisioning is intentionally not implemented on the client.
+ * Creating Firebase Auth users requires Admin credentials and must live in a
+ * Cloud Function. Until that function exists, invite the patient to sign up
+ * themselves via the existing mail-queue referral flow.
+ */
 export async function provisionPatientAccount(
-  input: ProvisionPatientAccountInput
+  _input: ProvisionPatientAccountInput
 ): Promise<ProvisionPatientAccountResult> {
-  const callable = httpsCallable<
-    ProvisionPatientAccountInput,
-    ProvisionPatientAccountResult
-  >(functions, 'provisionPatientAccount');
-
-  const result = await callable(input);
-  return result.data;
+  throw new Error(
+    'Patient Auth provisioning is not available from the client. Invite the patient to create their own Anixi account, then link them after they sign up.'
+  );
 }

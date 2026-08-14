@@ -5,12 +5,14 @@ import {
   getDocs,
   getDoc,
   updateDoc,
+  setDoc,
   doc,
   query,
   where,
   Timestamp,
 } from 'firebase/firestore';
 import { Doctor, Invoice, InvoiceLineItem, InvoiceStatus } from '../types';
+import { USERS_COLLECTION } from '../shared/constants';
 import { SA_VAT_RATE, computeVatBreakdown } from '../lib/southAfrica';
 import { sendPatientNotification } from './notificationService';
 import { createDoctorNotification } from './doctorNotificationService';
@@ -118,6 +120,19 @@ export const createInvoiceRecord = async (
 
   const docRef = await addDoc(collection(db, INVOICES_COLLECTION), invoiceData);
 
+  try {
+    await setDoc(
+      doc(db, USERS_COLLECTION, doctorId, INVOICES_COLLECTION, docRef.id),
+      {
+        ...invoiceData,
+        status: 'outstanding',
+        deliverInApp: true,
+      }
+    );
+  } catch (error) {
+    console.warn('[invoiceService] Users invoice mirror skipped', error);
+  }
+
   return {
     id: docRef.id,
     doctorId,
@@ -172,6 +187,19 @@ export const getInvoicesByDoctor = async (
     const snapshot = await getDocs(q);
     let invoices: Invoice[] = snapshot.docs.map((d) => mapInvoiceDoc(d.id, d.data()));
 
+    try {
+      const mobileSnap = await getDocs(
+        collection(db, USERS_COLLECTION, doctorId, INVOICES_COLLECTION)
+      );
+      const seen = new Set(invoices.map((invoice) => invoice.id));
+      for (const mobileDoc of mobileSnap.docs) {
+        if (seen.has(mobileDoc.id)) continue;
+        invoices.push(mapInvoiceDoc(mobileDoc.id, mobileDoc.data()));
+      }
+    } catch (error) {
+      console.warn('[invoiceService] Users invoice merge skipped', error);
+    }
+
     invoices = invoices.sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime());
 
     if (options?.status) {
@@ -198,9 +226,11 @@ export const getInvoiceById = async (invoiceId: string): Promise<Invoice | null>
   const invoiceRef = doc(db, INVOICES_COLLECTION, invoiceId);
   const docSnap = await getDoc(invoiceRef);
 
-  if (!docSnap.exists()) return null;
+  if (docSnap.exists()) {
+    return mapInvoiceDoc(docSnap.id, docSnap.data());
+  }
 
-  return mapInvoiceDoc(docSnap.id, docSnap.data());
+  return null;
 };
 
 /**

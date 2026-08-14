@@ -55,7 +55,7 @@ const getSafeTimeLabel = (value: unknown): string => {
       hour12: false,
     });
   }
-  return '10:00 AM';
+  return 'Time unavailable';
 };
 
 const NotificationsSkeleton: React.FC = () => (

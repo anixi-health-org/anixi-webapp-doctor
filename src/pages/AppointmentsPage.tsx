@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { usePermissions } from '../hooks/usePermissions';
-import { getDoctorAppointments } from '../services/appointmentService';
+import { listenToDoctorAppointments } from '../services/appointmentService';
 import { Appointment } from '../types';
 import { AppointmentList } from '../components/appointments/AppointmentList';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
@@ -41,25 +41,28 @@ export const AppointmentsPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [toast.visible]);
 
-  const fetchAppointments = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      setIsLoading(true);
-      setError(null);
-      const data = await getDoctorAppointments(user.id);
-      setAppointments(data);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load appointments';
-      ;
-      setError(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user?.id]);
-
+  // Live, so bookings and cancellations made in the patient app land here
+  // without the doctor reloading the page.
   useEffect(() => {
-    fetchAppointments();
-  }, [fetchAppointments]);
+    if (!user?.id) return;
+    setIsLoading(true);
+    setError(null);
+
+    const unsubscribe = listenToDoctorAppointments(
+      user.id,
+      (data) => {
+        setAppointments(data);
+        setError(null);
+        setIsLoading(false);
+      },
+      (err) => {
+        setError(err.message || 'Failed to load appointments');
+        setIsLoading(false);
+      }
+    );
+
+    return unsubscribe;
+  }, [user?.id]);
 
   const handleAppointmentClick = (apt: Appointment) => {
     const isAnixiPatient = !apt.isManual && apt.patientId && apt.patientId !== 'manual' && apt.patientId !== 'unknown';
@@ -84,7 +87,9 @@ export const AppointmentsPage: React.FC = () => {
 
     total: appointments.filter((a) => a.status !== 'cancelled' && a.status !== 'completed').length,
     confirmed: appointments.filter((a) => a.status === 'confirmed').length,
-    pending: appointments.filter((a) => a.status === 'pending').length,
+    pending: appointments.filter(
+      (a) => a.status === 'pending' || a.status === 'rescheduled'
+    ).length,
     completed: appointments.filter((a) => a.status === 'completed').length,
     cancelled: appointments.filter((a) => a.status === 'cancelled').length,
     noShow: appointments.filter((a) => a.status === 'no_show').length,
@@ -249,8 +254,8 @@ export const AppointmentsPage: React.FC = () => {
       <CreateAppointmentModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        onAppointmentCreated={async (message?: string) => {
-          await fetchAppointments();
+        onAppointmentCreated={(message?: string) => {
+          // The live listener refreshes the list itself.
           setToast({
             visible: true,
             message: message ?? 'Appointment created successfully.',

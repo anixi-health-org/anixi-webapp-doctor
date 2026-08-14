@@ -19,9 +19,9 @@ import { db } from '../lib/firebase';
 import { buildPatientSignupLink } from '../lib/referralLinks';
 import { USERS_COLLECTION } from '../shared/constants';
 import { Patient, SharingRequest } from '../types';
-import { provisionPatientAccount } from './patientProvisioningService';
 import { getDoctorReferral, logInvitation } from './referralService';
 import { mapPatientRecord } from './patientRecordMapper';
+import { convertTimestamp } from '../utils/dateFormatter';
 
 const IOS_APP_LINK = 'https://apps.apple.com/app/anixi-health';
 const ANDROID_APP_LINK = 'https://play.google.com/store/apps/details?id=com.anixi.health';
@@ -295,6 +295,8 @@ export const acceptPatientRequest = async (
   patientId: string
 ): Promise<void> => {
   try {
+    await linkDoctorPatientAccess(doctorId, patientId);
+
     const batch = writeBatch(db);
     const approvedRef = doc(
       db,
@@ -441,19 +443,6 @@ export const addPatientManually = async (
     let existingPatientId: string | null = null;
     let existingPatientData: any = null;
     const targetEmail = (inviteOptions?.inviteEmail || payload.email || '').trim().toLowerCase();
-
-    if (inviteOptions?.sendInvite && targetEmail) {
-      const provisioned = await provisionPatientAccount({
-        displayName: payload.displayName,
-        email: targetEmail,
-        phoneNumber: payload.phoneNumber,
-        practiceId: payload.practiceId,
-      });
-      return {
-        patientId: provisioned.patientId,
-        inviteQueued: provisioned.inviteQueued,
-      };
-    }
 
     const patientsRef = collection(db, 'patients');
 
@@ -937,6 +926,61 @@ export const createTestSharingRequests = async (doctorId: string): Promise<void>
   } catch (error) {
     throw error;
   }
+};
+
+export interface DoctorPatientGrowth {
+  /** Patients linked to this doctor during the current calendar month. */
+  addedThisMonth: number;
+  /** Patients linked during the previous calendar month. */
+  addedLastMonth: number;
+  /**
+   * Month-over-month change, or `null` when it cannot be derived — either the
+   * roster has no dated links or last month had none to compare against.
+   */
+  changePct: number | null;
+  /** Roster entries with no `approvedAt`, so they cannot be dated. */
+  undatedLinks: number;
+}
+
+/**
+ * Real patient growth, derived from when each patient was linked to the doctor.
+ * Returns `changePct: null` rather than inventing a number when there is no
+ * comparable history.
+ */
+export const getDoctorPatientGrowth = async (
+  doctorId: string
+): Promise<DoctorPatientGrowth> => {
+  const snapshot = await getDocs(
+    collection(db, USERS_COLLECTION, doctorId, 'approved_patients')
+  );
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  let addedThisMonth = 0;
+  let addedLastMonth = 0;
+  let undatedLinks = 0;
+
+  snapshot.forEach((docSnap) => {
+    const approvedAt = convertTimestamp(docSnap.data()?.approvedAt);
+    if (!approvedAt) {
+      undatedLinks += 1;
+      return;
+    }
+    if (approvedAt >= monthStart) {
+      addedThisMonth += 1;
+    } else if (approvedAt >= previousMonthStart) {
+      addedLastMonth += 1;
+    }
+  });
+
+  const changePct =
+    addedLastMonth > 0
+      ? Math.round(((addedThisMonth - addedLastMonth) / addedLastMonth) * 100)
+      : null;
+
+  return { addedThisMonth, addedLastMonth, changePct, undatedLinks };
 };
 
 export const listenToDoctorPatients = (

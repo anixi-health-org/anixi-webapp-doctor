@@ -15,16 +15,24 @@ const getStatusColor = (status: Appointment['status']): string => {
     case 'confirmed':
       return 'bg-emerald-50 text-emerald-800 border-emerald-200';
     case 'pending':
+    case 'rescheduled':
       return 'bg-amber-50 text-amber-800 border-amber-200';
     case 'completed':
       return 'bg-slate-100 text-slate-700 border-slate-200';
     case 'cancelled':
+    case 'auto_cancelled':
       return 'bg-red-50 text-red-700 border-red-200';
     case 'no_show':
       return 'bg-orange-50 text-orange-800 border-orange-200';
     default:
       return 'bg-slate-50 text-slate-700 border-slate-200';
   }
+};
+
+const statusLabel = (status: Appointment['status']): string => {
+  if (status === 'rescheduled') return 'Change requested';
+  if (status === 'auto_cancelled') return 'Cancelled';
+  return status.replace('_', ' ');
 };
 
 const getTypeIcon = (type: Appointment['type']): string => {
@@ -105,7 +113,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
           appointment.status
         )}`}
       >
-        {appointment.status.replace('_', ' ')}
+        {statusLabel(appointment.status)}
       </span>
     </button>
   );

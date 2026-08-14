@@ -9,6 +9,12 @@ import { PageHeader, PageShell } from '../../components/page-layout';
 import { ListRowsSkeleton, PageHeaderSkeleton, Skeleton } from '../../components/ui/Skeleton';
 import { useAuth } from '../../hooks/useAuth';
 import { getDoctorAppointments } from '../../services/appointmentService';
+import { getDoctorPatients } from '../../services/doctorService';
+import {
+  getPatientUploadedFiles,
+  patientFileCategoryLabel,
+  type PatientUploadedFile,
+} from '../../services/patientDocumentService';
 import { Appointment, AppointmentDocument, PostConsultAction } from '../../types';
 
 type RecordItem =
@@ -72,6 +78,8 @@ export const MedicalRecordsPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [patientFiles, setPatientFiles] = useState<PatientUploadedFile[]>([]);
+  const [patientNames, setPatientNames] = useState<Map<string, string>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -82,11 +90,23 @@ export const MedicalRecordsPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getDoctorAppointments(user.id);
+      const [data, patients] = await Promise.all([
+        getDoctorAppointments(user.id),
+        getDoctorPatients(user.id),
+      ]);
       setAppointments(data);
+      setPatientNames(
+        new Map(patients.map((p) => [p.id, p.displayName || p.email || p.id]))
+      );
+
+      // Documents the patients uploaded themselves, read from the same
+      // collection the mobile app writes to.
+      const files = await getPatientUploadedFiles(patients.map((p) => p.id));
+      setPatientFiles(files);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load medical records');
       setAppointments([]);
+      setPatientFiles([]);
     } finally {
       setIsLoading(false);
     }
@@ -127,9 +147,22 @@ export const MedicalRecordsPage: React.FC = () => {
         });
       });
     });
+    patientFiles.forEach((file) => {
+      items.push({
+        kind: 'document',
+        id: `patient-file-${file.id}`,
+        title: file.name,
+        subtitle: `${patientFileCategoryLabel(file.category)} · uploaded by patient`,
+        patientId: file.patientId,
+        patientName: patientNames.get(file.patientId) ?? 'Patient',
+        date: file.uploadedAt ?? new Date(0),
+        href: file.url,
+        appointmentId: '',
+      });
+    });
     items.sort((a, b) => b.date.getTime() - a.date.getTime());
     return items;
-  }, [appointments]);
+  }, [appointments, patientFiles, patientNames]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -220,7 +253,8 @@ export const MedicalRecordsPage: React.FC = () => {
             <DocumentTextIcon className="mx-auto h-10 w-10 text-[#c5ced9]" />
             <p className="mt-3 text-sm font-medium text-[#344256]">No records found</p>
             <p className="mt-1 text-sm text-[#65758b]">
-              Documents and consultation notes from appointments will appear here.
+              Consultation notes, appointment documents and files your patients
+              upload will appear here.
             </p>
             <Link
               to="/patients"

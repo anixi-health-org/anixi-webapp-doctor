@@ -110,6 +110,24 @@ export const saveDoctorProfileForm = async (
         { merge: true }
     );
 
+    try {
+        const photoURL = logoUrl ?? form.logoUrl;
+        await setDoc(
+            doc(db, USERS_COLLECTION, doctorId),
+            {
+                displayName: form.fullName,
+                email: form.emailAddress,
+                phoneNumber: form.phoneNumber,
+                ...(photoURL ? { photoURL } : {}),
+                accountType: 'doctor',
+                updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+        );
+    } catch (error) {
+        console.warn('[saveDoctorProfileForm] Users account mirror skipped', error);
+    }
+
     if (options?.submitForReview) {
         const userSnap = await getDoc(doc(db, USERS_COLLECTION, doctorId));
         const doctorEmail =

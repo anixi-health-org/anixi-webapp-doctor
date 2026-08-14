@@ -11,7 +11,15 @@ import { Activity, HeartPulse } from 'lucide-react';
 import clsx from 'clsx';
 import { Patient, Appointment } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
-import { getDoctorAppointments } from '../../services/appointmentService';
+import { listenToDoctorAppointments } from '../../services/appointmentService';
+import {
+  getDoctorPatientGrowth,
+  type DoctorPatientGrowth,
+} from '../../services/patientManagementService';
+import {
+  listenToRecentPatientActivity,
+  type PatientActivityEntry,
+} from '../../services/patientActivityService';
 import {
   getPracticeDashboardStats,
   type PracticeDashboardStats,
@@ -138,6 +146,10 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(true);
+  const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
+  const [patientGrowth, setPatientGrowth] = useState<DoctorPatientGrowth | null>(null);
+  const [activity, setActivity] = useState<PatientActivityEntry[]>([]);
+  const [activityLoading, setActivityLoading] = useState(true);
   const [practiceStats, setPracticeStats] = useState<PracticeDashboardStats | null>(null);
   const [recordsTab, setRecordsTab] = useState<'patients' | 'appointments'>('patients');
   const [dateRange, setDateRange] = useState<DateRangeKey>('today');
@@ -149,21 +161,53 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
 
   useEffect(() => {
     if (!user?.id) return;
-    let cancelled = false;
     setAppointmentsLoading(true);
-    getDoctorAppointments(user.id)
-      .then((data) => {
-        if (!cancelled) setAppointments(data);
+    setAppointmentsError(null);
+
+    const unsubscribe = listenToDoctorAppointments(
+      user.id,
+      (data) => {
+        setAppointments(data);
+        setAppointmentsError(null);
+        setAppointmentsLoading(false);
+      },
+      (error) => {
+        setAppointmentsError(error.message || 'Failed to load appointments');
+        setAppointmentsLoading(false);
+      }
+    );
+
+    return unsubscribe;
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    getDoctorPatientGrowth(user.id)
+      .then((growth) => {
+        if (!cancelled) setPatientGrowth(growth);
       })
       .catch(() => {
-        if (!cancelled) setAppointments([]);
-      })
-      .finally(() => {
-        if (!cancelled) setAppointmentsLoading(false);
+        if (!cancelled) setPatientGrowth(null);
       });
     return () => {
       cancelled = true;
     };
+  }, [user?.id, patients.length]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    setActivityLoading(true);
+    const unsubscribe = listenToRecentPatientActivity(
+      user.id,
+      5,
+      (entries) => {
+        setActivity(entries);
+        setActivityLoading(false);
+      },
+      () => setActivityLoading(false)
+    );
+    return unsubscribe;
   }, [user?.id]);
 
   useEffect(() => {
@@ -248,8 +292,6 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
     return { morning, afternoon, evening };
   }, [rangedAppointments]);
 
-  const growthPct =
-    patients.length > 0 ? Math.min(100, Math.round((stableCount / Math.max(patients.length, 1)) * 100)) : 0;
   const attendanceRate =
     rangedAppointments.length > 0
       ? Math.round(
@@ -259,36 +301,30 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
         )
       : 0;
 
-  const recentActivity = useMemo(() => {
-    const items: { label: string; time: string; tone: string }[] = [];
-    rangedAppointments.slice(0, 2).forEach((apt) => {
-      items.push({
-        label: `Appointment ${apt.status}: ${apt.patientName}`,
-        time: apt.time || rangeLabel,
-        tone:
-          apt.status === 'confirmed'
-            ? 'bg-[#21c45d]'
-            : apt.status === 'pending'
-              ? 'bg-amber-400'
-              : 'bg-[#007af5]',
-      });
-    });
-    patients.slice(0, 3 - items.length).forEach((p) => {
-      items.push({
-        label: `Patient on file: ${p.displayName || p.email || 'Unknown'}`,
-        time: 'Recently',
-        tone: 'bg-[#007af5]',
-      });
-    });
-    if (items.length === 0) {
-      items.push({
-        label: 'No recent activity yet',
-        time: '-',
-        tone: 'bg-slate-300',
-      });
-    }
-    return items;
-  }, [patients, rangedAppointments, rangeLabel]);
+  const patientNamesById = useMemo(() => {
+    const map = new Map<string, string>();
+    patients.forEach((p) => map.set(p.id, p.displayName || p.email || p.id));
+    return map;
+  }, [patients]);
+
+  const recentActivity = useMemo(
+    () =>
+      activity.map((entry) => ({
+        id: entry.id,
+        label: entry.description,
+        patientName: patientNamesById.get(entry.patientId) ?? null,
+        time: entry.createdAt
+          ? entry.createdAt.toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : '—',
+        tone: entry.appointmentId ? 'bg-[#007af5]' : 'bg-[#21c45d]',
+      })),
+    [activity, patientNamesById]
+  );
 
   const scheduleTitle =
     dateRange === 'today'
@@ -403,6 +439,12 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
         </div>
       )}
 
+      {appointmentsError && (
+        <div className="rounded-[12px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {appointmentsError}
+        </div>
+      )}
+
       {/* Monthly analytics */}
       <section className="rounded-[12px] border border-[rgba(0,122,245,0.1)] bg-white p-6 shadow-sm">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
@@ -419,7 +461,7 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
           </div>
           <button
             type="button"
-            onClick={() => navigate('/patients')}
+            onClick={() => navigate('/analytics')}
             className="btn-ghost"
           >
             View Details
@@ -428,10 +470,29 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <MetricProgress
             label="Patient Growth"
-            value={`${growthPct}%`}
+            value={
+              patientGrowth
+                ? patientGrowth.changePct === null
+                  ? `+${patientGrowth.addedThisMonth}`
+                  : `${patientGrowth.changePct > 0 ? '+' : ''}${patientGrowth.changePct}%`
+                : '—'
+            }
             valueClass="text-[#21c45d]"
-            hint={`${stableCount} stable · ${actionRequiredCount} need attention`}
-            progress={growthPct}
+            hint={
+              patientGrowth
+                ? patientGrowth.changePct === null
+                  ? `${patientGrowth.addedThisMonth} new this month · no prior month to compare`
+                  : `${patientGrowth.addedThisMonth} new this month · ${patientGrowth.addedLastMonth} last month`
+                : 'No dated patient links yet'
+            }
+            progress={
+              patientGrowth && patients.length > 0
+                ? Math.min(
+                    100,
+                    Math.round((patientGrowth.addedThisMonth / patients.length) * 100)
+                  )
+                : 0
+            }
             barClass="bg-[#21c45d]"
             icon={<UsersIcon className="h-4 w-4 text-[#21c45d]" />}
             iconBg="bg-[#e9f9ef]"
@@ -539,15 +600,24 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
             <p className="mt-1 text-sm text-[#65758b]">Latest patient updates</p>
           </div>
           <div className="space-y-5 px-6 py-5">
-            {recentActivity.map((item) => (
-              <div key={`${item.label}-${item.time}`} className="flex gap-3">
-                <span className={clsx('mt-1.5 h-2 w-2 shrink-0 rounded-full', item.tone)} />
-                <div>
-                  <p className="text-sm font-medium text-[#344256]">{item.label}</p>
-                  <p className="text-xs text-[#65758b]">{item.time}</p>
+            {activityLoading && (
+              <p className="text-sm text-[#65758b]">Loading activity…</p>
+            )}
+            {!activityLoading && recentActivity.length === 0 && (
+              <p className="text-sm text-[#65758b]">No recent activity yet</p>
+            )}
+            {!activityLoading &&
+              recentActivity.map((item) => (
+                <div key={item.id} className="flex gap-3">
+                  <span className={clsx('mt-1.5 h-2 w-2 shrink-0 rounded-full', item.tone)} />
+                  <div>
+                    <p className="text-sm font-medium text-[#344256]">{item.label}</p>
+                    <p className="text-xs text-[#65758b]">
+                      {item.patientName ? `${item.patientName} · ${item.time}` : item.time}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
           </div>
         </div>
 
@@ -572,7 +642,7 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
             ))}
             <button
               type="button"
-              onClick={() => navigate('/patients')}
+              onClick={() => navigate('/analytics')}
               className="btn-outline mt-2"
             >
               View Analytics

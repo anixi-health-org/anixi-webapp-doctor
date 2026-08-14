@@ -1,4 +1,4 @@
-import { provisionPatientAccount } from './patientProvisioningService';
+import { addPatientManually } from './patientManagementService';
 
 export type BulkPatientRow = {
   displayName: string;
@@ -162,19 +162,22 @@ export async function importPracticePatientsBulk(opts: {
     }
 
     try {
-      const provisioned = await provisionPatientAccount({
-        displayName: row.displayName,
-        email: row.email.trim(),
-        phoneNumber: row.phoneNumber,
-        practiceId: opts.practiceId,
-        clinicName: opts.practiceName,
-      });
+      const created = await addPatientManually(
+        opts.doctorId,
+        {
+          displayName: row.displayName,
+          email: row.email.trim(),
+          phoneNumber: row.phoneNumber,
+          practiceId: opts.practiceId,
+        },
+        { sendInvite: true, inviteEmail: row.email.trim() }
+      );
       results.push({
         displayName: row.displayName,
         email: row.email,
         success: true,
-        patientId: provisioned.patientId,
-        inviteQueued: provisioned.inviteQueued,
+        patientId: created.patientId,
+        inviteQueued: created.inviteQueued,
       });
     } catch (err) {
       results.push({
