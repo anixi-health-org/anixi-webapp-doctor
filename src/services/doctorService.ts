@@ -112,18 +112,30 @@ export const saveDoctorProfileForm = async (
 
     try {
         const photoURL = logoUrl ?? form.logoUrl;
-        await setDoc(
-            doc(db, USERS_COLLECTION, doctorId),
-            {
-                displayName: form.fullName,
-                email: form.emailAddress,
-                phoneNumber: form.phoneNumber,
-                ...(photoURL ? { photoURL } : {}),
-                accountType: 'doctor',
+        const userRef = doc(db, USERS_COLLECTION, doctorId);
+        const existingUser = await getDoc(userRef);
+        const existingBranding =
+            (existingUser.data()?.practiceBranding as Record<string, unknown> | undefined) ??
+            {};
+
+        const userMirror: Record<string, unknown> = {
+            displayName: form.fullName,
+            email: form.emailAddress,
+            phoneNumber: form.phoneNumber,
+            ...(photoURL ? { photoURL } : {}),
+            accountType: 'doctor',
+            updatedAt: serverTimestamp(),
+        };
+
+        if (photoURL) {
+            userMirror.practiceBranding = {
+                ...existingBranding,
+                logoUrl: photoURL,
                 updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-        );
+            };
+        }
+
+        await setDoc(userRef, userMirror, { merge: true });
     } catch (error) {
         console.warn('[saveDoctorProfileForm] Users account mirror skipped', error);
     }

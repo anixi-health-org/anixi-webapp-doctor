@@ -295,10 +295,10 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
   const attendanceRate =
     rangedAppointments.length > 0
       ? Math.round(
-          (rangedAppointments.filter((a) => a.status === 'completed' || a.status === 'confirmed').length /
-            rangedAppointments.length) *
-            100
-        )
+        (rangedAppointments.filter((a) => a.status === 'completed' || a.status === 'confirmed').length /
+          rangedAppointments.length) *
+        100
+      )
       : 0;
 
   const patientNamesById = useMemo(() => {
@@ -315,11 +315,11 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
         patientName: patientNamesById.get(entry.patientId) ?? null,
         time: entry.createdAt
           ? entry.createdAt.toLocaleString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
           : '—',
         tone: entry.appointmentId ? 'bg-[#007af5]' : 'bg-[#21c45d]',
       })),
@@ -488,9 +488,9 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
             progress={
               patientGrowth && patients.length > 0
                 ? Math.min(
-                    100,
-                    Math.round((patientGrowth.addedThisMonth / patients.length) * 100)
-                  )
+                  100,
+                  Math.round((patientGrowth.addedThisMonth / patients.length) * 100)
+                )
                 : 0
             }
             barClass="bg-[#21c45d]"
@@ -816,7 +816,6 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
     </div>
   );
 };
-
 function MetricProgress({
   label,
   value,
@@ -888,3 +887,4 @@ function StatCard({
     </Comp>
   );
 }
+
