@@ -33,7 +33,8 @@ export type DoctorVerificationStatus =
   | 'pending'
   | 'approved'
   | 'rejected'
-  | 'suspended';
+  | 'suspended'
+  | 'not_required';
 
 export type DoctorAccessState =
   | 'onboarding'
@@ -73,12 +74,21 @@ export function isOnboardingFormComplete(form: ProfessionalProfileFormData): boo
 /**
  * Access rules:
  * - Legacy doctors with no verificationStatus → full access (grandfathered)
+ * - Clinic admins (not clinicians) → full clinic portal access (no HPCSA review)
  * - New doctors start pending + applicationComplete false → onboarding
  * - Pending + application submitted → under review
  * - Approved → full app
  * - Rejected / suspended → status screens (login allowed)
  */
 export function getDoctorAccessState(doctor: Doctor): DoctorAccessState {
+  if (
+    doctor.accountKind === 'clinic_admin' ||
+    doctor.requiresClinicalVerification === false ||
+    doctor.verificationStatus === 'not_required'
+  ) {
+    return 'full';
+  }
+
   const status = doctor.verificationStatus;
 
   if (!status) {

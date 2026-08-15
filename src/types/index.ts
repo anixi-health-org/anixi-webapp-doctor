@@ -66,6 +66,21 @@ export type ConsultType =
     | 'teleconsult'
     | 'other';
 
+/**
+ * Per-type booking configuration on the Practice document.
+ * bookableBlocks remain weekly time windows; these settings supply duration/buffer.
+ */
+export interface ConsultTypeSetting {
+    /** Stable id — same as ConsultType for built-in types. */
+    id: ConsultType;
+    type: ConsultType;
+    name: string;
+    description: string;
+    enabled: boolean;
+    durationMinutes: number;
+    bufferMinutes: number;
+}
+
 export interface Practice {
     id: string;
     name: string;
@@ -78,7 +93,10 @@ export interface Practice {
     /** BHF practice number at organisation level */
     bhfPracticeNumber?: string;
     locations: PracticeLocation[];
+    /** Legacy enabled-type allow-list. Prefer consultTypeSettings when present. */
     consultTypes: ConsultType[];
+    /** Authoritative appointment-type config (duration/buffer/enabled). Optional for legacy. */
+    consultTypeSettings?: ConsultTypeSetting[];
     createdAt: Date;
     updatedAt: Date;
 }
@@ -206,7 +224,16 @@ export interface Doctor extends User {
     currency?: string;
     nationality?: string;
     /** Admin verification - set at registration; updated by Anixi Admin */
-    verificationStatus?: 'pending' | 'approved' | 'rejected' | 'suspended';
+    verificationStatus?:
+      | 'pending'
+      | 'approved'
+      | 'rejected'
+      | 'suspended'
+      | 'not_required';
+    /** Clinic portal admin (not a practicing clinician) */
+    accountKind?: 'clinic_admin' | 'clinician';
+    /** When false, account is excluded from HPCSA / doctor verification */
+    requiresClinicalVerification?: boolean;
     /** True once personal + practice details were submitted for review */
     applicationComplete?: boolean;
     applicationSubmittedAt?: Date;
@@ -373,6 +400,10 @@ export interface Appointment {
     practiceId?: string;
     locationId?: string;
     consultType?: ConsultType;
+    /** Snapshot of resolved type name at booking time (historical integrity). */
+    appointmentTypeName?: string;
+    /** Snapshot of buffer minutes resolved at booking time. */
+    bufferMinutes?: number;
     teleconsult?: AppointmentTeleconsult;
     teleconsultConsent?: TeleconsultConsent;
     virtualMeetingLink?: string;

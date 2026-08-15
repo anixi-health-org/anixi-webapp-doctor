@@ -43,6 +43,11 @@ function mapDoctorDoc(id: string, doctorData: Record<string, unknown>): Doctor {
         currency: doctorData.currency as string | undefined,
         nationality: doctorData.nationality as string | undefined,
         verificationStatus: doctorData.verificationStatus as Doctor['verificationStatus'],
+        accountKind: doctorData.accountKind as Doctor['accountKind'],
+        requiresClinicalVerification:
+          doctorData.requiresClinicalVerification === undefined
+            ? undefined
+            : Boolean(doctorData.requiresClinicalVerification),
         applicationComplete: Boolean(doctorData.applicationComplete),
         applicationSubmittedAt:
             (doctorData.applicationSubmittedAt as { toDate?: () => Date })?.toDate?.() ||

@@ -28,6 +28,7 @@ import type {
   BookableBlock,
   BookingPolicy,
   ConsultType,
+  ConsultTypeSetting,
   DayOfWeek,
   Practice,
   PracticeLocation,
@@ -36,6 +37,7 @@ import type {
   PracticePermissions,
   SoftBlock,
 } from '../types';
+import { normalizeConsultTypeSettings, validateConsultTypeSettingInput } from '../lib/consultTypeSettings';
 import { isClinicianRole, normalizePermissions, OWNER_PERMISSIONS } from '../lib/practiceRoles';
 
 
@@ -60,6 +62,12 @@ export const getPractice = async (practiceId: string): Promise<Practice | null> 
     bhfPracticeNumber: d.bhfPracticeNumber,
     locations: d.locations ?? [],
     consultTypes: d.consultTypes ?? [],
+    consultTypeSettings: Array.isArray(d.consultTypeSettings)
+      ? normalizeConsultTypeSettings(
+          d.consultTypeSettings as ConsultTypeSetting[],
+          d.consultTypes as ConsultType[] | undefined,
+        )
+      : undefined,
     createdAt: toDate(d.createdAt),
     updatedAt: toDate(d.updatedAt),
   };
@@ -79,6 +87,12 @@ const practiceFromSnapshot = (
     bhfPracticeNumber: d.bhfPracticeNumber ? String(d.bhfPracticeNumber) : undefined,
     locations: (d.locations as PracticeLocation[]) ?? [],
     consultTypes: (d.consultTypes as ConsultType[]) ?? [],
+    consultTypeSettings: Array.isArray(d.consultTypeSettings)
+      ? normalizeConsultTypeSettings(
+          d.consultTypeSettings as ConsultTypeSetting[],
+          d.consultTypes as ConsultType[] | undefined,
+        )
+      : undefined,
     createdAt: toDate(d.createdAt),
     updatedAt: toDate(d.updatedAt),
   };
@@ -320,7 +334,14 @@ export const updatePractice = async (
   updates: Partial<
     Pick<
       Practice,
-      'name' | 'timezone' | 'locations' | 'consultTypes' | 'orgType' | 'tradingName' | 'bhfPracticeNumber'
+      | 'name'
+      | 'timezone'
+      | 'locations'
+      | 'consultTypes'
+      | 'consultTypeSettings'
+      | 'orgType'
+      | 'tradingName'
+      | 'bhfPracticeNumber'
     >
   >
 ): Promise<void> => {
@@ -328,6 +349,79 @@ export const updatePractice = async (
     ...updates,
     updatedAt: serverTimestamp(),
   });
+};
+
+/** Resolved appointment-type settings with legacy fallback (read-time defaults). */
+export const getResolvedConsultTypeSettings = async (
+  practiceId: string,
+): Promise<ConsultTypeSetting[]> => {
+  const practice = await getPractice(practiceId);
+  if (!practice) return normalizeConsultTypeSettings(undefined, ['initial', 'follow-up']);
+  return normalizeConsultTypeSettings(
+    practice.consultTypeSettings,
+    practice.consultTypes,
+  );
+};
+
+/**
+ * Upsert one appointment type setting. Reloads and verifies persisted values.
+ * Does not rewrite unrelated types. Keeps consultTypes allow-list in sync with enabled flags.
+ */
+export const upsertConsultTypeSetting = async (
+  practiceId: string,
+  input: Partial<ConsultTypeSetting> & { type: ConsultType },
+): Promise<ConsultTypeSetting[]> => {
+  const validated = validateConsultTypeSettingInput(input);
+  if (!validated.ok) {
+    throw new Error(validated.error);
+  }
+
+  const practice = await getPractice(practiceId);
+  if (!practice) {
+    throw new Error('Practice not found.');
+  }
+
+  const current = normalizeConsultTypeSettings(
+    practice.consultTypeSettings,
+    practice.consultTypes,
+  );
+  const next = current.map((item) =>
+    item.type === validated.value.type ? validated.value : item,
+  );
+  if (!next.some((item) => item.type === validated.value.type)) {
+    next.push(validated.value);
+  }
+
+  const enabledTypes = next.filter((s) => s.enabled).map((s) => s.type);
+  await updatePractice(practiceId, {
+    consultTypeSettings: next,
+    consultTypes: enabledTypes,
+  });
+
+  const verified = await getResolvedConsultTypeSettings(practiceId);
+  const saved = verified.find((s) => s.type === validated.value.type);
+  if (
+    !saved ||
+    saved.enabled !== validated.value.enabled ||
+    saved.durationMinutes !== validated.value.durationMinutes ||
+    saved.bufferMinutes !== validated.value.bufferMinutes
+  ) {
+    throw new Error("Couldn't save appointment type.");
+  }
+  return verified;
+};
+
+export const setConsultTypeEnabled = async (
+  practiceId: string,
+  type: ConsultType,
+  enabled: boolean,
+): Promise<ConsultTypeSetting[]> => {
+  const current = await getResolvedConsultTypeSettings(practiceId);
+  const existing = current.find((s) => s.type === type);
+  if (!existing) {
+    throw new Error('Appointment type not found.');
+  }
+  return upsertConsultTypeSetting(practiceId, { ...existing, enabled });
 };
 
 /** Find practice via stored user link or active membership (never scans all practices). */
@@ -640,6 +734,137 @@ export const deleteBookableBlock = async (
       console.warn('[practiceSettings] syncDoctorPublicAvailability failed after delete:', error);
     }
   }
+};
+
+export type DayAvailabilityPeriodInput = {
+  startTime: string;
+  endTime: string;
+};
+
+/**
+ * Replaces all active bookable blocks for one doctor + weekday with the given periods.
+ * Reloads and verifies the persisted schedule before returning.
+ */
+export const replaceDoctorDayAvailability = async (params: {
+  practiceId: string;
+  doctorId: string;
+  dayOfWeek: DayOfWeek;
+  periods: DayAvailabilityPeriodInput[];
+  locationId: string;
+  allowedConsultTypes: ConsultType[];
+  slotDurationMinutes: number;
+  bufferAfterMinutes: number;
+}): Promise<BookableBlock[]> => {
+  const {
+    practiceId,
+    doctorId,
+    dayOfWeek,
+    periods,
+    locationId,
+    allowedConsultTypes,
+    slotDurationMinutes,
+    bufferAfterMinutes,
+  } = params;
+
+  if (!locationId) {
+    throw new Error('Add a location under Overview before saving availability.');
+  }
+  if (allowedConsultTypes.length === 0) {
+    throw new Error('Enable at least one appointment type before saving availability.');
+  }
+  if (slotDurationMinutes <= 0) {
+    throw new Error('Appointment duration must be greater than zero.');
+  }
+
+  const existing = (await getBookableBlocks(practiceId)).filter(
+    (b) =>
+      b.doctorId === doctorId &&
+      b.dayOfWeek === dayOfWeek &&
+      b.active !== false,
+  );
+
+  for (const block of existing) {
+    await updateDoc(
+      doc(db, PRACTICES_COLLECTION, practiceId, BOOKABLE_BLOCKS_SUBCOLLECTION, block.id),
+      { active: false, updatedAt: serverTimestamp() },
+    );
+  }
+
+  for (const period of periods) {
+    await addDoc(
+      collection(db, PRACTICES_COLLECTION, practiceId, BOOKABLE_BLOCKS_SUBCOLLECTION),
+      {
+        practiceId,
+        doctorId,
+        dayOfWeek,
+        startTime: period.startTime,
+        endTime: period.endTime,
+        locationId,
+        allowedConsultTypes,
+        slotDurationMinutes,
+        bufferBeforeMinutes: 0,
+        bufferAfterMinutes,
+        active: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+    );
+  }
+
+  await syncDoctorPublicAvailability(practiceId, doctorId);
+
+  const verified = (await getBookableBlocks(practiceId)).filter(
+    (b) =>
+      b.doctorId === doctorId &&
+      b.dayOfWeek === dayOfWeek &&
+      b.active !== false,
+  );
+
+  const sortedExpected = [...periods].sort((a, b) =>
+    a.startTime.localeCompare(b.startTime),
+  );
+  const sortedActual = [...verified].sort((a, b) =>
+    a.startTime.localeCompare(b.startTime),
+  );
+
+  if (sortedActual.length !== sortedExpected.length) {
+    throw new Error('Availability save could not be verified. Please retry.');
+  }
+  for (let i = 0; i < sortedExpected.length; i += 1) {
+    if (
+      sortedActual[i].startTime !== sortedExpected[i].startTime ||
+      sortedActual[i].endTime !== sortedExpected[i].endTime
+    ) {
+      throw new Error('Availability save could not be verified. Please retry.');
+    }
+  }
+
+  return verified;
+};
+
+/** Apply default duration/buffer/visit types across a doctor's active blocks. */
+export const applyAppointmentDefaultsToDoctorBlocks = async (params: {
+  practiceId: string;
+  doctorId: string;
+  slotDurationMinutes: number;
+  bufferAfterMinutes: number;
+  allowedConsultTypes: ConsultType[];
+}): Promise<void> => {
+  const blocks = (await getBookableBlocks(params.practiceId)).filter(
+    (b) => b.doctorId === params.doctorId && b.active !== false,
+  );
+  for (const block of blocks) {
+    await updateDoc(
+      doc(db, PRACTICES_COLLECTION, params.practiceId, BOOKABLE_BLOCKS_SUBCOLLECTION, block.id),
+      {
+        slotDurationMinutes: params.slotDurationMinutes,
+        bufferAfterMinutes: params.bufferAfterMinutes,
+        allowedConsultTypes: params.allowedConsultTypes,
+        updatedAt: serverTimestamp(),
+      },
+    );
+  }
+  await syncDoctorPublicAvailability(params.practiceId, params.doctorId);
 };
 
 

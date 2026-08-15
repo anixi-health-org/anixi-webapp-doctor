@@ -1,6 +1,8 @@
 import {
+  collection,
   doc,
   getDoc,
+  getDocs,
   serverTimestamp,
   setDoc,
   Timestamp,
@@ -82,4 +84,26 @@ export const deletePracticeDailySchedule = async (
     date
   );
   await deleteDoc(ref);
+};
+
+export const listPracticeDailySchedules = async (
+  practiceId: string,
+): Promise<PracticeDailySchedule[]> => {
+  const snap = await getDocs(
+    collection(db, PRACTICES_COLLECTION, practiceId, PRACTICE_DAILY_SCHEDULE_SUBCOLLECTION),
+  );
+  return snap.docs
+    .map((d) => {
+      const data = d.data();
+      return {
+        practiceId,
+        date: d.id,
+        availability: data.availability as PracticeDailySchedule['availability'],
+        openTime: data.openTime as string | undefined,
+        closeTime: data.closeTime as string | undefined,
+        note: data.note as string | undefined,
+        updatedAt: toDate(data.updatedAt),
+      } satisfies PracticeDailySchedule;
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
 };

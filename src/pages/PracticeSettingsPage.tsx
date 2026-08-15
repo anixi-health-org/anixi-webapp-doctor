@@ -19,7 +19,7 @@ type Tab = 'overview' | 'availability' | 'soft-blocks' | 'policies' | 'permissio
 
 const TAB_CONFIG: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
-  { id: 'availability', label: 'Clinic Hours' },
+  { id: 'availability', label: 'Availability' },
   { id: 'soft-blocks', label: 'Blocked Time' },
   { id: 'policies', label: 'Booking Rules' },
   { id: 'team', label: 'Team' },
@@ -487,6 +487,8 @@ const PracticeSettingsPage: React.FC = () => {
                   practiceId={practice.id}
                   blocks={bookableBlocks}
                   locations={practice.locations}
+                  timezone={practice.timezone}
+                  practiceConsultTypes={practice.consultTypes}
                   onChanged={reload}
                 />
               ) : (

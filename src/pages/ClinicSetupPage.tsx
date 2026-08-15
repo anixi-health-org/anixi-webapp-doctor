@@ -10,7 +10,7 @@ import { AppShellSkeleton } from '../components/ui/Skeleton';
 import { useAuth } from '../hooks/AuthContext';
 import { db } from '../lib/firebase';
 import { detectBrowserTimezone, PRACTICE_TIMEZONES } from '../lib/timezones';
-import { USERS_COLLECTION } from '../shared/constants';
+import { USERS_COLLECTION, DOCTORS_COLLECTION } from '../shared/constants';
 import { notifyPendingInvitesClinicLive } from '../services/practiceInviteService';
 import {
   createPractice,
@@ -132,6 +132,17 @@ export const ClinicSetupPage: React.FC = () => {
         await ensureOwnerMembership(existingPractice.id, doctor.id, {
           isClinician: false,
         });
+        await setDoc(
+          doc(db, DOCTORS_COLLECTION, doctor.id),
+          {
+            accountKind: 'clinic_admin',
+            requiresClinicalVerification: false,
+            verificationStatus: 'not_required',
+            applicationComplete: false,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
         await refreshPracticeSession();
         setStep(2);
         return;
@@ -151,6 +162,19 @@ export const ClinicSetupPage: React.FC = () => {
         isClinician: false,
       });
       await ensureBookingPolicy(newPracticeId);
+
+      await setDoc(
+        doc(db, DOCTORS_COLLECTION, doctor.id),
+        {
+          accountKind: 'clinic_admin',
+          requiresClinicalVerification: false,
+          verificationStatus: 'not_required',
+          applicationComplete: false,
+          joinIntent: 'clinic',
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
       await setDoc(
         doc(db, USERS_COLLECTION, doctor.id),

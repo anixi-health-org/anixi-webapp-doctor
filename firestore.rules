@@ -1,7 +1,7 @@
 rules_version = '2';
 
 // CANONICAL Firestore ruleset for project anixihealth24.
-// This file and anixi-mobile-expo/firestore.rules MUST stay identical.
+// This file and anixi-webapp-doctor/firestore.rules MUST stay identical.
 // Do not deploy one without the other. Do not add "if request.auth != null"
 // on patient clinical data.
 
@@ -50,6 +50,35 @@ service cloud.firestore {
     function isApprovedShareDoctorForPatient(patientId) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/Users/$(patientId)/approved_shares/$(uid()));
+    }
+
+    // Scoped medical-record share (patient-controlled). Independent of approved_shares.
+    function hasActiveMedicalRecordAccess(patientId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/Users/$(patientId)/medical_record_access/$(uid()))
+        && get(/databases/$(database)/documents/Users/$(patientId)/medical_record_access/$(uid())).data.status == 'approved'
+        && (
+          !('expiresAt' in get(/databases/$(database)/documents/Users/$(patientId)/medical_record_access/$(uid())).data)
+          || get(/databases/$(database)/documents/Users/$(patientId)/medical_record_access/$(uid())).data.expiresAt == null
+          || get(/databases/$(database)/documents/Users/$(patientId)/medical_record_access/$(uid())).data.expiresAt > request.time
+        );
+    }
+
+    function medicalRecordAccessScope(patientId) {
+      return get(/databases/$(database)/documents/Users/$(patientId)/medical_record_access/$(uid())).data.scope;
+    }
+
+    function hasMedicalRecordScope(patientId, scopeKey) {
+      return hasActiveMedicalRecordAccess(patientId)
+        && medicalRecordAccessScope(patientId)[scopeKey] == true;
+    }
+
+    function hasMedicalFileCategoryAccess(patientId, category) {
+      return hasActiveMedicalRecordAccess(patientId) && (
+        (category == 'xrays' && medicalRecordAccessScope(patientId).xrays == true) ||
+        (category == 'blood_tests' && medicalRecordAccessScope(patientId).bloodTests == true) ||
+        (category == 'notes' && medicalRecordAccessScope(patientId).notes == true)
+      );
     }
 
     function canDoctorReadPatientHealthData(patientId) {
@@ -123,12 +152,20 @@ service cloud.firestore {
     }
 
     match /Users/{userId}/vitals_records/{recordId} {
-      allow read: if isSignedIn() && (uid() == userId || canReadPatientHealthData(userId));
+      allow read: if isSignedIn() && (
+        uid() == userId ||
+        canReadPatientHealthData(userId) ||
+        hasMedicalRecordScope(userId, 'vitals')
+      );
       allow write: if isSignedIn() && uid() == userId;
     }
 
     match /Users/{userId}/medications/{medId} {
-      allow read: if isSignedIn() && (uid() == userId || canReadPatientHealthData(userId));
+      allow read: if isSignedIn() && (
+        uid() == userId ||
+        canReadPatientHealthData(userId) ||
+        hasMedicalRecordScope(userId, 'medications')
+      );
       allow write: if isSignedIn() && uid() == userId;
     }
 
@@ -196,6 +233,56 @@ service cloud.firestore {
       allow delete: if isSignedIn() && (uid() == patientId || uid() == doctorId);
     }
 
+    // Denormalized active scoped grant used by medical_files / clinical rules.
+    match /Users/{patientId}/medical_record_access/{doctorId} {
+      allow read: if isSignedIn() && (uid() == patientId || uid() == doctorId);
+      // Patient owns the grant lifecycle (approve writes this from the client
+      // after doctor approval of medical_record_shares, or doctor may write
+      // when they are the addressed doctorId).
+      allow create, update, delete: if isSignedIn() && (
+        uid() == patientId ||
+        uid() == doctorId
+      );
+    }
+
+    // Top-level patient-controlled medical record sharing permissions.
+    match /medical_record_shares/{shareId} {
+      allow read: if isSignedIn() && (
+        resource.data.patientId == uid() ||
+        resource.data.doctorId == uid()
+      );
+      allow create: if isSignedIn()
+        && request.resource.data.patientId == uid()
+        && request.resource.data.requestedBy == uid()
+        && request.resource.data.doctorId is string
+        && request.resource.data.status == 'pending';
+      allow update: if isSignedIn() && (
+        (
+          uid() == resource.data.patientId &&
+          (
+            (resource.data.status == 'pending' && request.resource.data.status == 'cancelled') ||
+            (resource.data.status == 'approved' && request.resource.data.status == 'revoked') ||
+            (resource.data.status == 'approved' && request.resource.data.status == 'expired')
+          )
+        ) ||
+        (
+          uid() == resource.data.doctorId &&
+          resource.data.status == 'pending' &&
+          (
+            request.resource.data.status == 'approved' ||
+            request.resource.data.status == 'declined'
+          )
+        ) ||
+        (
+          // Allow either party to mark expired approved shares.
+          resource.data.status == 'approved' &&
+          request.resource.data.status == 'expired' &&
+          (uid() == resource.data.patientId || uid() == resource.data.doctorId)
+        )
+      );
+      allow delete: if false;
+    }
+
     // Persistent in-app notification center. The patient owns the feed;
     // an authorized doctor may append events (never read another patient's).
     match /Users/{patientId}/notifications/{notifId} {
@@ -222,7 +309,9 @@ service cloud.firestore {
 
     match /appointments/{appointmentId} {
       allow read: if isSignedIn() &&
-        (resource.data.doctorId == uid() || resource.data.patientId == uid());
+        (resource.data.doctorId == uid() ||
+         resource.data.patientId == uid() ||
+         hasMedicalRecordScope(resource.data.patientId, 'consultations'));
       // Patients book from the mobile app and write the same shared record the
       // portal reads, so either party may create it for themselves.
       allow create: if isSignedIn() && (
@@ -235,11 +324,12 @@ service cloud.firestore {
     }
 
     // Patient-uploaded documents (x-rays, blood tests, notes). Owned by the
-    // patient; readable by a doctor the patient has shared their data with.
+    // patient; readable by a connected doctor OR a scoped medical-record share.
     match /medical_files/{fileId} {
       allow read: if isSignedIn() && (
         resource.data.userId == uid() ||
-        canReadPatientHealthData(resource.data.userId)
+        canReadPatientHealthData(resource.data.userId) ||
+        hasMedicalFileCategoryAccess(resource.data.userId, resource.data.category)
       );
       allow create: if isSignedIn() && request.resource.data.userId == uid();
       allow update, delete: if isSignedIn() && resource.data.userId == uid();
@@ -399,6 +489,7 @@ service cloud.firestore {
         resource.data.assignedDoctorId == uid() ||
         uid() == patientId ||
         canDoctorReadPatientHealthData(patientId) ||
+        hasActiveMedicalRecordAccess(patientId) ||
         isLinkedCaregiverForPatient(patientId) ||
         isNominatedCaregiverEmail() ||
         (

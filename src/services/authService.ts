@@ -85,6 +85,11 @@ async function mapDoctorUser(firebaseUser: User): Promise<Doctor> {
     currency: doctorData.currency,
     nationality: doctorData.nationality,
     verificationStatus: doctorData.verificationStatus,
+    accountKind: doctorData.accountKind,
+    requiresClinicalVerification:
+      doctorData.requiresClinicalVerification === undefined
+        ? undefined
+        : Boolean(doctorData.requiresClinicalVerification),
     applicationComplete: Boolean(doctorData.applicationComplete),
     applicationSubmittedAt: doctorData.applicationSubmittedAt?.toDate?.() || undefined,
     verifiedAt: doctorData.verifiedAt?.toDate?.() || undefined,
@@ -199,6 +204,7 @@ export const registerProfessional = async (
   if (role === 'doctor') {
     const country = countryCode?.toUpperCase();
     const currency = country ? getCurrencyForCountry(country) : undefined;
+    const isClinicAdmin = joinPath === 'clinic';
 
     await setDoc(
       doc(db, DOCTORS_COLLECTION, userCredential.user.uid),
@@ -206,8 +212,18 @@ export const registerProfessional = async (
         email,
         displayName,
         role: 'doctor',
-        verificationStatus: 'pending',
-        applicationComplete: false,
+        ...(isClinicAdmin
+          ? {
+              accountKind: 'clinic_admin',
+              requiresClinicalVerification: false,
+              verificationStatus: 'not_required',
+              applicationComplete: false,
+              joinIntent: 'clinic',
+            }
+          : {
+              verificationStatus: 'pending',
+              applicationComplete: false,
+            }),
         ...(country && { country }),
         ...(currency && { currency }),
         createdAt: new Date(),
