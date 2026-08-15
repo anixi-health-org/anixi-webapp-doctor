@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ConsultType, ConsultTypeSetting } from '../../types';
 import {
   getResolvedConsultTypeSettings,
@@ -26,7 +26,7 @@ export const ConsultTypeSettingsEditor: React.FC<Props> = ({
   const [editing, setEditing] = useState<ConsultType | null>(null);
   const [draft, setDraft] = useState<ConsultTypeSetting | null>(null);
 
-  const reload = async () => {
+  const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -39,11 +39,11 @@ export const ConsultTypeSettingsEditor: React.FC<Props> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [practiceId]);
 
   useEffect(() => {
     void reload();
-  }, [practiceId]);
+  }, [reload]);
 
   const enabledCount = useMemo(
     () => settings.filter((s) => s.enabled).length,
