@@ -110,6 +110,15 @@ service firebase.storage {
         && isImageUpload();
     }
 
+    // Practice branding (logo / stamp / signature) from the doctor mobile app.
+    match /doctors/{doctorId}/branding/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.auth.uid == doctorId
+        && request.resource.size < 5 * 1024 * 1024
+        && isImageUpload();
+    }
+
     match /profile-images/{userId} {
       allow read: if isSignedIn();
       allow write: if isOwner(userId)
