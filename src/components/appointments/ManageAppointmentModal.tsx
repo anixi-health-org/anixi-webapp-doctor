@@ -20,10 +20,10 @@ interface Props {
 type ActionType = 'accept' | 'decline' | 'move' | 'cancel' | 'no_show' | 'complete' | 'invoice';
 
 const ACTION_VISIBILITY: Record<ActionType, Appointment['status'][]> = {
-  accept: ['pending'],
-  decline: ['pending'],
-  move: ['pending', 'confirmed'],
-  cancel: ['pending', 'confirmed'],
+  accept: ['pending', 'rescheduled'],
+  decline: ['pending', 'rescheduled'],
+  move: ['pending', 'confirmed', 'rescheduled'],
+  cancel: ['pending', 'confirmed', 'rescheduled'],
   no_show: ['confirmed'],
   complete: ['confirmed'],
   invoice: ['confirmed', 'completed'],
@@ -107,6 +107,14 @@ export const ManageAppointmentModal: React.FC<Props> = ({ appointment, onClose, 
       startAt: appointment.startAt ?? appointment.date,
     });
   };
+
+  const confirmedScheduledAt = appointment.startAt ?? appointment.scheduledAt ?? appointment.date;
+
+  const buildConfirmUpdate = (): Partial<Appointment> => ({
+    status: 'confirmed',
+    requiresConfirmation: false,
+    confirmedScheduledAt,
+  });
 
   const handleRescheduleConfirm = async () => {
     if (!user?.id) return;
@@ -237,10 +245,25 @@ export const ManageAppointmentModal: React.FC<Props> = ({ appointment, onClose, 
       color: 'success',
       handler: async () => {
         if (!user?.id) return;
-        await updateAppointment(user.id, appointment.id, { status: 'confirmed' });
+        const confirmUpdate = buildConfirmUpdate();
+        await updateAppointment(user.id, appointment.id, confirmUpdate);
         await syncAppointmentStatus(appointment.id);
         await syncPracticeStatus('confirmed');
-        onUpdated?.({ status: 'confirmed' });
+        if (!appointment.isManual) {
+          const slotInstant = appointment.startAt ?? appointment.date;
+          sendPatientNotification(appointment.patientId, {
+            type: 'booking_confirmed',
+            title: 'Appointment Confirmed',
+            body: `Your appointment on ${slotInstant.toLocaleDateString('en-ZA', {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+            })} at ${appointment.time} has been confirmed.`,
+            appointmentId: appointment.id,
+            doctorId: appointment.doctorId,
+          }).catch(() => {});
+        }
+        onUpdated?.(confirmUpdate);
       },
     },
     {

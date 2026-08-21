@@ -1,13 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Card, CardContent } from '../components/ui/Card';
 import { getInvoiceById, updateInvoiceRecord, updateInvoiceStatus } from '../services/invoiceService';
-import { generateInvoicePDF } from '../services/invoicePdfService';
+import {
+  buildDoctorLetterheadFromUser,
+  fetchPracticeLogoDataUrl,
+  generateInvoicePDF,
+} from '../services/invoicePdfService';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import { getAppointmentById } from '../services/appointmentService';
 import { Doctor, Invoice } from '../types';
 import { SA_VAT_RATE, computeVatBreakdown } from '../lib/southAfrica';
+import { resolvePracticeLogoUrl } from '../lib/doctorAvatar';
+import { PageShell } from '../components/page-layout';
+
+const statusLabel = (status: string) =>
+  status === 'paid' ? 'Paid' : status === 'issued' ? 'Issued' : 'Pending payment';
 
 const InvoiceDetails: React.FC = () => {
   const { invoiceId } = useParams<{ invoiceId: string }>();
@@ -65,25 +73,25 @@ const InvoiceDetails: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="bg-gray-50 min-h-screen p-6">
-        <p className="text-sm text-gray-500">Loading invoice…</p>
-      </div>
+      <PageShell>
+        <p className="text-sm text-[#65758b]">Loading invoice…</p>
+      </PageShell>
     );
   }
   if (error && !invoice) {
     return (
-      <div className="bg-gray-50 min-h-screen p-6">
+      <PageShell>
         <div className="rounded-[12px] border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {error}
         </div>
-      </div>
+      </PageShell>
     );
   }
   if (!invoice) {
     return (
-      <div className="bg-gray-50 min-h-screen p-6">
+      <PageShell>
         <p className="text-sm text-[#65758b]">Invoice not found.</p>
-      </div>
+      </PageShell>
     );
   }
 
@@ -94,6 +102,10 @@ const InvoiceDetails: React.FC = () => {
   const vatBreakdown = computeVatBreakdown(subtotal, vatRate);
   const vatAmount = invoice.vatAmount ?? vatBreakdown.vatAmount;
   const totalIncl = invoice.totalAmount ?? vatBreakdown.total;
+  const currency = invoice.currency || 'ZAR';
+  const logoUrl = resolvePracticeLogoUrl(doctor?.logoUrl, doctor?.profileImageUrl);
+  const practiceName = doctor?.practiceName || doctor?.displayName || 'Practice';
+  const monogram = practiceName.charAt(0).toUpperCase();
 
   const handleSaveEdit = async () => {
     const amount = parseFloat(amt) || 0;
@@ -129,18 +141,31 @@ const InvoiceDetails: React.FC = () => {
     setPdfBusy(true);
     setError(null);
     try {
-      await generateInvoicePDF(invoice, {
-        displayName: doctor?.displayName || 'Doctor',
-        specialty: doctor?.specialty,
-        licenseNumber: invoice.hpcsaNumber || doctor?.licenseNumber,
-        practiceNumberBhf: invoice.bhfPracticeNumber || doctor?.practiceNumberBhf,
-        vatNumber: invoice.vatNumber || doctor?.vatNumber,
-        phoneNumber: doctor?.phoneNumber,
-        email: doctor?.email,
-        officeAddress: doctor?.officeAddress,
-        logoUrl: doctor?.logoUrl,
-        practiceName: doctor?.practiceName,
-      });
+      const letterhead = buildDoctorLetterheadFromUser(doctor);
+      const logoDataUrl = await fetchPracticeLogoDataUrl(
+        doctor?.id,
+        logoUrl || doctor?.logoUrl
+      );
+      await Promise.race([
+        generateInvoicePDF(invoice, {
+          ...letterhead,
+          logoDataUrl,
+          licenseNumber: invoice.hpcsaNumber || doctor?.licenseNumber,
+          practiceNumberBhf: invoice.bhfPracticeNumber || doctor?.practiceNumberBhf,
+          vatNumber: invoice.vatNumber || doctor?.vatNumber,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('PDF generation timed out. Please try again.')),
+            20000
+          )
+        ),
+      ]);
+      if (!logoDataUrl) {
+        setError(
+          'PDF downloaded, but the practice logo could not be embedded. Re-upload your logo under Practice Settings → Letterhead & logo, then try again.'
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate PDF');
     } finally {
@@ -148,137 +173,207 @@ const InvoiceDetails: React.FC = () => {
     }
   };
 
+  const fmtMoney = (n: number) =>
+    `${n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+
   return (
-    <div className="bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="relative mb-4">
-          <button
-            onClick={() => navigateBack('/invoices')}
-            className="absolute left-0 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-2xl text-foreground"
-            aria-label="Back"
-          >
-            ←
-          </button>
-          <h1 className="text-2xl font-bold text-center">Invoice</h1>
-          <div className="absolute right-0 top-0">
-            <button
-              onClick={() => setEditing((s) => !s)}
-              className="text-sm border px-3 py-1 rounded"
-            >
-              {editing ? 'Cancel' : 'Edit'}
-            </button>
+    <PageShell>
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => navigateBack('/invoices')}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#e1e7ef] bg-white text-lg text-[#344256]"
+          aria-label="Back"
+        >
+          ←
+        </button>
+        <h1 className="text-xl font-bold text-[#344256]">Invoice</h1>
+        <button
+          type="button"
+          onClick={() => setEditing((s) => !s)}
+          className="rounded-full border border-[#e1e7ef] bg-white px-3 py-1.5 text-sm font-medium text-[#344256]"
+        >
+          {editing ? 'Cancel' : 'Edit'}
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {!logoUrl ? (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          No practice logo on file. Upload one under{' '}
+          <a href="/practice-settings" className="font-semibold underline">
+            Practice Settings → Letterhead &amp; logo
+          </a>{' '}
+          so invoices print with your letterhead.
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-[20px] border border-[#e1e7ef] bg-white shadow-sm">
+        {/* Letterhead */}
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#e1e7ef] px-6 py-5 sm:px-8">
+          <div className="flex items-center gap-3">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={`${practiceName} logo`}
+                className="h-16 w-16 rounded-xl object-contain ring-1 ring-[#e1e7ef]"
+              />
+            ) : (
+              <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-[#eef2f0] text-2xl font-bold text-anixi-green">
+                {monogram}
+              </div>
+            )}
+            <div>
+              <p className="text-lg font-bold text-anixi-green">{practiceName}</p>
+              {doctor?.specialty ? (
+                <p className="text-sm text-[#65758b]">{doctor.specialty}</p>
+              ) : null}
+            </div>
+          </div>
+          <div className="text-right text-xs leading-5 text-[#65758b]">
+            {doctor?.displayName && doctor.displayName !== practiceName ? (
+              <p className="font-medium text-[#344256]">{doctor.displayName}</p>
+            ) : null}
+            {doctor?.licenseNumber || invoice.hpcsaNumber ? (
+              <p>HPCSA: {invoice.hpcsaNumber || doctor?.licenseNumber}</p>
+            ) : null}
+            {doctor?.practiceNumberBhf || invoice.bhfPracticeNumber ? (
+              <p>BHF: {invoice.bhfPracticeNumber || doctor?.practiceNumberBhf}</p>
+            ) : null}
+            {invoice.vatNumber || doctor?.vatNumber ? (
+              <p>VAT: {invoice.vatNumber || doctor?.vatNumber}</p>
+            ) : null}
+            {doctor?.phoneNumber ? <p>Tel: {doctor.phoneNumber}</p> : null}
+            {doctor?.email ? <p>{doctor.email}</p> : null}
+            {doctor?.officeAddress ? <p className="max-w-[220px] ml-auto">{doctor.officeAddress}</p> : null}
           </div>
         </div>
 
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {error}
+        <div className="px-6 py-5 sm:px-8">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-2xl font-bold tracking-wide text-anixi-green">INVOICE</p>
+              <div className="mt-3 space-y-1 text-sm">
+                <p>
+                  <span className="text-[#65758b]">Invoice #</span>{' '}
+                  <span className="font-semibold text-[#344256]">{invoice.invoiceNumber}</span>
+                </p>
+                {invoice.paymentReference ? (
+                  <p>
+                    <span className="text-[#65758b]">Reference</span>{' '}
+                    <span className="font-semibold text-[#344256]">{invoice.paymentReference}</span>
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="inline-flex rounded-full bg-[#eef2f0] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-anixi-green">
+                {statusLabel(invoice.status)}
+              </span>
+              <p className="mt-3 text-sm text-[#65758b]">Bill to</p>
+              <p className="text-base font-semibold text-[#344256]">
+                {invoice.patientName || 'Patient'}
+              </p>
+            </div>
           </div>
-        )}
 
-        <div className="rounded-[30px] border border-[#D8DEE5] bg-white shadow-sm p-6">
-          <Card>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="text-sm text-gray-600">Patient</div>
-                <div className="font-semibold">{invoice.patientName || 'Unknown'}</div>
-                <div className="text-sm text-gray-600 mt-2">Invoice #</div>
-                <div className="font-medium">{invoice.invoiceNumber}</div>
-                {invoice.paymentReference && (
-                  <>
-                    <div className="text-sm text-gray-600 mt-2">EFT payment reference</div>
-                    <div className="font-medium">{invoice.paymentReference}</div>
-                  </>
-                )}
-                <div className="text-sm text-gray-600 mt-2">Status</div>
-                <div className="mt-1">
-                  <span className="px-2 py-1 rounded-full border bg-gray-50 text-sm">
-                    {invoice.status === 'paid' ? 'Paid' : 'Pending payment'}
+          <div className="overflow-hidden rounded-xl border border-[#e1e7ef]">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-3 bg-anixi-green px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-white">
+              <span>Description</span>
+              <span className="w-12 text-center">Qty</span>
+              <span className="w-28 text-right">Amount</span>
+            </div>
+
+            {!editing ? (
+              invoice.lineItems.map((li, idx) => (
+                <div
+                  key={idx}
+                  className="grid grid-cols-[1fr_auto_auto] gap-3 border-t border-[#eef2f6] px-4 py-3 text-sm"
+                >
+                  <div>
+                    <p className="font-medium text-[#344256]">{li.description}</p>
+                    {li.icd10Code ? (
+                      <p className="mt-0.5 text-xs text-[#65758b]">
+                        ICD-10: {li.icd10Code}
+                        {li.icd10Description ? ` — ${li.icd10Description}` : ''}
+                      </p>
+                    ) : null}
+                  </div>
+                  <span className="w-12 text-center text-[#344256]">{li.quantity}</span>
+                  <span className="w-28 text-right font-medium text-[#344256]">
+                    {fmtMoney(li.amount * li.quantity)}
                   </span>
                 </div>
-
-                <div className="mt-4">
-                  <div className="text-sm text-gray-600">Line items (ex VAT)</div>
-                  {!editing ? (
-                    <div className="mt-2">
-                      {invoice.lineItems.map((li, idx) => (
-                        <div key={idx} className="flex justify-between py-2 border-b">
-                          <div>
-                            <div>{li.description}</div>
-                            {li.icd10Code && (
-                              <div className="text-xs text-gray-500">
-                                ICD-10: {li.icd10Code}
-                                {li.icd10Description ? ` - ${li.icd10Description}` : ''}
-                              </div>
-                            )}
-                          </div>
-                          <div>
-                            {(li.amount * li.quantity).toFixed(2)} {invoice.currency || 'ZAR'}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-2 space-y-2">
-                      <input
-                        value={desc}
-                        onChange={(e) => setDesc(e.target.value)}
-                        className="w-full rounded-md border px-3 py-2"
-                      />
-                      <input
-                        value={amt}
-                        onChange={(e) => setAmt(e.target.value)}
-                        className="w-full rounded-md border px-3 py-2"
-                      />
-                      <button
-                        onClick={() => void handleSaveEdit()}
-                        className="bg-[#06A66A] hover:bg-[#099760] text-white px-4 py-2 rounded-2xl"
-                      >
-                        Save
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-4 space-y-1 text-sm text-right text-gray-700">
-                  <div>Subtotal (ex VAT): {subtotal.toFixed(2)} {invoice.currency || 'ZAR'}</div>
-                  <div>
-                    VAT ({Math.round(vatRate * 100)}%): {vatAmount.toFixed(2)}{' '}
-                    {invoice.currency || 'ZAR'}
-                  </div>
-                  <div className="font-bold text-base">
-                    Total (incl VAT): {totalIncl.toFixed(2)} {invoice.currency || 'ZAR'}
-                  </div>
-                </div>
-
-                <p className="mt-4 text-sm text-gray-600">
-                  Track EFT payments with the reference on the PDF. Anixi does not process card
-                  payments.
-                </p>
-
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button
-                    onClick={() => void handleDownloadPdf()}
-                    disabled={pdfBusy}
-                    className="px-4 py-2 border rounded disabled:opacity-50"
-                  >
-                    {pdfBusy ? 'Generating…' : 'Download PDF'}
-                  </button>
-                  {invoice.status !== 'paid' && (
-                    <button
-                      onClick={() => void handleMarkPaid()}
-                      className="px-4 py-2 bg-green-600 text-white rounded-2xl"
-                    >
-                      Mark as paid
-                    </button>
-                  )}
-                </div>
+              ))
+            ) : (
+              <div className="space-y-2 border-t border-[#eef2f6] p-4">
+                <input
+                  value={desc}
+                  onChange={(e) => setDesc(e.target.value)}
+                  className="w-full rounded-md border border-[#e1e7ef] px-3 py-2 text-sm"
+                />
+                <input
+                  value={amt}
+                  onChange={(e) => setAmt(e.target.value)}
+                  className="w-full rounded-md border border-[#e1e7ef] px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleSaveEdit()}
+                  className="rounded-2xl bg-anixi-green px-4 py-2 text-sm font-semibold text-white"
+                >
+                  Save
+                </button>
               </div>
-            </CardContent>
-          </Card>
+            )}
+          </div>
+
+          <div className="mt-5 ml-auto w-full max-w-[260px] space-y-2 text-sm">
+            <div className="flex justify-between gap-6 text-[#65758b]">
+              <span>Subtotal (ex VAT)</span>
+              <span className="tabular-nums text-[#344256]">{fmtMoney(subtotal)}</span>
+            </div>
+            <div className="flex justify-between gap-6 text-[#65758b]">
+              <span>VAT ({Math.round(vatRate * 100)}%)</span>
+              <span className="tabular-nums text-[#344256]">{fmtMoney(vatAmount)}</span>
+            </div>
+            <div className="flex justify-between gap-6 border-t border-anixi-green/40 pt-2 text-base font-bold text-anixi-green">
+              <span>Total (incl VAT)</span>
+              <span className="tabular-nums">{fmtMoney(totalIncl)}</span>
+            </div>
+          </div>
+
+          <p className="mt-6 text-sm text-[#65758b]">
+            Pay by EFT using the payment reference on the PDF. Anixi does not process card payments.
+          </p>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => void handleDownloadPdf()}
+              disabled={pdfBusy}
+              className="rounded-2xl border border-[#e1e7ef] bg-white px-4 py-2.5 text-sm font-semibold text-[#344256] disabled:opacity-50"
+            >
+              {pdfBusy ? 'Generating…' : 'Download PDF'}
+            </button>
+            {invoice.status !== 'paid' && (
+              <button
+                type="button"
+                onClick={() => void handleMarkPaid()}
+                className="rounded-2xl bg-anixi-green px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                Mark as paid
+              </button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 };
 

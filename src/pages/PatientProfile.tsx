@@ -6,11 +6,11 @@ import { PatientCareQuickLinks } from '../components/patients/PatientCareQuickLi
 import { PatientProfileIdentityCard, usePatientHealthSnapshot } from '../components/patients/PatientProfileIdentityCard';
 import { recordPatientVisit } from '../services/recentPatientsService';
 import { logPatientActivity } from '../services/patientActivityService';
-import { getPatientAppointments } from '../services/appointmentService';
+import { getDoctorPatientAppointments } from '../services/appointmentService';
 import { AppointmentDetails } from '../components/appointments/AppointmentDetails';
 import { AppointmentList } from '../components/appointments/AppointmentList';
 import { useAuth } from '../hooks/useAuth';
-import { getDoctorPatients } from '../services/doctorService';
+import { getPatientForDoctorView } from '../services/patientManagementService';
 import { Appointment, Patient } from '../types';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { convertTimestamp } from '../utils/dateFormatter';
@@ -33,6 +33,8 @@ export const PatientProfile: React.FC = () => {
     appointmentDate?: string;
     consultType?: string;
     status?: string;
+    patientName?: string;
+    patientEmail?: string;
   };
   const appointmentContextId =
     typeof contextState.appointmentId === 'string' && contextState.appointmentId.length > 0
@@ -81,8 +83,10 @@ export const PatientProfile: React.FC = () => {
       try {
         setIsLoading(true);
         setError(null);
-        const patients = await getDoctorPatients(user.id);
-        const foundPatient = patients.find((p) => p.id === patientId);
+        const foundPatient = await getPatientForDoctorView(user.id, patientId, {
+          patientName: contextState.patientName,
+          patientEmail: contextState.patientEmail,
+        });
         if (!foundPatient) {
           setError('Patient not found');
           return;
@@ -107,11 +111,11 @@ export const PatientProfile: React.FC = () => {
     };
 
     fetchPatient();
-  }, [user, patientId]);
+  }, [user, patientId, contextState.patientEmail, contextState.patientName]);
 
   useEffect(() => {
     const loadAppointments = async () => {
-      if (!patient?.id) {
+      if (!patient?.id || !user?.id) {
         setPatientAppointments([]);
         return;
       }
@@ -119,7 +123,7 @@ export const PatientProfile: React.FC = () => {
       try {
         setAppointmentsLoading(true);
         setAppointmentsError(null);
-        const appointments = await getPatientAppointments(patient.id);
+        const appointments = await getDoctorPatientAppointments(user.id, patient.id);
         setPatientAppointments(appointments);
       } catch {
         setAppointmentsError('Failed to load appointments for this patient');
@@ -129,41 +133,14 @@ export const PatientProfile: React.FC = () => {
     };
 
     loadAppointments();
-  }, [patient?.id]);
-
-  useEffect(() => {
-    if (!user?.id || !patient?.id) return;
-    void logPatientActivity({
-      doctorId: user.id,
-      patientId: patient.id,
-      appointmentId: appointmentContextId,
-      actionType: 'open_patient_context',
-      description: appointmentContextId
-        ? 'Opened patient profile from appointment context.'
-        : 'Opened patient profile without appointment context.',
-      metadata: {
-        contextStatus: contextState.status,
-        contextConsultType: contextState.consultType,
-        contextAppointmentDate: contextState.appointmentDate,
-        contextAppointmentTime: contextState.appointmentTime,
-      },
-    });
-  }, [
-    user?.id,
-    patient?.id,
-    appointmentContextId,
-    contextState.status,
-    contextState.consultType,
-    contextState.appointmentDate,
-    contextState.appointmentTime,
-  ]);
+  }, [patient?.id, user?.id]);
 
   const refreshPatientAppointments = async () => {
-    if (!patient?.id) return;
+    if (!patient?.id || !user?.id) return;
     try {
       setAppointmentsLoading(true);
       setAppointmentsError(null);
-      const appointments = await getPatientAppointments(patient.id);
+      const appointments = await getDoctorPatientAppointments(user.id, patient.id);
       setPatientAppointments(appointments);
     } catch {
       setAppointmentsError('Failed to refresh appointments');

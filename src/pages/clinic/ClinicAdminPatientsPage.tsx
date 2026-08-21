@@ -50,7 +50,7 @@ export const ClinicAdminPatientsPage: React.FC = () => {
     <PageShell maxWidth="wide" className="py-6 sm:py-8">
       <PageHeader
         title="Patient roster"
-        description="Import patients in bulk. They receive app download links and temporary login details."
+        description="Import patients in bulk. They receive app download links and an invite to create their account."
       />
 
       {!canManagePatients ? (

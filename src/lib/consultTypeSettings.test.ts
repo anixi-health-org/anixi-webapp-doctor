@@ -1,7 +1,10 @@
 import {
+  consultTypesFromVisitModes,
   defaultConsultTypeSettings,
   enabledConsultTypes,
   normalizeConsultTypeSettings,
+  practiceOffersClinicVisits,
+  practiceOffersVideoConsults,
   resolveConsultTypeSetting,
   validateConsultTypeSettingInput,
 } from './consultTypeSettings';
@@ -46,6 +49,19 @@ describe('consultTypeSettings', () => {
   it('lists only enabled types', () => {
     const settings = defaultConsultTypeSettings(['teleconsult']);
     expect(enabledConsultTypes(settings)).toEqual(['teleconsult']);
+  });
+
+  it('maps clinic and video visit modes onto stored consult types', () => {
+    expect(consultTypesFromVisitModes(true, true)).toEqual([
+      'initial',
+      'follow-up',
+      'teleconsult',
+    ]);
+    expect(consultTypesFromVisitModes(true, false)).toEqual(['initial', 'follow-up']);
+    expect(consultTypesFromVisitModes(false, true)).toEqual(['teleconsult']);
+    expect(practiceOffersClinicVisits(['follow-up'])).toBe(true);
+    expect(practiceOffersVideoConsults(['follow-up'])).toBe(false);
+    expect(practiceOffersVideoConsults(['teleconsult'])).toBe(true);
   });
 });
 

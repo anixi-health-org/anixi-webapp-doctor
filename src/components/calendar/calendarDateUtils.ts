@@ -89,10 +89,83 @@ export const appointmentSortMinutes = (apt: Appointment): number => {
   return 0;
 };
 
+/** Start of a visit in minutes from midnight, or null when it carries no usable time. */
+export const appointmentStartMinutes = (apt: Appointment): number | null => {
+  const fromLabel = parseTimeToMinutes(apt.time);
+  if (fromLabel != null) return fromLabel;
+  const at = asDate(apt.startAt) ?? asDate(apt.date);
+  return at ? at.getHours() * 60 + at.getMinutes() : null;
+};
+
+export const formatHourLabel = (hour: number): string => {
+  const h = ((hour % 24) + 24) % 24;
+  if (h === 0) return '12 AM';
+  if (h === 12) return '12 PM';
+  return h < 12 ? `${h} AM` : `${h - 12} PM`;
+};
+
 export const formatMinutesClock = (minutes: number): string => {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   const period = h >= 12 ? 'PM' : 'AM';
   const h12 = h % 12 || 12;
   return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+};
+
+/** HH:MM (24h) from practice availability blocks. */
+export const parseHhmmToMinutes = (hhmm: string | null | undefined): number | null => {
+  if (!hhmm) return null;
+  const match = String(hhmm).trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (Number.isNaN(hours) || Number.isNaN(minutes) || hours > 23 || minutes > 59) {
+    return null;
+  }
+  return hours * 60 + minutes;
+};
+
+/**
+ * Hour range a day grid must cover. Visits are included alongside clinic hours
+ * so a booking outside the open window is still drawn instead of clipped away.
+ */
+export const visibleHourRange = (
+  windows: { start: number; end: number }[],
+  appointments: Appointment[] = [],
+  fallback: { startHour: number; endHour: number } = { startHour: 8, endHour: 17 },
+): { startHour: number; endHour: number } => {
+  const starts: number[] = windows.map((w) => w.start);
+  const ends: number[] = windows.map((w) => w.end);
+
+  appointments.forEach((apt) => {
+    if (apt.status === 'cancelled') return;
+    const start = appointmentStartMinutes(apt);
+    if (start == null) return;
+    starts.push(start);
+    ends.push(start + appointmentDurationMinutes(apt));
+  });
+
+  if (starts.length === 0) return fallback;
+
+  const startHour = Math.max(0, Math.floor(Math.min(...starts) / 60));
+  const endHour = Math.min(24, Math.ceil(Math.max(...ends) / 60));
+  return { startHour, endHour: Math.max(endHour, startHour + 1) };
+};
+
+/** Visit length for calendar blocks. Ignore bogus endAt spans (e.g. all-day). */
+export const appointmentDurationMinutes = (apt: Appointment): number => {
+  if (
+    typeof apt.durationMinutes === 'number' &&
+    apt.durationMinutes >= 10 &&
+    apt.durationMinutes <= 180
+  ) {
+    return apt.durationMinutes;
+  }
+  const startAt = asDate(apt.startAt);
+  const endAt = asDate(apt.endAt);
+  if (startAt && endAt) {
+    const duration = Math.round((endAt.getTime() - startAt.getTime()) / 60_000);
+    if (duration >= 10 && duration <= 180) return duration;
+  }
+  return 30;
 };

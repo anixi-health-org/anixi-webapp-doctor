@@ -44,6 +44,44 @@ export const CONSULT_TYPE_CATALOG: Record<
 
 export const ALL_CONSULT_TYPES = Object.keys(CONSULT_TYPE_CATALOG) as ConsultType[];
 
+/** In-person visit types shown in doctor settings as a single “Clinic visits” option. */
+export const CLINIC_CONSULT_TYPES: ConsultType[] = [
+  'initial',
+  'follow-up',
+  'urgent',
+  'procedure',
+  'other',
+];
+
+export const VIDEO_CONSULT_TYPE: ConsultType = 'teleconsult';
+
+export function practiceOffersClinicVisits(
+  types: ConsultType[] | null | undefined
+): boolean {
+  return (types ?? []).some((type) => type !== VIDEO_CONSULT_TYPE);
+}
+
+export function practiceOffersVideoConsults(
+  types: ConsultType[] | null | undefined
+): boolean {
+  return (types ?? []).includes(VIDEO_CONSULT_TYPE);
+}
+
+/** Maps the two doctor-facing visit modes onto stored consult type ids. */
+export function consultTypesFromVisitModes(
+  clinic: boolean,
+  video: boolean
+): ConsultType[] {
+  const next: ConsultType[] = [];
+  if (clinic) {
+    next.push('initial', 'follow-up');
+  }
+  if (video) {
+    next.push(VIDEO_CONSULT_TYPE);
+  }
+  return next.length > 0 ? next : ['follow-up'];
+}
+
 /** Runtime defaults for legacy practices with no consultTypeSettings. */
 export function defaultConsultTypeSettings(
   enabledTypes?: ConsultType[] | null,

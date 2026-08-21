@@ -48,10 +48,44 @@ export const invoiceOptionsFromDoctor = (
   };
 };
 
+function toNumber(value: unknown, fallback = 0): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/** Older and mobile-created invoices may omit quantity or store the unit price elsewhere. */
+function normalizeLineItems(raw: unknown): InvoiceLineItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((entry) => {
+    const item = (entry ?? {}) as Record<string, unknown>;
+    return {
+      ...item,
+      description: String(item.description ?? 'Consultation'),
+      quantity: toNumber(item.quantity, 1),
+      amount: toNumber(item.amount ?? item.unitAmount ?? item.price),
+    } as InvoiceLineItem;
+  });
+}
+
 function mapInvoiceDoc(id: string, data: Record<string, unknown>): Invoice {
+  const lineItems = normalizeLineItems(data.lineItems);
+  const lineItemTotal = lineItems.reduce(
+    (sum, item) => sum + item.amount * item.quantity,
+    0
+  );
+  // Legacy documents stored the inclusive total as `total`; fall back to the
+  // line items so a missing field never renders as NaN.
+  const totalAmount = toNumber(data.totalAmount ?? data.total, lineItemTotal);
+  const vatRate = toNumber(data.vatRate, SA_VAT_RATE);
+
   return {
     id,
     ...(data as Omit<Invoice, 'id'>),
+    lineItems,
+    totalAmount,
+    vatRate,
+    subtotalExVat: toNumber(data.subtotalExVat, lineItemTotal),
+    vatAmount: toNumber(data.vatAmount, 0),
     issuedAt: (data.issuedAt as { toDate?: () => Date })?.toDate?.() || new Date(),
     dueDate: (data.dueDate as { toDate?: () => Date })?.toDate?.(),
     paidAt: (data.paidAt as { toDate?: () => Date })?.toDate?.(),

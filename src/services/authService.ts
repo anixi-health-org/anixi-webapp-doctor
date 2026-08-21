@@ -12,6 +12,10 @@ import { linkCaregiverToNominatedPatients } from './caregiverService';
 import { Caregiver, Doctor, ProfessionalUser, StaffUser } from '../types';
 import { AuthRole, JoinPath } from '../types/auth';
 import { getCurrencyForCountry } from '../constants/countries';
+import {
+  resolveDoctorProfilePhotoUrl,
+  resolvePracticeLogoUrl,
+} from '../lib/doctorAvatar';
 
 async function resolveAccountRole(uid: string): Promise<AuthRole | null> {
   const userRef = doc(db, USERS_COLLECTION, uid);
@@ -78,7 +82,15 @@ async function mapDoctorUser(firebaseUser: User): Promise<Doctor> {
     phoneNumber: doctorData.phoneNumber || userData.phoneNumber,
     officeAddress: doctorData.officeAddress || doctorData.practiceAddress,
     practiceName: doctorData.practiceName,
-    logoUrl: doctorData.logoUrl || doctorData.profileImageUrl || userData.photoURL,
+    logoUrl: resolvePracticeLogoUrl(
+      doctorData.logoUrl ||
+        (userData.practiceBranding as { logoUrl?: string } | undefined)?.logoUrl,
+      doctorData.profileImageUrl
+    ),
+    profileImageUrl: resolveDoctorProfilePhotoUrl(
+      doctorData.profileImageUrl,
+      doctorData.logoUrl
+    ),
     practiceNumberBhf: doctorData.practiceNumberBhf || doctorData.practiceNumber,
     vatNumber: doctorData.vatNumber,
     country: doctorData.country || userData.country,

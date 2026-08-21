@@ -34,15 +34,24 @@ export const AccountUnderReviewPage: React.FC = () => {
             title: 'Account suspended',
             body:
               doctor?.rejectionReason ||
-              'Your doctor account has been suspended. Please contact Anixi Support for assistance.',
+              'Your account has been suspended. Please contact Anixi Support for assistance.',
             tone: 'text-red-700 bg-red-50 border-red-200',
           }
-        : {
-            icon: ClockIcon,
-            title: 'Account under review',
-            body: 'Thanks for submitting your details. Anixi Admin is reviewing your application. You can sign in anytime. Full access unlocks once your account is approved.',
-            tone: 'text-[#344256] bg-[#eef4f1] border-[#427160]/20',
-          };
+        : state === 'on_hold'
+          ? {
+              icon: ClockIcon,
+              title: 'Account on hold',
+              body:
+                doctor?.rejectionReason ||
+                'Anixi Admin has placed this account on hold for further review. You can sign in, but access stays limited until the review is complete.',
+              tone: 'text-amber-800 bg-amber-50 border-amber-200',
+            }
+          : {
+              icon: ClockIcon,
+              title: 'Account under review',
+              body: 'Thanks for submitting your details. Anixi Admin is reviewing your application. You can sign in anytime. Full access unlocks once your account is approved.',
+              tone: 'text-[#344256] bg-[#eef4f1] border-[#427160]/20',
+            };
 
   const Icon = copy.icon;
   const canEditApplication = state === 'rejected' || state === 'suspended';

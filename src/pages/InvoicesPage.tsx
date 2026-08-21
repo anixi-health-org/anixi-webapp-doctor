@@ -10,7 +10,7 @@ import {
 import { useAuth } from '../hooks/AuthContext';
 import { useDoctorCurrency } from '../hooks/useDoctorCurrency';
 import { getInvoicesByDoctor, updateInvoiceStatus, resendInvoice } from '../services/invoiceService';
-import { generateInvoicePDF } from '../services/invoicePdfService';
+import { generateInvoicePDF, buildDoctorLetterheadFromUser, fetchPracticeLogoDataUrl } from '../services/invoicePdfService';
 import { Invoice, InvoiceStatus } from '../types';
 import { Toast, InvoicePageSkeleton } from '../components/ui';
 import { PageShell } from '../components/page-layout';
@@ -194,18 +194,12 @@ export const InvoicesPage: React.FC = () => {
   const handleDownloadPDF = async (invoice: Invoice) => {
     setUpdatingId(invoice.id);
     try {
-      await generateInvoicePDF(invoice, {
-        displayName: doctor?.displayName ?? 'Doctor',
-        specialty: doctor?.specialty,
-        licenseNumber: doctor?.licenseNumber,
-        practiceNumberBhf: doctor?.practiceNumberBhf,
-        vatNumber: doctor?.vatNumber,
-        phoneNumber: doctor?.phoneNumber,
-        email: doctor?.email,
-        officeAddress: doctor?.officeAddress,
-        logoUrl: doctor?.logoUrl,
-        practiceName: doctor?.practiceName,
-      });
+      const letterhead = buildDoctorLetterheadFromUser(doctor);
+      const logoDataUrl = await fetchPracticeLogoDataUrl(
+        doctor?.id,
+        doctor?.logoUrl
+      );
+      await generateInvoicePDF(invoice, { ...letterhead, logoDataUrl });
     } catch {
       setToast({ visible: true, message: 'Failed to generate PDF', type: 'error' });
     } finally {
@@ -262,11 +256,11 @@ export const InvoicesPage: React.FC = () => {
 
       {/* Summary cards */}
       <div className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
-        {SUMMARY_CARDS.map(({ key, label, color, bg, dot }) => (
+        {SUMMARY_CARDS.map(({ key, label, dot }) => (
           <div
             key={key}
-            className={`relative overflow-hidden rounded-xl border border-[#e1e7ef] bg-white px-5 py-4 shadow-sm ${
-              key === 'total' ? 'bg-[#0E2340]' : ''
+            className={`relative overflow-hidden rounded-xl border border-[#e1e7ef] px-5 py-4 shadow-sm ${
+              key === 'total' ? 'bg-[#0E2340]' : 'bg-white'
             }`}
           >
             <p className={`text-[11px] font-semibold uppercase tracking-wider ${

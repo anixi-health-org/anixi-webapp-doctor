@@ -443,6 +443,7 @@ export const ClinicAdminSchedulePage: React.FC = () => {
               day: 'numeric',
               month: 'long',
             })}
+            dateKey={toDateKey(calendarDay)}
             appointments={calendarDayAppointments}
             isLoading={isLoading}
             onSelectAppointment={setSelectedAppointment}

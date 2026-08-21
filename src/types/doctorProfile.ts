@@ -22,7 +22,10 @@ export interface ProfessionalProfileFormData {
   province: string;
   city: string;
   practiceAddress: string;
+  /** Practice letterhead — invoices only */
   logoUrl: string;
+  /** Doctor headshot — portal header and patient-facing cards */
+  profileImageUrl: string;
 }
 
 export const EMPTY_PROFILE_FORM: ProfessionalProfileFormData = {
@@ -50,4 +53,5 @@ export const EMPTY_PROFILE_FORM: ProfessionalProfileFormData = {
   city: '',
   practiceAddress: '',
   logoUrl: '',
+  profileImageUrl: '',
 };

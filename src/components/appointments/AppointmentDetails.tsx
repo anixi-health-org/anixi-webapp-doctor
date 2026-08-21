@@ -198,7 +198,13 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     setIsProcessing(true);
     setError(null);
     try {
-      await updateAppointment(appointment.doctorId, appointment.id, { status: 'confirmed' });
+      const confirmedScheduledAt =
+        appointment.startAt ?? appointment.scheduledAt ?? appointmentDateTime;
+      await updateAppointment(appointment.doctorId, appointment.id, {
+        status: 'confirmed',
+        requiresConfirmation: false,
+        confirmedScheduledAt,
+      });
       
       await syncAppointmentStatus(appointment.id);
       await syncPracticeAppointmentStatus('confirmed');
@@ -530,6 +536,8 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
                         appointmentDate: fullDateFormatted,
                         consultType: appointment.consultType ?? toConsultType(),
                         status: appointment.status,
+                        patientName: appointment.patientName,
+                        patientEmail: appointment.patientEmail,
                       },
                     });
                     onClose();

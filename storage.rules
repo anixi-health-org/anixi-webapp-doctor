@@ -1,6 +1,7 @@
 rules_version = '2';
 
-// CANONICAL Storage ruleset — keep identical to anixi-mobile-expo/storage.rules.
+// Storage authorization must match Firestore relationship rules.
+// A signed-in user is not enough to read another patient's files.
 service firebase.storage {
   match /b/{bucket}/o {
     function isSignedIn() {
@@ -30,6 +31,22 @@ service firebase.storage {
       );
     }
 
+    function isBootstrapAdmin() {
+      return isSignedIn() && request.auth.uid == 'Xwf3BwiJRJb6eL87p8LyL4Syyku1';
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        isBootstrapAdmin()
+        || (
+          firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid))
+          && firestore.get(/databases/(default)/documents/admins/$(request.auth.uid)).data.active == true
+        )
+      );
+    }
+
+    // Signed-in patients may attach media to community posts (create/edit post
+    // screens upload under community-posts/{groupId}/...). Admins retain access.
     match /community-posts/{groupId}/{allPaths=**} {
       allow read: if isSignedIn();
       allow write: if isSignedIn()
@@ -51,6 +68,7 @@ service firebase.storage {
         && isMediaUpload();
     }
 
+    // Patient-owned clinical uploads. Authorized doctors may read only.
     match /medical-files/{userId}/{allPaths=**} {
       allow read: if isOwner(userId) || canDoctorReadPatientFiles(userId);
       allow write: if isOwner(userId)
@@ -63,6 +81,8 @@ service firebase.storage {
         && request.resource.size < 25 * 1024 * 1024;
     }
 
+    // Appointment attachments live under the doctor's path; the named
+    // patient on that appointment may read them.
     match /appointments/{doctorId}/{appointmentId}/{allPaths=**} {
       allow read: if isSignedIn() && (
         request.auth.uid == doctorId
@@ -73,10 +93,33 @@ service firebase.storage {
         && request.resource.size < 25 * 1024 * 1024;
     }
 
+    match /doctor-logos/{doctorId} {
+      // Practice logos appear on invoices/prescriptions — readable when signed in.
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.auth.uid == doctorId
+        && request.resource.size < 5 * 1024 * 1024
+        && isImageUpload();
+    }
+
     match /doctor-logos/{doctorId}/{allPaths=**} {
       allow read: if isSignedIn();
       allow write: if isSignedIn()
         && request.auth.uid == doctorId
+        && request.resource.size < 5 * 1024 * 1024
+        && isImageUpload();
+    }
+
+    match /profile-images/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId)
+        && request.resource.size < 5 * 1024 * 1024
+        && isImageUpload();
+    }
+
+    match /profile-images/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId)
         && request.resource.size < 5 * 1024 * 1024
         && isImageUpload();
     }

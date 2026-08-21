@@ -1,11 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getDoctorPatients } from '../../services/doctorService';
+import { Activity, HeartPulse, Pill, Smile, UserRound } from 'lucide-react';
+import { getPatientForDoctorView } from '../../services/patientManagementService';
 import { getDoctorMonthlyAdherenceDetails } from '../../services/adherenceService';
 import {
   getMoodEntriesForMonth,
   getVitalsLogs,
 } from '../../services/logsService';
 import { Patient } from '../../types';
+import {
+  averageMoodScore,
+  getMoodEmoji,
+  getMoodEntryStyles,
+  getMoodScore,
+  normalizeMoodLabel,
+  type MoodValue,
+} from '../../lib/moodDisplay';
 import {
   calculateAge,
   formatAddress,
@@ -23,6 +32,8 @@ interface VisitPatientBriefingProps {
   doctorId: string;
   patientId: string;
   isManual?: boolean;
+  patientName?: string;
+  patientEmail?: string;
 }
 
 interface VitalsRow {
@@ -35,17 +46,28 @@ interface VitalsRow {
 }
 
 interface MoodRow {
-  timestamp: Date;
-  mood: string;
+  timestamp: Date | null;
+  mood: MoodValue;
   notes?: string;
 }
 
-const TABS: { id: BriefingTab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'profile', label: 'Profile' },
-  { id: 'vitals', label: 'Vitals' },
-  { id: 'adherence', label: 'Adherence' },
-  { id: 'mood', label: 'Mood' },
+/** Mood entries are stamped `createdAt`; older rows used other field names. */
+function moodEntryDate(entry: Record<string, unknown>): Date | null {
+  const raw = entry.createdAt ?? entry.timestamp ?? entry.date;
+  if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? null : raw;
+  if (typeof raw === 'string' || typeof raw === 'number') {
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
+
+const TABS: { id: BriefingTab; label: string; icon: React.ElementType }[] = [
+  { id: 'overview', label: 'Overview', icon: Activity },
+  { id: 'profile', label: 'Profile', icon: UserRound },
+  { id: 'vitals', label: 'Vitals', icon: HeartPulse },
+  { id: 'adherence', label: 'Adherence', icon: Pill },
+  { id: 'mood', label: 'Mood', icon: Smile },
 ];
 
 function Field({ label, value }: { label: string; value?: string | null }) {
@@ -79,6 +101,8 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
   doctorId,
   patientId,
   isManual,
+  patientName,
+  patientEmail,
 }) => {
   const [tab, setTab] = useState<BriefingTab>('overview');
   const [loading, setLoading] = useState(true);
@@ -108,8 +132,14 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
           return { year: d.getFullYear(), month: d.getMonth() + 1 };
         });
 
-        const [patients, monthDetails, moodEntries, ...vitalsMonths] = await Promise.all([
-          getDoctorPatients(doctorId),
+        const found = await getPatientForDoctorView(doctorId, patientId, {
+          patientName,
+          patientEmail,
+        });
+        if (cancelled) return;
+        setPatient(found);
+
+        const [monthDetails, moodEntries, ...vitalsMonths] = await Promise.all([
           getDoctorMonthlyAdherenceDetails(
             doctorId,
             patientId,
@@ -123,9 +153,6 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
         ]);
 
         if (cancelled) return;
-
-        const found = patients.find((p) => p.id === patientId) ?? null;
-        setPatient(found);
 
         if (monthDetails?.monthStats) {
           setAdherencePct(Math.round(monthDetails.monthStats.adherencePercentage || 0));
@@ -157,11 +184,14 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
 
         const moodRows: MoodRow[] = (moodEntries || [])
           .map((m: any) => ({
-            timestamp: m.timestamp instanceof Date ? m.timestamp : new Date(m.timestamp || m.date),
-            mood: String(m.mood || m.score || '-'),
-            notes: m.notes,
+            timestamp: moodEntryDate(m),
+            mood: (m.mood ?? m.score ?? null) as MoodValue,
+            notes: m.note ?? m.notes,
           }))
-          .sort((a: MoodRow, b: MoodRow) => b.timestamp.getTime() - a.timestamp.getTime());
+          .sort(
+            (a: MoodRow, b: MoodRow) =>
+              (b.timestamp?.getTime() ?? 0) - (a.timestamp?.getTime() ?? 0)
+          );
         setMoods(moodRows);
       } finally {
         if (!cancelled) setLoading(false);
@@ -172,7 +202,7 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [doctorId, patientId, isManual]);
+  }, [doctorId, patientId, isManual, patientName, patientEmail]);
 
   const latestVital = vitals[0];
   const hrSeries = useMemo(
@@ -193,6 +223,24 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
         .map((v) => v.bloodSugar as number),
     [vitals]
   );
+
+  const moodSummary = useMemo(() => {
+    const scores = moods
+      .map((m) => getMoodScore(m.mood))
+      .filter((score): score is number => score !== null);
+    if (scores.length === 0) return null;
+
+    const average = averageMoodScore(moods);
+
+    return {
+      average,
+      // Labels are defined for whole scores only, so 4.2 reads as "Happy".
+      averageBand: average != null ? Math.round(average) : null,
+      lowDays: scores.filter((score) => score <= 2).length,
+      entries: scores.length,
+      latest: moods.find((m) => getMoodScore(m.mood) !== null) ?? null,
+    };
+  }, [moods]);
 
   if (isManual || patientId === 'unknown' || patientId === 'manual') {
     return (
@@ -216,123 +264,148 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
   const conditions = patient?.chronicDiseases?.filter(Boolean) ?? [];
   const treatments = patient?.currentTreatments ?? [];
 
+  const initials = (formatName(patient?.displayName) || 'P')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+
   return (
-    <div className="overflow-hidden rounded-[14px] border border-[#e1e7ef] bg-white shadow-sm">
-      <div className="border-b border-[#eef2f6] px-4 pt-4">
-        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#8FA0B6]">
-              Patient briefing
-            </p>
-            <h2 className="mt-0.5 text-lg font-bold text-[#0E2340]">
-              {formatName(patient?.displayName) || 'Patient'}
-            </h2>
-            <p className="mt-0.5 text-sm text-[#65758b]">
-              {[
-                formatPhone(patient?.phoneNumber),
-                formatEmail(patient?.email),
-                patient?.dateOfBirth ? `Age ${calculateAge(patient.dateOfBirth)}` : null,
-              ]
-                .filter(Boolean)
-                .join(' · ') || 'Contact details not recorded'}
-            </p>
-          </div>
-          {adherencePct != null && (
-            <div className="rounded-[10px] border border-[#e1e7ef] bg-[#f8fafc] px-3 py-2 text-center">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#8FA0B6]">
-                Adherence
+    <div className="overflow-hidden rounded-2xl border border-[#e1e7ef] bg-white shadow-sm">
+      <div className="border-b border-[#eef2f6] px-5 pt-5">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-anixi-green text-sm font-bold text-white">
+              {initials || 'P'}
+            </span>
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                Patient chart
               </p>
-              <p className="text-xl font-bold text-anixi-green">{adherencePct}%</p>
+              <h2 className="mt-0.5 truncate text-lg font-bold text-[#0E2340]">
+                {formatName(patient?.displayName) || 'Patient'}
+              </h2>
+              <p className="mt-0.5 text-[13px] text-[#65758b]">
+                {[
+                  formatPhone(patient?.phoneNumber),
+                  formatEmail(patient?.email),
+                  patient?.dateOfBirth ? `Age ${calculateAge(patient.dateOfBirth)}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || 'Contact details not recorded'}
+              </p>
             </div>
-          )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {allergies.length > 0 && (
+              <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700">
+                Allergy · {allergies.join(', ')}
+              </span>
+            )}
+            {adherencePct != null && (
+              <span className="rounded-full bg-[#eef4f1] px-2.5 py-1 text-[11px] font-semibold text-anixi-green">
+                Adherence {adherencePct}%
+              </span>
+            )}
+          </div>
         </div>
 
-        <div className="flex gap-1 overflow-x-auto pb-3">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`shrink-0 rounded-[8px] px-3 py-1.5 text-sm font-medium transition ${
-                tab === t.id
-                  ? 'bg-anixi-green text-white'
-                  : 'bg-[#f1f5f9] text-[#65758b] hover:bg-white hover:text-anixi-green'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <nav className="mb-4 flex gap-1 overflow-x-auto rounded-2xl bg-[#e8f0ec] p-1">
+          {TABS.map((t) => {
+            const Icon = t.icon;
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`inline-flex min-w-max flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-semibold transition ${
+                  active
+                    ? 'bg-anixi-green text-white shadow-sm'
+                    : 'text-[#4d675c] hover:bg-white/70 hover:text-[#0E2340]'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
+                {t.label}
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
-      <div className="max-h-[min(58vh,640px)] overflow-y-auto p-4">
+      <div className="max-h-[min(58vh,640px)] overflow-y-auto p-5">
         {tab === 'overview' && (
-          <div className="space-y-5">
-            {allergies.length > 0 && (
-              <div className="rounded-[10px] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                <span className="font-semibold">Allergies: </span>
-                {allergies.join(', ')}
-              </div>
-            )}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#8FA0B6]">
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-[#f6f8fa] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
                   Allergies
                 </p>
-                <p className="mt-1 text-sm text-[#344256]">
+                <p className={`mt-1.5 text-sm ${allergies.length ? 'font-semibold text-red-700' : 'text-[#94a3b8]'}`}>
                   {allergies.length ? allergies.join(', ') : 'None recorded'}
                 </p>
               </div>
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#8FA0B6]">
+              <div className="rounded-xl bg-[#f6f8fa] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
                   Conditions
                 </p>
-                <p className="mt-1 text-sm text-[#344256]">
+                <p className={`mt-1.5 text-sm ${conditions.length ? 'font-medium text-[#344256]' : 'text-[#94a3b8]'}`}>
                   {conditions.length ? conditions.join(', ') : 'None recorded'}
                 </p>
               </div>
+              <div className="rounded-xl bg-[#f6f8fa] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                  Treatments
+                </p>
+                {treatments.length ? (
+                  <ul className="mt-1.5 space-y-1 text-sm text-[#344256]">
+                    {treatments.slice(0, 3).map((t, i) => (
+                      <li key={`${t.name}-${i}`}>
+                        <span className="font-medium">{t.name}</span>
+                        {(t.dosage || t.frequency) ? (
+                          <span className="text-[#65758b]">
+                            {' '}
+                            · {[t.dosage, t.frequency].filter(Boolean).join(' · ')}
+                          </span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1.5 text-sm text-[#94a3b8]">None recorded</p>
+                )}
+              </div>
             </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#8FA0B6]">
-                Current treatments
-              </p>
-              {treatments.length ? (
-                <ul className="mt-2 space-y-1.5">
-                  {treatments.map((t, i) => (
-                    <li
-                      key={`${t.name}-${i}`}
-                      className="rounded-[8px] border border-[#eef2f6] bg-[#f8fafc] px-3 py-2 text-sm text-[#344256]"
-                    >
-                      <span className="font-medium">{t.name}</span>
-                      {(t.dosage || t.frequency) && (
-                        <span className="text-[#65758b]">
-                          {' '}
-                          · {[t.dosage, t.frequency].filter(Boolean).join(' · ')}
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-1 text-sm text-[#94a3b8]">None recorded</p>
-              )}
-            </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[10px] border border-[#e1e7ef] p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#8FA0B6]">
+              <div className="rounded-xl border border-[#e1e7ef] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
                   Latest vitals
                 </p>
                 {latestVital ? (
-                  <div className="mt-2 space-y-1 text-sm text-[#344256]">
-                    {latestVital.systolic && latestVital.diastolic && (
-                      <p>
+                  <div className="mt-2 flex flex-wrap gap-2 text-sm text-[#344256]">
+                    {latestVital.systolic && latestVital.diastolic ? (
+                      <span className="rounded-lg bg-[#f6f8fa] px-2.5 py-1 font-medium">
                         BP {latestVital.systolic}/{latestVital.diastolic}
-                      </p>
-                    )}
-                    {latestVital.heartRate != null && <p>HR {latestVital.heartRate}</p>}
-                    {latestVital.bloodSugar != null && <p>Glucose {latestVital.bloodSugar}</p>}
-                    {latestVital.temperature != null && <p>Temp {latestVital.temperature}</p>}
-                    <p className="text-xs text-[#8FA0B6]">
+                      </span>
+                    ) : null}
+                    {latestVital.heartRate != null ? (
+                      <span className="rounded-lg bg-[#f6f8fa] px-2.5 py-1 font-medium">
+                        HR {latestVital.heartRate}
+                      </span>
+                    ) : null}
+                    {latestVital.bloodSugar != null ? (
+                      <span className="rounded-lg bg-[#f6f8fa] px-2.5 py-1 font-medium">
+                        Glucose {latestVital.bloodSugar}
+                      </span>
+                    ) : null}
+                    {latestVital.temperature != null ? (
+                      <span className="rounded-lg bg-[#f6f8fa] px-2.5 py-1 font-medium">
+                        Temp {latestVital.temperature}
+                      </span>
+                    ) : null}
+                    <p className="w-full text-xs text-[#8FA0B6]">
                       {latestVital.timestamp.toLocaleString()}
                     </p>
                   </div>
@@ -340,20 +413,20 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
                   <p className="mt-2 text-sm text-[#94a3b8]">No recent vitals</p>
                 )}
               </div>
-              <div className="rounded-[10px] border border-[#e1e7ef] p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#8FA0B6]">
+              <div className="rounded-xl border border-[#e1e7ef] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
                   This month adherence
                 </p>
                 <p className="mt-2 text-2xl font-bold text-[#0E2340]">
-                  {adherencePct != null ? `${adherencePct}%` : '-'}
+                  {adherencePct != null ? `${adherencePct}%` : '—'}
                 </p>
                 <p className="mt-1 text-xs text-[#65758b]">
-                  Taken {adherenceTaken} · Missed {adherenceMissed} · Pending {adherencePending}
+                  {adherenceTaken} taken · {adherenceMissed} missed · {adherencePending} pending
                 </p>
               </div>
             </div>
             {patient?.emergencyContact?.name && (
-              <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
                 <span className="font-semibold">Emergency contact: </span>
                 {patient.emergencyContact.name}
                 {patient.emergencyContact.relationship
@@ -535,29 +608,81 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
         )}
 
         {tab === 'mood' && (
-          <div className="space-y-2">
-            {moods.length === 0 ? (
+          <div className="space-y-3">
+            {moods.length === 0 || !moodSummary ? (
               <p className="text-sm text-[#94a3b8]">No mood entries this month.</p>
             ) : (
-              moods.slice(0, 15).map((m, i) => (
-                <div
-                  key={i}
-                  className="flex items-start justify-between gap-3 rounded-[10px] border border-[#eef2f6] px-3 py-2.5"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium capitalize text-[#344256]">{m.mood}</p>
-                    {m.notes && (
-                      <p className="mt-0.5 truncate text-xs text-[#65758b]">{m.notes}</p>
-                    )}
+              <>
+                <div className="rounded-[10px] border border-[#eef2f6] bg-[#f8fafc] px-3 py-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl" aria-hidden="true">
+                      {getMoodEmoji(moodSummary.averageBand)}
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-[#0E2340]">
+                        {normalizeMoodLabel(moodSummary.averageBand)} on average
+                        {moodSummary.average != null
+                          ? ` · ${moodSummary.average}/5`
+                          : ''}
+                      </p>
+                      <p className="text-xs text-[#65758b]">
+                        {moodSummary.entries} check-in
+                        {moodSummary.entries === 1 ? '' : 's'} this month
+                        {moodSummary.lowDays > 0
+                          ? ` · ${moodSummary.lowDays} low day${moodSummary.lowDays === 1 ? '' : 's'} (2 or below)`
+                          : ' · no low days'}
+                      </p>
+                    </div>
                   </div>
-                  <p className="shrink-0 text-xs text-[#8FA0B6]">
-                    {m.timestamp.toLocaleDateString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </p>
+                  {moodSummary.latest?.notes && (
+                    <p className="mt-2 border-t border-[#e1e7ef] pt-2 text-xs text-[#65758b]">
+                      Latest note: “{moodSummary.latest.notes}”
+                    </p>
+                  )}
                 </div>
-              ))
+
+                <div className="space-y-2">
+                  {moods.slice(0, 15).map((m, i) => {
+                    const score = getMoodScore(m.mood);
+                    const styles = getMoodEntryStyles(m.mood);
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-start justify-between gap-3 rounded-[10px] border px-3 py-2.5 ${styles.border} ${styles.bg}`}
+                      >
+                        <div className="flex min-w-0 items-start gap-2.5">
+                          <span className="text-lg leading-none" aria-hidden="true">
+                            {getMoodEmoji(m.mood)}
+                          </span>
+                          <div className="min-w-0">
+                            <p className={`text-sm font-medium ${styles.text}`}>
+                              {normalizeMoodLabel(m.mood)}
+                              {score !== null && (
+                                <span className="ml-1.5 text-xs font-normal opacity-70">
+                                  {score}/5
+                                </span>
+                              )}
+                            </p>
+                            {m.notes && (
+                              <p className="mt-0.5 truncate text-xs text-[#65758b]">
+                                {m.notes}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <p className="shrink-0 text-xs text-[#8FA0B6]">
+                          {m.timestamp
+                            ? m.timestamp.toLocaleDateString(undefined, {
+                                month: 'short',
+                                day: 'numeric',
+                              })
+                            : 'Date unknown'}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
         )}

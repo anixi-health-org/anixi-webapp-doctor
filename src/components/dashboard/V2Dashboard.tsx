@@ -14,20 +14,23 @@ import { useAuth } from '../../hooks/useAuth';
 import { listenToDoctorAppointments } from '../../services/appointmentService';
 import {
   getDoctorPatientGrowth,
+  derivePatientRosterStatus,
   type DoctorPatientGrowth,
 } from '../../services/patientManagementService';
-import {
-  listenToRecentPatientActivity,
-  type PatientActivityEntry,
-} from '../../services/patientActivityService';
 import {
   getPracticeDashboardStats,
   type PracticeDashboardStats,
 } from '../../services/practiceDashboardService';
 import { DashboardPageSkeleton } from '../ui/Skeleton';
 import { PageHeader } from '../page-layout/PageHeader';
+import {
+  detectBrowserTimezone,
+  getCalendarRangeInTimeZone,
+  instantInCalendarRange,
+  type DashboardDateRangeKey,
+} from '../../lib/timezones';
 
-type DateRangeKey = 'today' | 'yesterday' | 'week' | '7days' | 'month';
+type DateRangeKey = DashboardDateRangeKey;
 
 const DATE_RANGE_OPTIONS: { key: DateRangeKey; label: string }[] = [
   { key: 'today', label: 'Today' },
@@ -37,56 +40,23 @@ const DATE_RANGE_OPTIONS: { key: DateRangeKey; label: string }[] = [
   { key: 'month', label: 'This month' },
 ];
 
-function startOfLocalDay(d: Date) {
-  const out = new Date(d);
-  out.setHours(0, 0, 0, 0);
-  return out;
-}
+const PATIENTS_PAGE_SIZE = 8;
 
-function endOfLocalDay(d: Date) {
-  const out = new Date(d);
-  out.setHours(23, 59, 59, 999);
-  return out;
-}
-
-function getRangeBounds(key: DateRangeKey): { start: Date; end: Date } {
-  const now = new Date();
-  const todayStart = startOfLocalDay(now);
-  const todayEnd = endOfLocalDay(now);
-
-  if (key === 'today') {
-    return { start: todayStart, end: todayEnd };
-  }
-
-  if (key === 'yesterday') {
-    const y = new Date(todayStart);
-    y.setDate(y.getDate() - 1);
-    return { start: startOfLocalDay(y), end: endOfLocalDay(y) };
-  }
-
-  if (key === 'week') {
-    const day = todayStart.getDay();
-    const mondayOffset = day === 0 ? -6 : 1 - day;
-    const start = new Date(todayStart);
-    start.setDate(start.getDate() + mondayOffset);
-    return { start: startOfLocalDay(start), end: todayEnd };
-  }
-
-  if (key === '7days') {
-    const start = new Date(todayStart);
-    start.setDate(start.getDate() - 6);
-    return { start: startOfLocalDay(start), end: todayEnd };
-  }
-
-  const start = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
-  return { start: startOfLocalDay(start), end: todayEnd };
-}
-
-function appointmentInRange(apt: Appointment, start: Date, end: Date) {
-  const raw = apt.startAt ?? apt.date;
+function appointmentInstant(apt: Appointment): Date | null {
+  const raw = apt.startAt ?? apt.scheduledAt ?? apt.date;
   const d = raw instanceof Date ? raw : new Date(raw);
-  if (Number.isNaN(d.getTime())) return false;
-  return d >= start && d <= end;
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function appointmentInRange(
+  apt: Appointment,
+  startKey: string,
+  endKey: string,
+  timeZone: string,
+) {
+  const d = appointmentInstant(apt);
+  if (!d) return false;
+  return instantInCalendarRange(d, startKey, endKey, timeZone);
 }
 
 interface V2DashboardProps {
@@ -124,10 +94,57 @@ function statusBadge(status: string) {
   return 'bg-slate-100 text-slate-600';
 }
 
-function patientStatus(patient: Patient, inactiveIds: Set<string>) {
-  if (inactiveIds.has(patient.id)) return 'inactive';
-  if (patient.chronicDiseases && patient.chronicDiseases.length > 0) return 'follow-up';
-  return 'active';
+/** Recent Activity only covers the last day, so the feed reflects what needs attention now. */
+const ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function asEventDate(value: unknown): Date | null {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(value as string | number);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatActivityWhen(d: Date) {
+  return d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function visitKind(apt: Appointment): string {
+  if (apt.consultType === 'teleconsult' || apt.type === 'Virtual') return 'Video visit';
+  if (apt.type === 'Follow-up') return 'Follow-up';
+  return 'Visit';
+}
+
+function appointmentActivityLabel(apt: Appointment): string {
+  const name = apt.patientName || 'Patient';
+  const when = apt.time ? ` · ${apt.time}` : '';
+  switch (apt.status) {
+    case 'pending':
+      return `New booking from ${name}${when}`;
+    case 'rescheduled':
+      return `${name} requested a schedule change`;
+    case 'confirmed':
+      return `${visitKind(apt)} confirmed with ${name}${when}`;
+    case 'completed':
+      return `Visit completed with ${name}`;
+    case 'cancelled':
+    case 'auto_cancelled':
+      return `Appointment cancelled · ${name}`;
+    case 'no_show':
+      return `${name} missed their visit`;
+    default:
+      return `${visitKind(apt)} · ${name}`;
+  }
+}
+
+function activityTone(kind: 'booking' | 'visit' | 'roster' | 'alert'): string {
+  if (kind === 'alert') return 'bg-[#ef4343]';
+  if (kind === 'roster') return 'bg-[#007af5]';
+  if (kind === 'visit') return 'bg-[#21c45d]';
+  return 'bg-[#427160]';
 }
 
 export const V2Dashboard: React.FC<V2DashboardProps> = ({
@@ -143,15 +160,16 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
   const { user, practiceSession } = useAuth();
   const firstName = user?.displayName?.split(' ')[0] || 'Doctor';
   const isClinic = practiceSession?.practice?.orgType === 'clinic';
+  const scheduleTimeZone =
+    practiceSession?.practice?.timezone?.trim() || detectBrowserTimezone();
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(true);
   const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
   const [patientGrowth, setPatientGrowth] = useState<DoctorPatientGrowth | null>(null);
-  const [activity, setActivity] = useState<PatientActivityEntry[]>([]);
-  const [activityLoading, setActivityLoading] = useState(true);
   const [practiceStats, setPracticeStats] = useState<PracticeDashboardStats | null>(null);
   const [recordsTab, setRecordsTab] = useState<'patients' | 'appointments'>('patients');
+  const [patientsPage, setPatientsPage] = useState(0);
   const [dateRange, setDateRange] = useState<DateRangeKey>('today');
   const [rangeOpen, setRangeOpen] = useState(false);
   const rangeMenuRef = useRef<HTMLDivElement>(null);
@@ -196,21 +214,6 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
   }, [user?.id, patients.length]);
 
   useEffect(() => {
-    if (!user?.id) return;
-    setActivityLoading(true);
-    const unsubscribe = listenToRecentPatientActivity(
-      user.id,
-      5,
-      (entries) => {
-        setActivity(entries);
-        setActivityLoading(false);
-      },
-      () => setActivityLoading(false)
-    );
-    return unsubscribe;
-  }, [user?.id]);
-
-  useEffect(() => {
     if (!isClinic || !practiceSession?.practice?.id) {
       setPracticeStats(null);
       return;
@@ -246,34 +249,60 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
     };
   }, [rangeOpen]);
 
-  const inactiveIds = useMemo(() => {
-    const set = new Set<string>();
-    // Approximate inactive from inactiveCount-backed list later; for badges use chronic + recency
-    patients.forEach((p) => {
-      const last = p.updatedAt ? new Date(p.updatedAt) : p.createdAt ? new Date(p.createdAt) : null;
-      if (last) {
-        const fiveDaysAgo = Date.now() - 5 * 24 * 60 * 60 * 1000;
-        if (last.getTime() < fiveDaysAgo && (!p.chronicDiseases || p.chronicDiseases.length === 0)) {
-          set.add(p.id);
-        }
-      }
-    });
-    return set;
-  }, [patients]);
-
-  const rangeBounds = useMemo(() => getRangeBounds(dateRange), [dateRange]);
+  const rangeBounds = useMemo(
+    () => getCalendarRangeInTimeZone(dateRange, scheduleTimeZone),
+    [dateRange, scheduleTimeZone],
+  );
 
   const rangedAppointments = useMemo(
     () =>
       appointments
-        .filter((apt) => appointmentInRange(apt, rangeBounds.start, rangeBounds.end))
+        .filter((apt) =>
+          appointmentInRange(
+            apt,
+            rangeBounds.startKey,
+            rangeBounds.endKey,
+            scheduleTimeZone,
+          ),
+        )
         .sort((a, b) => {
-          const aTime = (a.startAt ?? a.date)?.getTime?.() ?? new Date(a.date).getTime();
-          const bTime = (b.startAt ?? b.date)?.getTime?.() ?? new Date(b.date).getTime();
+          const aTime = appointmentInstant(a)?.getTime() ?? 0;
+          const bTime = appointmentInstant(b)?.getTime() ?? 0;
           return aTime - bTime;
         }),
-    [appointments, rangeBounds]
+    [appointments, rangeBounds, scheduleTimeZone],
   );
+
+  const upcomingAppointments = useMemo(() => {
+    const now = new Date();
+    return appointments
+      .filter((apt) => {
+        const status = String(apt.status).toLowerCase();
+        if (
+          status === 'cancelled' ||
+          status === 'auto_cancelled' ||
+          status === 'no_show' ||
+          status === 'completed'
+        ) {
+          return false;
+        }
+        const d = appointmentInstant(apt);
+        return d != null && d >= now;
+      })
+      .sort((a, b) => {
+        const aTime = appointmentInstant(a)?.getTime() ?? 0;
+        const bTime = appointmentInstant(b)?.getTime() ?? 0;
+        return aTime - bTime;
+      });
+  }, [appointments]);
+
+  const showingUpcomingFallback =
+    dateRange === 'today' &&
+    rangedAppointments.length === 0 &&
+    upcomingAppointments.length > 0;
+  const visibleAppointments = showingUpcomingFallback
+    ? upcomingAppointments
+    : rangedAppointments;
 
   const scheduleBuckets = useMemo(() => {
     let morning = 0;
@@ -307,24 +336,78 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
     return map;
   }, [patients]);
 
-  const recentActivity = useMemo(
-    () =>
-      activity.map((entry) => ({
-        id: entry.id,
-        label: entry.description,
-        patientName: patientNamesById.get(entry.patientId) ?? null,
-        time: entry.createdAt
-          ? entry.createdAt.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-          : '—',
-        tone: entry.appointmentId ? 'bg-[#007af5]' : 'bg-[#21c45d]',
-      })),
-    [activity, patientNamesById]
+  const patientsPageCount = Math.max(
+    1,
+    Math.ceil(patients.length / PATIENTS_PAGE_SIZE)
   );
+
+  useEffect(() => {
+    setPatientsPage((page) => Math.min(page, patientsPageCount - 1));
+  }, [patientsPageCount]);
+
+  const visiblePatients = useMemo(
+    () =>
+      patients.slice(
+        patientsPage * PATIENTS_PAGE_SIZE,
+        patientsPage * PATIENTS_PAGE_SIZE + PATIENTS_PAGE_SIZE
+      ),
+    [patients, patientsPage]
+  );
+
+  const recentActivity = useMemo(() => {
+    const items: {
+      id: string;
+      label: string;
+      patientName: string | null;
+      time: string;
+      at: number;
+      tone: string;
+    }[] = [];
+
+    appointments.forEach((apt) => {
+      const when = asEventDate(apt.updatedAt) ?? asEventDate(apt.createdAt) ?? appointmentInstant(apt);
+      if (!when) return;
+      const status = String(apt.status).toLowerCase();
+      const tone =
+        status === 'cancelled' || status === 'auto_cancelled' || status === 'no_show'
+          ? activityTone('alert')
+          : status === 'completed'
+            ? activityTone('visit')
+            : activityTone('booking');
+      items.push({
+        id: `apt-${apt.id}`,
+        label: appointmentActivityLabel(apt),
+        patientName: apt.patientName || patientNamesById.get(apt.patientId) || null,
+        time: formatActivityWhen(when),
+        at: when.getTime(),
+        tone,
+      });
+    });
+
+    patients.forEach((patient) => {
+      const when = asEventDate(patient.createdAt);
+      if (!when) return;
+      const name = patient.displayName || patient.email || 'Patient';
+      items.push({
+        id: `patient-${patient.id}`,
+        label: `Added ${name} to your roster`,
+        patientName: name,
+        time: formatActivityWhen(when),
+        at: when.getTime(),
+        tone: activityTone('roster'),
+      });
+    });
+
+    // `when` can fall back to the appointment date itself, which may be upcoming —
+    // an activity feed should only look backwards.
+    const now = Date.now();
+    const cutoff = now - ACTIVITY_WINDOW_MS;
+
+    return items
+      .filter((item) => item.at >= cutoff && item.at <= now)
+      .sort((a, b) => b.at - a.at)
+      .slice(0, 6);
+  }, [appointments, patientNamesById, patients]);
 
   const scheduleTitle =
     dateRange === 'today'
@@ -332,8 +415,11 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
       : dateRange === 'yesterday'
         ? "Yesterday's Schedule"
         : 'Schedule';
-  const appointmentsListTitle =
-    dateRange === 'today' ? "Today's Appointments" : `Appointments · ${rangeLabel}`;
+  const appointmentsListTitle = showingUpcomingFallback
+    ? 'Upcoming appointments'
+    : dateRange === 'today'
+      ? "Today's Appointments"
+      : `Appointments · ${rangeLabel}`;
   const appointmentsStatLabel =
     dateRange === 'today' ? "Today's Appointments" : 'Appointments';
 
@@ -597,24 +683,24 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
               <ClockIcon className="h-5 w-5 text-[#007af5]" />
               <h3 className="text-base font-semibold text-[#344256]">Recent Activity</h3>
             </div>
-            <p className="mt-1 text-sm text-[#65758b]">Latest patient updates</p>
+            <p className="mt-1 text-sm text-[#65758b]">
+              Bookings, visits, and roster changes · last 24 hours
+            </p>
           </div>
           <div className="space-y-5 px-6 py-5">
-            {activityLoading && (
+            {((appointmentsLoading || patientsLoading) && recentActivity.length === 0) && (
               <p className="text-sm text-[#65758b]">Loading activity…</p>
             )}
-            {!activityLoading && recentActivity.length === 0 && (
-              <p className="text-sm text-[#65758b]">No recent activity yet</p>
+            {!((appointmentsLoading || patientsLoading) && recentActivity.length === 0) && recentActivity.length === 0 && (
+              <p className="text-sm text-[#65758b]">No activity in the last 24 hours</p>
             )}
-            {!activityLoading &&
+            {!((appointmentsLoading || patientsLoading) && recentActivity.length === 0) &&
               recentActivity.map((item) => (
                 <div key={item.id} className="flex gap-3">
                   <span className={clsx('mt-1.5 h-2 w-2 shrink-0 rounded-full', item.tone)} />
                   <div>
                     <p className="text-sm font-medium text-[#344256]">{item.label}</p>
-                    <p className="text-xs text-[#65758b]">
-                      {item.patientName ? `${item.patientName} · ${item.time}` : item.time}
-                    </p>
+                    <p className="text-xs text-[#65758b]">{item.time}</p>
                   </div>
                 </div>
               ))}
@@ -708,9 +794,9 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {patients.slice(0, 8).map((patient) => {
+                  {visiblePatients.map((patient) => {
                     const age = ageFromDob(patient.dateOfBirth);
-                    const status = patientStatus(patient, inactiveIds);
+                    const status = derivePatientRosterStatus(patient);
                     const condition = patient.chronicDiseases?.[0] || '-';
                     const initials = (patient.displayName || patient.email || '?')
                       .split(' ')
@@ -738,7 +824,13 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
                         <td className="px-3 py-3 text-[#344256]">{condition}</td>
                         <td className="px-3 py-3">
                           <span className={clsx('rounded-full px-2.5 py-0.5 text-xs font-semibold', statusBadge(status))}>
-                            {status}
+                            {status === 'stable'
+                              ? 'Stable'
+                              : status === 'recovering'
+                                ? 'Recovering'
+                                : status === 'critical'
+                                  ? 'Critical'
+                                  : 'Inactive'}
                           </span>
                         </td>
                         <td className="px-3 py-3 text-right">
@@ -756,16 +848,70 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
                   {patients.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-3 py-10 text-center text-[#65758b]">
-                        No patients yet. Add a patient to get started.
+                        {patientsLoading
+                          ? 'Loading your patients...'
+                          : 'No patients yet. Patients appear here once they book a visit or share their records.'}
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
+
+              {patients.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e1e7ef] px-3 py-3">
+                  <p className="text-sm text-[#65758b]">
+                    Showing {patientsPage * PATIENTS_PAGE_SIZE + 1}–
+                    {Math.min(
+                      patients.length,
+                      (patientsPage + 1) * PATIENTS_PAGE_SIZE
+                    )}{' '}
+                    of {patients.length}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPatientsPage((page) => Math.max(0, page - 1))}
+                      disabled={patientsPage === 0}
+                      className="rounded-[8px] border border-[#e1e7ef] px-3 py-1.5 text-sm font-medium text-[#344256] transition-colors hover:border-[#427160]/40 hover:text-[#427160] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+                    <span className="text-sm text-[#65758b]">
+                      Page {patientsPage + 1} of {patientsPageCount}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPatientsPage((page) =>
+                          Math.min(patientsPageCount - 1, page + 1)
+                        )
+                      }
+                      disabled={patientsPage >= patientsPageCount - 1}
+                      className="rounded-[8px] border border-[#e1e7ef] px-3 py-1.5 text-sm font-medium text-[#344256] transition-colors hover:border-[#427160]/40 hover:text-[#427160] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
-              {rangedAppointments.slice(0, 6).map((apt) => (
+              {showingUpcomingFallback ? (
+                <p className="text-sm text-[#65758b]">
+                  Nothing booked for today. Showing upcoming visits so you can confirm them.
+                </p>
+              ) : null}
+              {visibleAppointments.slice(0, 6).map((apt) => {
+                const when = appointmentInstant(apt);
+                const dateLabel = when
+                  ? when.toLocaleDateString('en-ZA', {
+                      weekday: 'short',
+                      day: 'numeric',
+                      month: 'short',
+                    })
+                  : null;
+                return (
                 <div
                   key={apt.id}
                   className="flex flex-col gap-3 rounded-[12px] border border-[#e1e7ef] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
@@ -773,8 +919,8 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
                   <div>
                     <p className="font-semibold text-[#344256]">{apt.patientName}</p>
                     <p className="text-sm text-[#65758b]">
-                      {apt.patientId?.slice(0, 8).toUpperCase() || 'MANUAL'} · {apt.time} ·{' '}
-                      {apt.consultType || apt.type}
+                      {dateLabel ? `${dateLabel} · ` : ''}
+                      {apt.time} · {apt.consultType || apt.type}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -783,30 +929,25 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
                     </span>
                     <button
                       type="button"
-                      onClick={() => navigate('/appointments')}
+                      onClick={() => navigate(`/appointments/${apt.id}`)}
                       className="btn-secondary"
                     >
-                      Reschedule
+                      {apt.status === 'pending' ? 'Review' : 'Open'}
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (apt.patientId && apt.patientId !== 'manual') {
-                          navigate(`/patient-profile/${apt.patientId}`);
-                        } else {
-                          navigate('/appointments');
-                        }
-                      }}
+                      onClick={() => navigate(`/appointments/${apt.id}`)}
                       className="btn-primary"
                     >
                       View Details
                     </button>
                   </div>
                 </div>
-              ))}
-              {!appointmentsLoading && rangedAppointments.length === 0 && (
+                );
+              })}
+              {!appointmentsLoading && visibleAppointments.length === 0 && (
                 <p className="py-8 text-center text-sm text-[#65758b]">
-                  No appointments in this date range.
+                  No appointments in this date range. New patient bookings appear here automatically.
                 </p>
               )}
             </div>

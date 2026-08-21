@@ -5,6 +5,8 @@ export interface PixelCrop {
   height: number;
 }
 
+const MAX_OUTPUT_EDGE = 1024;
+
 function createImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -25,8 +27,10 @@ export async function getCroppedImageFile(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Could not get canvas context');
 
-  canvas.width = pixelCrop.width;
-  canvas.height = pixelCrop.height;
+  const sourceEdge = Math.max(pixelCrop.width, pixelCrop.height);
+  const outputEdge = Math.max(1, Math.min(MAX_OUTPUT_EDGE, Math.round(sourceEdge)));
+  canvas.width = outputEdge;
+  canvas.height = outputEdge;
 
   ctx.drawImage(
     image,
@@ -36,8 +40,8 @@ export async function getCroppedImageFile(
     pixelCrop.height,
     0,
     0,
-    pixelCrop.width,
-    pixelCrop.height
+    outputEdge,
+    outputEdge
   );
 
   return new Promise((resolve, reject) => {
@@ -50,7 +54,7 @@ export async function getCroppedImageFile(
         resolve(new File([blob], fileName, { type: 'image/jpeg' }));
       },
       'image/jpeg',
-      0.92
+      0.85
     );
   });
 }

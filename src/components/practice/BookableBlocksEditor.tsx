@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  applyAppointmentDefaultsToDoctorBlocks,
+  ensurePracticeBookingLocation,
   getResolvedConsultTypeSettings,
   replaceDoctorDayAvailability,
   syncDoctorPublicAvailability,
@@ -16,7 +16,6 @@ import {
   WEEKDAY_ORDER,
   formatClock,
   groupBlocksByDay,
-  inferDefaultAppointmentSettings,
   periodsFromBlocks,
   summarizeWeek,
   validateAvailabilityPeriods,
@@ -24,6 +23,10 @@ import {
 } from '../../lib/availabilitySchedule';
 import { AvailabilityExceptionsEditor } from './AvailabilityExceptionsEditor';
 import { ConsultTypeSettingsEditor } from './ConsultTypeSettingsEditor';
+import {
+  CLINIC_CONSULT_TYPES,
+  VIDEO_CONSULT_TYPE,
+} from '../../lib/consultTypeSettings';
 import type {
   BookableBlock,
   ConsultType,
@@ -32,17 +35,53 @@ import type {
   PracticeDailySchedule,
 } from '../../types';
 
-const VISIT_TYPES: { value: ConsultType; label: string }[] = [
-  { value: 'initial', label: 'New patient' },
-  { value: 'follow-up', label: 'Follow-up' },
-  { value: 'urgent', label: 'Urgent' },
-  { value: 'procedure', label: 'Procedure' },
-  { value: 'teleconsult', label: 'Video' },
-  { value: 'other', label: 'Other' },
-];
+function enabledConsultTypes(
+  settings: ConsultTypeSetting[],
+  fallback?: ConsultType[] | null,
+): ConsultType[] {
+  const fromSettings = settings.filter((s) => s.enabled).map((s) => s.type);
+  if (fromSettings.length > 0) return fromSettings;
+  if (fallback && fallback.length > 0) return fallback;
+  return ['initial', 'follow-up'];
+}
 
-const APPOINTMENT_LENGTHS = [15, 20, 30, 45, 60];
-const BREAK_OPTIONS = [0, 5, 10, 15];
+function legacyBlockTiming(settings: ConsultTypeSetting[]): {
+  slotDurationMinutes: number;
+  bufferAfterMinutes: number;
+} {
+  const enabled = settings.filter((s) => s.enabled);
+  if (enabled.length === 0) {
+    return { slotDurationMinutes: 30, bufferAfterMinutes: 5 };
+  }
+  const primary =
+    enabled.find((s) => s.type === 'follow-up') ??
+    enabled.find((s) => s.type === VIDEO_CONSULT_TYPE) ??
+    enabled[0];
+  return {
+    slotDurationMinutes: primary.durationMinutes,
+    bufferAfterMinutes: primary.bufferMinutes,
+  };
+}
+
+function appointmentTypeSummary(settings: ConsultTypeSetting[]): string {
+  const parts: string[] = [];
+  const clinic = settings.find(
+    (s) => s.enabled && CLINIC_CONSULT_TYPES.includes(s.type),
+  );
+  const video = settings.find((s) => s.enabled && s.type === VIDEO_CONSULT_TYPE);
+  if (clinic) {
+    parts.push(`Clinic ${clinic.durationMinutes} min`);
+  }
+  if (video) {
+    parts.push(`Video ${video.durationMinutes} min`);
+  }
+  return parts.length > 0 ? parts.join(' · ') : 'No appointment types enabled yet';
+}
+
+const PREVIEW_MODES: { id: 'clinic' | 'video'; label: string }[] = [
+  { id: 'clinic', label: 'Clinic visits' },
+  { id: 'video', label: 'Video consultation' },
+];
 
 const PRESETS: { label: string; periods: AvailabilityPeriod[] }[] = [
   { label: 'Morning', periods: [{ startTime: '08:00', endTime: '12:00' }] },
@@ -72,6 +111,7 @@ interface Props {
   timezone?: string;
   practiceConsultTypes?: ConsultType[];
   onChanged: () => void;
+  onPracticeUpdated?: () => void;
   doctorId?: string;
 }
 
@@ -82,6 +122,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
   timezone = 'Africa/Johannesburg',
   practiceConsultTypes,
   onChanged,
+  onPracticeUpdated,
   doctorId: doctorIdProp,
 }) => {
   const { user } = useAuth();
@@ -92,26 +133,15 @@ export const BookableBlocksEditor: React.FC<Props> = ({
     [blocks, doctorId],
   );
   const byDay = useMemo(() => groupBlocksByDay(doctorBlocks), [doctorBlocks]);
-  const inferred = useMemo(
-    () => inferDefaultAppointmentSettings(doctorBlocks),
-    [doctorBlocks],
-  );
 
   const [editingDay, setEditingDay] = useState<DayOfWeek | null>(null);
   const [draftPeriods, setDraftPeriods] = useState<AvailabilityPeriod[]>([]);
   const [copyTargets, setCopyTargets] = useState<DayOfWeek[]>([]);
-  const [slotDurationMinutes, setSlotDurationMinutes] = useState(30);
-  const [bufferAfterMinutes, setBufferAfterMinutes] = useState(5);
-  const [visitTypes, setVisitTypes] = useState<ConsultType[]>([
-    'initial',
-    'follow-up',
-  ]);
   const [locationId, setLocationId] = useState(locations[0]?.id ?? '');
   const [saving, setSaving] = useState(false);
-  const [savingDefaults, setSavingDefaults] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(true);
   const [previewDate, setPreviewDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + ((1 + 7 - d.getDay()) % 7 || 7));
@@ -125,17 +155,6 @@ export const BookableBlocksEditor: React.FC<Props> = ({
   useEffect(() => {
     if (!locationId && locations[0]?.id) setLocationId(locations[0].id);
   }, [locations, locationId]);
-
-  useEffect(() => {
-    setSlotDurationMinutes(inferred.slotDurationMinutes);
-    setBufferAfterMinutes(inferred.bufferAfterMinutes);
-  }, [inferred.slotDurationMinutes, inferred.bufferAfterMinutes]);
-
-  useEffect(() => {
-    if (practiceConsultTypes && practiceConsultTypes.length > 0) {
-      setVisitTypes(practiceConsultTypes);
-    }
-  }, [practiceConsultTypes]);
 
   useEffect(() => {
     if (!practiceId || !doctorId) return;
@@ -190,10 +209,14 @@ export const BookableBlocksEditor: React.FC<Props> = ({
       setError('You must be signed in to save availability.');
       return;
     }
-    if (!locationId) {
-      setError('Add a location under Overview first.');
+
+    const activeVisitTypes = enabledConsultTypes(typeSettings, practiceConsultTypes);
+    if (!clearDay && activeVisitTypes.length === 0) {
+      setError('Turn on at least one appointment type below before saving hours.');
       return;
     }
+
+    const { slotDurationMinutes, bufferAfterMinutes } = legacyBlockTiming(typeSettings);
 
     const periods = clearDay ? [] : draftPeriods;
     if (!clearDay) {
@@ -208,6 +231,13 @@ export const BookableBlocksEditor: React.FC<Props> = ({
     setError(null);
     setSuccess(null);
     try {
+      const { locationId: resolvedLocationId, created } =
+        await ensurePracticeBookingLocation(practiceId, typeSettings);
+      setLocationId(resolvedLocationId);
+      if (created) {
+        onPracticeUpdated?.();
+      }
+
       const daysToWrite: DayOfWeek[] =
         editingDay == null
           ? []
@@ -219,8 +249,8 @@ export const BookableBlocksEditor: React.FC<Props> = ({
           doctorId,
           dayOfWeek: day,
           periods,
-          locationId,
-          allowedConsultTypes: visitTypes,
+          locationId: resolvedLocationId,
+          allowedConsultTypes: activeVisitTypes,
           slotDurationMinutes,
           bufferAfterMinutes,
         });
@@ -229,7 +259,9 @@ export const BookableBlocksEditor: React.FC<Props> = ({
       setSuccess(
         clearDay
           ? `${DAY_LABELS[editingDay!]} marked unavailable.`
-          : `Availability saved for ${daysToWrite.map((d) => DAY_LABELS[d]).join(', ')}.`,
+          : `Availability saved for ${daysToWrite.map((d) => DAY_LABELS[d]).join(', ')}.${
+              created ? ' A default location was added for you.' : ''
+            }`,
       );
       setEditingDay(null);
       onChanged();
@@ -241,33 +273,6 @@ export const BookableBlocksEditor: React.FC<Props> = ({
       );
     } finally {
       setSaving(false);
-    }
-  };
-
-  const saveAppointmentDefaults = async () => {
-    if (!doctorId) return;
-    if (visitTypes.length === 0) {
-      setError('Enable at least one appointment type.');
-      return;
-    }
-    setSavingDefaults(true);
-    setError(null);
-    try {
-      await applyAppointmentDefaultsToDoctorBlocks({
-        practiceId,
-        doctorId,
-        slotDurationMinutes,
-        bufferAfterMinutes,
-        allowedConsultTypes: visitTypes,
-      });
-      setSuccess('Appointment settings applied to your weekly schedule.');
-      onChanged();
-    } catch (e: unknown) {
-      setError(
-        e instanceof Error ? e.message : "Couldn't save appointment settings.",
-      );
-    } finally {
-      setSavingDefaults(false);
     }
   };
 
@@ -299,6 +304,18 @@ export const BookableBlocksEditor: React.FC<Props> = ({
   );
 
   const weekSummary = summarizeWeek(byDay);
+  const typeSummary = appointmentTypeSummary(typeSettings);
+
+  const syncTypeSettings = () => {
+    void getResolvedConsultTypeSettings(practiceId)
+      .then((settings) => {
+        setTypeSettings(settings);
+        const firstEnabled = settings.find((s) => s.enabled);
+        if (firstEnabled) setPreviewConsultType(firstEnabled.type);
+      })
+      .catch(() => undefined);
+    onChanged();
+  };
 
   return (
     <div className="space-y-6">
@@ -322,9 +339,9 @@ export const BookableBlocksEditor: React.FC<Props> = ({
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h3 className="text-[17px] font-semibold text-[#0E2340]">Availability</h3>
+          <h3 className="text-[17px] font-semibold text-[#0E2340]">Your hours</h3>
           <p className="mt-1 text-[13px] leading-relaxed text-[#65758b]">
-            Control when patients can book appointments with you.
+            Set when patients can book clinic visits and video consults.
           </p>
           <p className="mt-2 text-[12px] font-medium text-[#8FA0B6]">
             Timezone: {timezone}
@@ -347,69 +364,47 @@ export const BookableBlocksEditor: React.FC<Props> = ({
         </p>
         <p className="mt-1.5 text-sm font-medium text-[#0E2340]">{weekSummary}</p>
         <p className="mt-2 text-[12px] text-[#65758b]">
-          Appointments: {slotDurationMinutes} min
-          {bufferAfterMinutes > 0 ? ` · Buffer: ${bufferAfterMinutes} min` : ''}
+          Appointment types: {typeSummary}
         </p>
       </div>
 
       {/* Weekly schedule */}
       {editingDay == null ? (
-        <section className="space-y-3">
-          <h4 className="text-[13px] font-semibold text-[#344256]">Weekly schedule</h4>
-          <div className="space-y-2">
-            {WEEKDAY_ORDER.map((day) => {
-              const dayBlocks = byDay[day];
-              const available = dayBlocks.length > 0;
-              return (
-                <div
-                  key={day}
-                  className="flex flex-col gap-3 rounded-xl border border-[#e1e7ef] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-[#0E2340]">
-                        {DAY_LABELS[day]}
-                      </p>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                          available
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-slate-100 text-slate-500'
-                        }`}
-                      >
-                        {available ? 'Available' : 'Not available'}
-                      </span>
-                    </div>
-                    {available ? (
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        {dayBlocks.map((b) => (
-                          <span
-                            key={b.id}
-                            className="rounded-md bg-[#eef4f1] px-2 py-1 text-[12px] font-medium text-[#2f4f43]"
-                          >
-                            {formatClock(b.startTime)}–{formatClock(b.endTime)}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="mt-1 text-[12px] text-[#94a3b8]">
-                        Patients cannot book this day.
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => openEditDay(day)}
-                      className="rounded-lg bg-[#eef4f1] px-3 py-1.5 text-xs font-semibold text-anixi-green hover:bg-[#e2ece7]"
-                    >
-                      Edit
-                    </button>
-                  </div>
+        <section className="overflow-hidden rounded-xl border border-[#e1e7ef]">
+          {WEEKDAY_ORDER.map((day, index) => {
+            const dayBlocks = byDay[day];
+            const available = dayBlocks.length > 0;
+            return (
+              <div
+                key={day}
+                className={`flex items-center justify-between gap-3 px-4 py-3 ${
+                  index > 0 ? 'border-t border-[#eef2f6]' : ''
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-[#0E2340]">{DAY_LABELS[day]}</p>
+                  {available ? (
+                    <p className="mt-0.5 text-[12px] text-[#4d675c]">
+                      {dayBlocks
+                        .map((b) => `${formatClock(b.startTime)}–${formatClock(b.endTime)}`)
+                        .join(' · ')}
+                    </p>
+                  ) : (
+                    <p className="mt-0.5 text-[12px] text-[#94a3b8]">
+                      Unavailable — no bookings
+                    </p>
+                  )}
                 </div>
-              );
-            })}
-          </div>
+                <button
+                  type="button"
+                  onClick={() => openEditDay(day)}
+                  className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-anixi-green hover:bg-[#eef4f1]"
+                >
+                  {available ? 'Edit' : 'Add hours'}
+                </button>
+              </div>
+            );
+          })}
         </section>
       ) : (
         <section className="space-y-4 rounded-xl border border-[#e1e7ef] bg-white p-4 sm:p-5">
@@ -544,6 +539,14 @@ export const BookableBlocksEditor: React.FC<Props> = ({
             </div>
           )}
 
+          {locations.length === 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-900">
+              No location is set up yet. Click <span className="font-semibold">Save</span> and
+              we&apos;ll add a default one automatically, or add your own under{' '}
+              <span className="font-semibold">Overview → Locations</span>.
+            </div>
+          )}
+
           {error && (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">
               {error}
@@ -570,7 +573,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => void saveDay(false)}
-                disabled={saving || locations.length === 0}
+                disabled={saving}
                 className="inline-flex h-10 items-center rounded-lg bg-anixi-green px-5 text-sm font-semibold text-white shadow-sm hover:bg-[#365c4f] disabled:opacity-50"
               >
                 {saving ? 'Saving…' : 'Save'}
@@ -588,11 +591,9 @@ export const BookableBlocksEditor: React.FC<Props> = ({
           className="flex w-full items-center justify-between px-4 py-3 text-left"
         >
           <div>
-            <p className="text-sm font-semibold text-[#0E2340]">
-              Appointment types & preview
-            </p>
+            <p className="text-sm font-semibold text-[#0E2340]">Appointment settings</p>
             <p className="text-[12px] text-[#65758b]">
-              Duration, buffer, visit types, exceptions, and patient booking preview
+              What patients can book, days off, and a booking preview
             </p>
           </div>
           <span className="text-[12px] font-semibold text-anixi-green">
@@ -604,96 +605,8 @@ export const BookableBlocksEditor: React.FC<Props> = ({
           <div className="space-y-6 border-t border-[#eef2f6] px-4 py-4">
             <ConsultTypeSettingsEditor
               practiceId={practiceId}
-              onChanged={() => {
-                void getResolvedConsultTypeSettings(practiceId)
-                  .then(setTypeSettings)
-                  .catch(() => undefined);
-                onChanged();
-              }}
+              onChanged={syncTypeSettings}
             />
-
-            <section className="space-y-3">
-              <h4 className="text-[13px] font-semibold text-[#344256]">
-                Legacy block defaults
-              </h4>
-              <p className="text-[12px] text-[#65758b]">
-                Optional: apply a default length/buffer onto weekly windows for
-                doctors still using block-level defaults. Patient booking uses
-                appointment types above when available.
-              </p>
-              <div>
-                <p className="mb-2 text-[12px] font-semibold text-[#344256]">
-                  Default visit length
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {APPOINTMENT_LENGTHS.map((mins) => (
-                    <button
-                      key={mins}
-                      type="button"
-                      onClick={() => setSlotDurationMinutes(mins)}
-                      className={`${chipBase} ${
-                        slotDurationMinutes === mins ? chipOn : chipOff
-                      }`}
-                    >
-                      {mins} min
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="mb-2 text-[12px] font-semibold text-[#344256]">
-                  Buffer between patients
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {BREAK_OPTIONS.map((mins) => (
-                    <button
-                      key={mins}
-                      type="button"
-                      onClick={() => setBufferAfterMinutes(mins)}
-                      className={`${chipBase} ${
-                        bufferAfterMinutes === mins ? chipOn : chipOff
-                      }`}
-                    >
-                      {mins === 0 ? 'None' : `${mins} min`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="mb-2 text-[12px] font-semibold text-[#344256]">
-                  Allowed on weekly windows
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {VISIT_TYPES.map((vt) => {
-                    const active = visitTypes.includes(vt.value);
-                    return (
-                      <button
-                        key={vt.value}
-                        type="button"
-                        onClick={() =>
-                          setVisitTypes((prev) =>
-                            active
-                              ? prev.filter((t) => t !== vt.value)
-                              : [...prev, vt.value],
-                          )
-                        }
-                        className={`${chipBase} ${active ? chipOn : chipOff}`}
-                      >
-                        {vt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => void saveAppointmentDefaults()}
-                disabled={savingDefaults || doctorBlocks.length === 0}
-                className="inline-flex h-9 items-center rounded-lg border border-anixi-green px-3.5 text-xs font-semibold text-anixi-green hover:bg-[#eef4f1] disabled:opacity-50"
-              >
-                {savingDefaults ? 'Applying…' : 'Apply to weekly schedule'}
-              </button>
-            </section>
 
             <AvailabilityExceptionsEditor
               practiceId={practiceId}
@@ -705,27 +618,40 @@ export const BookableBlocksEditor: React.FC<Props> = ({
 
             <section className="space-y-3">
               <h4 className="text-[13px] font-semibold text-[#344256]">
-                Patient booking preview
+                Preview patient booking times
               </h4>
               <p className="text-[12px] text-[#65758b]">
-                Preview uses the selected appointment type duration and buffer,
-                plus availability and exceptions.
+                Check the slots patients will see before you go live.
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {typeSettings
-                  .filter((s) => s.enabled)
-                  .map((s) => (
+                {PREVIEW_MODES.map((mode) => {
+                  const setting = typeSettings.find(
+                    (s) =>
+                      s.enabled &&
+                      (mode.id === 'video'
+                        ? s.type === VIDEO_CONSULT_TYPE
+                        : s.type === 'follow-up' || s.type === 'initial'),
+                  );
+                  if (!setting) return null;
+                  const previewType =
+                    mode.id === 'video' ? VIDEO_CONSULT_TYPE : setting.type;
+                  return (
                     <button
-                      key={s.type}
+                      key={mode.id}
                       type="button"
-                      onClick={() => setPreviewConsultType(s.type)}
+                      onClick={() => setPreviewConsultType(previewType)}
                       className={`${chipBase} ${
-                        previewConsultType === s.type ? chipOn : chipOff
+                        (mode.id === 'video'
+                          ? previewConsultType === VIDEO_CONSULT_TYPE
+                          : CLINIC_CONSULT_TYPES.includes(previewConsultType))
+                          ? chipOn
+                          : chipOff
                       }`}
                     >
-                      {s.name} ({s.durationMinutes}m)
+                      {mode.label}
                     </button>
-                  ))}
+                  );
+                })}
               </div>
               <input
                 type="date"

@@ -18,7 +18,9 @@ import clsx from 'clsx';
 import React from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useIncomingRecordShares } from '../hooks/useIncomingRecordShares';
 import { useIncomingSharingRequests } from '../hooks/useIncomingSharingRequests';
+import { usePendingAppointmentsCount } from '../hooks/usePendingAppointments';
 import {
   getUnreadPingCount,
   listenToDoctorConversations,
@@ -88,6 +90,9 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const { requests: sharingRequests } = useIncomingSharingRequests(user?.id);
   const pendingRequests = sharingRequests.filter((r) => r.status === 'pending').length;
+  const pendingAppointments = usePendingAppointmentsCount(user?.id);
+  const { requests: recordShareRequests } = useIncomingRecordShares(user?.id);
+  const pendingRecordShares = recordShareRequests.length;
   const [unreadMessages, setUnreadMessages] = React.useState(0);
 
   React.useEffect(() => {
@@ -102,12 +107,13 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
 
   const isAccessGate =
     location.pathname === '/onboarding' || location.pathname === '/account-review';
+  const isFocusCall = location.pathname.startsWith('/teleconsult/');
 
   React.useEffect(() => {
     setMobileNavOpen(false);
   }, [location.pathname]);
 
-  if (isAccessGate) {
+  if (isAccessGate || isFocusCall) {
     return <>{children || <Outlet />}</>;
   }
 
@@ -128,8 +134,20 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
       badge: pendingRequests || undefined,
       badgeTone: 'teal',
     },
-    { name: 'Appointments', href: '/appointments', icon: CalendarIcon },
-    { name: 'Medical Records', href: '/medical-records', icon: ClipboardDocumentListIcon },
+    {
+      name: 'Appointments',
+      href: '/appointments',
+      icon: CalendarIcon,
+      badge: pendingAppointments || undefined,
+      badgeTone: 'teal',
+    },
+    {
+      name: 'Medical Records',
+      href: '/medical-records',
+      icon: ClipboardDocumentListIcon,
+      badge: pendingRecordShares || undefined,
+      badgeTone: 'teal',
+    },
     { name: 'Analytics', href: '/analytics', icon: ChartBarIcon },
   ];
 

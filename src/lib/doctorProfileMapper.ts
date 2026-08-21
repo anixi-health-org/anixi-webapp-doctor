@@ -1,4 +1,8 @@
 import type { ProfessionalProfileFormData } from '../types/doctorProfile';
+import {
+  resolveDoctorProfilePhotoUrl,
+  resolvePracticeLogoUrl,
+} from './doctorAvatar';
 
 type FirestoreDoctor = Record<string, unknown>;
 
@@ -158,9 +162,15 @@ export function firestoreToFormData(data: FirestoreDoctor): ProfessionalProfileF
         : '';
 
   const logo =
-    (typeof data.logoUrl === 'string' && data.logoUrl) ||
-    (typeof data.profileImageUrl === 'string' && data.profileImageUrl) ||
-    '';
+    resolvePracticeLogoUrl(
+      typeof data.logoUrl === 'string' ? data.logoUrl : undefined,
+      typeof data.profileImageUrl === 'string' ? data.profileImageUrl : undefined,
+    ) || '';
+  const profilePhoto =
+    resolveDoctorProfilePhotoUrl(
+      typeof data.profileImageUrl === 'string' ? data.profileImageUrl : undefined,
+      logo,
+    ) || '';
 
   return {
     title: titleToForm(
@@ -231,6 +241,7 @@ export function firestoreToFormData(data: FirestoreDoctor): ProfessionalProfileF
       (typeof data.officeAddress === 'string' && data.officeAddress) ||
       '',
     logoUrl: logo,
+    profileImageUrl: profilePhoto,
   };
 }
 
@@ -239,7 +250,11 @@ export function formDataToFirestore(
   logoUrl?: string
 ): Record<string, unknown> {
   const years = YEARS_RANGE_TO_NUMBER[form.yearsOfExperience] ?? 0;
-  const resolvedLogo = logoUrl ?? form.logoUrl;
+  const resolvedLogo = (logoUrl ?? form.logoUrl).trim();
+  const resolvedPhoto = resolveDoctorProfilePhotoUrl(
+    form.profileImageUrl,
+    resolvedLogo,
+  );
 
   const payload: Record<string, unknown> = {
     title: titleToFirestore(form.title),
@@ -277,7 +292,9 @@ export function formDataToFirestore(
 
   if (resolvedLogo) {
     payload.logoUrl = resolvedLogo;
-    payload.profileImageUrl = resolvedLogo;
+  }
+  if (resolvedPhoto) {
+    payload.profileImageUrl = resolvedPhoto;
   }
 
   return payload;
