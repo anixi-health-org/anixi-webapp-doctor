@@ -312,6 +312,29 @@ service cloud.firestore {
       allow update: if isSignedIn() && (uid() == userId || isAdmin());
     }
 
+    // Invoice mirrors under the patient user tree (doctor portal writes these).
+    match /Users/{patientId}/invoices/{invoiceId} {
+      allow read: if isSignedIn() && (
+        uid() == patientId ||
+        resource.data.doctorId == uid()
+      );
+      allow create: if isSignedIn() && (
+        uid() == patientId ||
+        (
+          request.resource.data.doctorId == uid() &&
+          request.resource.data.patientId == patientId
+        )
+      );
+      allow update: if isSignedIn() && (
+        uid() == patientId ||
+        resource.data.doctorId == uid()
+      );
+      allow delete: if isSignedIn() && (
+        uid() == patientId ||
+        resource.data.doctorId == uid()
+      );
+    }
+
     match /Users/{userId}/{document=**} {
       allow read, write: if isSignedIn() && uid() == userId;
     }
@@ -376,6 +399,15 @@ service cloud.firestore {
         (isBootstrapAdmin() && uid() == adminId)
       );
       allow update, delete: if isAdmin();
+    }
+
+    // Admin portal in-app notifications (written by Cloud Functions).
+    match /admin_notifications/{notificationId} {
+      allow read: if isAdmin();
+      allow create, delete: if false;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
+        && request.resource.data.readBy is list;
     }
 
     match /group_posts/{postId} {
@@ -491,29 +523,37 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.doctorId == uid();
     }
 
-    // ─── Patients (manual creation by doctors) ─────────────────────────────────
+    // ─── Patients (manual creation by doctors + app medical profiles) ────────
     // Doctors may create manual patient records that are linked to them.
-    // Patients themselves (mobile app) should use the legacy `Users/{uid}` docs.
+    // App patients may create/update their own `patients/{uid}` medical profile.
     match /patients/{patientId} {
-      allow create: if isSignedIn()
-        && request.resource.data.isManual == true
-        && (
-          request.resource.data.assignedDoctorId == uid() ||
+      allow create: if isSignedIn() && (
+        uid() == patientId ||
+        (
+          request.resource.data.isManual == true &&
           (
-            request.resource.data.practiceId is string &&
-            canManagePracticePatients(request.resource.data.practiceId)
+            request.resource.data.assignedDoctorId == uid() ||
+            (
+              request.resource.data.practiceId is string &&
+              canManagePracticePatients(request.resource.data.practiceId)
+            )
           )
-        );
+        )
+      );
       // Approved doctors may read medical profile (blood group, weight, etc.) for tracking.
       // Doctors must not edit app-linked patient data — only the patient, or manual records.
       allow read: if isSignedIn() && (
-        resource.data.assignedDoctorId == uid() ||
         uid() == patientId ||
+        (
+          resource != null &&
+          resource.data.assignedDoctorId == uid()
+        ) ||
         canDoctorReadPatientHealthData(patientId) ||
         hasActiveMedicalRecordAccess(patientId) ||
         isLinkedCaregiverForPatient(patientId) ||
         isNominatedCaregiverEmail() ||
         (
+          resource != null &&
           resource.data.practiceId is string &&
           canManagePracticePatients(resource.data.practiceId)
         )
@@ -707,37 +747,65 @@ service cloud.firestore {
 
     // ─── Patient ↔ Doctor messaging (shared with mobile) ───────────────────────
 
+    function conversationDocPath(conversationId) {
+      return /databases/$(database)/documents/conversations/$(conversationId);
+    }
+
     function isConversationParticipant(participantIds) {
       return isSignedIn() && request.auth.uid in participantIds;
     }
 
+    function conversationExists(conversationId) {
+      return exists(conversationDocPath(conversationId));
+    }
+
+    function isParticipantOfConversation(conversationId) {
+      return conversationExists(conversationId)
+        && isConversationParticipant(
+          get(conversationDocPath(conversationId)).data.participantIds
+        );
+    }
+
     match /conversations/{conversationId} {
-      allow read: if isConversationParticipant(resource.data.participantIds);
+      // Missing docs must be get()-able so clients can create-on-miss.
+      // Listing still requires being listed in participantIds on each doc.
+      allow get: if isSignedIn() && (
+        !conversationExists(conversationId)
+        || isConversationParticipant(resource.data.participantIds)
+      );
+      allow list: if isSignedIn()
+        && isConversationParticipant(resource.data.participantIds);
+
       allow create: if isSignedIn()
-        && request.auth.uid in request.resource.data.participantIds
-        && request.resource.data.participantIds.size() == 2;
+        && request.resource.data.keys().hasAll(['participantIds', 'participants', 'unread'])
+        && request.resource.data.participantIds is list
+        && request.resource.data.participantIds.size() == 2
+        && request.auth.uid in request.resource.data.participantIds;
+
       allow update: if isConversationParticipant(resource.data.participantIds)
         && request.auth.uid in request.resource.data.participantIds;
+
       allow delete: if false;
 
       match /messages/{messageId} {
-        allow read: if isConversationParticipant(
-          get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds
-        );
+        allow read: if isParticipantOfConversation(conversationId);
         allow create: if isSignedIn()
           && request.resource.data.senderId == request.auth.uid
-          && request.auth.uid in get(
-            /databases/$(database)/documents/conversations/$(conversationId)
-          ).data.participantIds;
-        allow update: if isSignedIn()
-          && request.auth.uid in get(
-            /databases/$(database)/documents/conversations/$(conversationId)
-          ).data.participantIds
+          && isParticipantOfConversation(conversationId);
+        allow update: if isParticipantOfConversation(conversationId)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
           && request.auth.uid in request.resource.data.readBy
           && request.resource.data.readBy.hasAll(resource.data.readBy);
         allow delete: if false;
       }
+    }
+
+    // Patient journals (mobile journaling feature).
+    match /journals/{journalId} {
+      allow read, update, delete: if isSignedIn()
+        && resource.data.userId == uid();
+      allow create: if isSignedIn()
+        && request.resource.data.userId == uid();
     }
   }
 }
