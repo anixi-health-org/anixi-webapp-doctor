@@ -1306,7 +1306,6 @@ export const fixInconsistentAppointments = async (): Promise<void> => {
       const appointmentId = globalDoc.id;
       const globalData = globalDoc.data();
       const doctorId = globalData.doctorId;
-      const patientId = globalData.patientId;
 
       if (doctorId) {
         const doctorRef = doc(db, USERS_COLLECTION, doctorId, 'appointments', appointmentId);

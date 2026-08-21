@@ -373,7 +373,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
             {photoPreview ? (
               <img
                 src={photoPreview}
-                alt="Profile photo"
+                alt="Profile"
                 className="h-full w-full object-cover"
               />
             ) : (

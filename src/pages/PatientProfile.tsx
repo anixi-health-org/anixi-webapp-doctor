@@ -111,7 +111,7 @@ export const PatientProfile: React.FC = () => {
     };
 
     fetchPatient();
-  }, [user, patientId]);
+  }, [user, patientId, contextState.patientEmail, contextState.patientName]);
 
   useEffect(() => {
     const loadAppointments = async () => {

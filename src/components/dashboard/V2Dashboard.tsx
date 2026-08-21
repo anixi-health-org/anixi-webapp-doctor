@@ -24,7 +24,6 @@ import {
 import { DashboardPageSkeleton } from '../ui/Skeleton';
 import { PageHeader } from '../page-layout/PageHeader';
 import {
-  calendarDateKeyInTimeZone,
   detectBrowserTimezone,
   getCalendarRangeInTimeZone,
   instantInCalendarRange,
@@ -253,10 +252,6 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
   const rangeBounds = useMemo(
     () => getCalendarRangeInTimeZone(dateRange, scheduleTimeZone),
     [dateRange, scheduleTimeZone],
-  );
-  const todayKey = useMemo(
-    () => calendarDateKeyInTimeZone(new Date(), scheduleTimeZone),
-    [scheduleTimeZone],
   );
 
   const rangedAppointments = useMemo(
