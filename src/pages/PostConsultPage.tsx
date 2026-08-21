@@ -6,6 +6,7 @@ import {
   Eye,
   Printer,
   Save,
+  Video,
 } from 'lucide-react';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { VisitPatientBriefing } from '../components/appointments/VisitChartSnapshot';
@@ -1347,9 +1348,17 @@ const doctor = user?.role === 'doctor' ? user : null;
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
           <div className="min-w-0 flex-1">
-            <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">
-              {callEnded ? 'After the visit' : 'Pre-call briefing'}
-            </h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">
+                {callEnded ? 'After the visit' : 'Pre-call briefing'}
+              </h1>
+              {!callEnded && canStartCall && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#eef4f1] px-2.5 py-0.5 text-[11px] font-semibold text-anixi-green">
+                  <Video className="h-3 w-3" />
+                  Video consultation
+                </span>
+              )}
+            </div>
             <p className="mt-0.5 truncate text-[13px] text-[#65758b]">
               {appointment.patientName}
               {appointment.time ? ` · ${appointment.time}` : ''}
@@ -1599,37 +1608,40 @@ const doctor = user?.role === 'doctor' ? user : null;
                 doctorId={user.id}
                 patientId={appointment.patientId}
                 isManual={appointment.isManual}
+                patientName={appointment.patientName}
+                patientEmail={appointment.patientEmail}
               />
             )}
 
-            <div className="rounded-[14px] border border-[#e1e7ef] bg-white p-4 shadow-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#8FA0B6]">
-                Visit desk
-              </p>
-              {appointment.notes ? (
-                <p className="mt-2 rounded-[10px] bg-[#f8fafc] px-3 py-2 text-sm text-[#344256]">
-                  <span className="font-semibold text-[#8FA0B6]">Agenda: </span>
-                  {appointment.notes}
-                </p>
-              ) : (
-                <p className="mt-2 text-sm text-[#94a3b8]">
-                  No agenda on this booking - confirm the reason for visit when you connect.
-                </p>
-              )}
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                {whatsappSoon && (
-                  <div className="inline-flex h-11 items-center rounded-[10px] border border-amber-200 bg-amber-50 px-4 text-sm font-medium text-amber-900">
-                    WhatsApp visit - Coming soon
-                  </div>
-                )}
+            <div className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                    Visit agenda
+                  </p>
+                  {appointment.notes ? (
+                    <p className="mt-2 text-sm leading-relaxed text-[#344256]">
+                      {appointment.notes}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-sm text-[#94a3b8]">
+                      No reason recorded. Confirm why they booked when you join.
+                    </p>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={() => setShowNoteModal(true)}
-                  className="inline-flex h-11 items-center justify-center rounded-[10px] border border-[#e1e7ef] bg-white px-4 text-sm font-semibold text-[#344256] hover:border-anixi-green/40"
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-[#e1e7ef] bg-white px-3.5 text-xs font-semibold text-[#344256] hover:border-anixi-green/40 hover:text-anixi-green"
                 >
                   Add visit note
                 </button>
               </div>
+              {whatsappSoon && (
+                <div className="mt-3 inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+                  WhatsApp visit — coming soon
+                </div>
+              )}
             </div>
 
             {latestPrescriptionDraft && (
@@ -1661,9 +1673,9 @@ const doctor = user?.role === 'doctor' ? user : null;
       </div>
 
       {canStartCall && !callEnded && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#e1e7ef] bg-white/80 px-4 py-3 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] backdrop-blur-md md:left-64">
-          <div className="mx-auto flex max-w-4xl flex-col gap-3">
-            <label className="flex items-start gap-2 text-[13px] text-[#344256]">
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#e1e7ef] bg-white/95 px-4 py-4 shadow-[0_-8px_24px_rgba(14,35,64,0.08)] backdrop-blur-md md:left-64">
+          <div className="mx-auto flex max-w-4xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <label className="flex max-w-xl cursor-pointer items-start gap-3 rounded-xl border border-[#e1e7ef] bg-[#f6f8fa] px-3.5 py-3 text-[13px] text-[#344256]">
               <input
                 type="checkbox"
                 className="mt-0.5 h-4 w-4 rounded border-gray-300 text-anixi-green focus:ring-anixi-green"
@@ -1672,23 +1684,31 @@ const doctor = user?.role === 'doctor' ? user : null;
                 onChange={(e) => void handleTeleconsultConsentChange(e.target.checked)}
               />
               <span>
-                I confirm telemedicine consent has been obtained / the patient consented to a virtual
-                consultation per HPCSA telemedicine guidance.
+                <span className="font-semibold text-[#0E2340]">Telemedicine consent</span>
+                <span className="mt-0.5 block text-[#65758b]">
+                  Patient consented to a video consult (HPCSA telemedicine guidance).
+                </span>
               </span>
             </label>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-[13px] text-[#65758b]">
-                Ready for <span className="font-semibold text-[#0E2340]">{appointment.patientName}</span>
-                {appointment.time ? ` at ${appointment.time}` : ''}?
-              </p>
+            <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:items-end">
+              {!teleconsultConsentChecked ? (
+                <p className="text-center text-[12px] text-[#8FA0B6] sm:text-right">
+                  Confirm consent to start the video call
+                </p>
+              ) : (
+                <p className="text-center text-[12px] text-[#65758b] sm:text-right">
+                  Ready for {appointment.patientName}
+                  {appointment.time ? ` at ${appointment.time}` : ''}
+                </p>
+              )}
               <button
                 type="button"
                 onClick={startVideoCall}
                 disabled={!teleconsultConsentChecked || isSavingTeleconsultConsent}
-                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-anixi-green px-6 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-anixi-green px-6 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f] disabled:cursor-not-allowed disabled:bg-[#c5d0cb] disabled:text-white sm:w-auto"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-                Start call
+                <Video className="h-4 w-4" />
+                Start video call
               </button>
             </div>
           </div>

@@ -37,7 +37,7 @@ import type {
   PracticePermissions,
   SoftBlock,
 } from '../types';
-import { normalizeConsultTypeSettings, validateConsultTypeSettingInput } from '../lib/consultTypeSettings';
+import { normalizeConsultTypeSettings, validateConsultTypeSettingInput, CLINIC_CONSULT_TYPES, VIDEO_CONSULT_TYPE } from '../lib/consultTypeSettings';
 import { isClinicianRole, normalizePermissions, OWNER_PERMISSIONS } from '../lib/practiceRoles';
 
 
@@ -741,6 +741,86 @@ export type DayAvailabilityPeriodInput = {
   endTime: string;
 };
 
+function pickBookingLocation(
+  locations: PracticeLocation[],
+  settings: ConsultTypeSetting[],
+): PracticeLocation {
+  const clinicEnabled = settings.some(
+    (s) => s.enabled && CLINIC_CONSULT_TYPES.includes(s.type),
+  );
+  const videoEnabled = settings.some((s) => s.enabled && s.type === VIDEO_CONSULT_TYPE);
+
+  const clinicLocation = locations.find(
+    (loc) => loc.type === 'clinic' || loc.type === 'hospital',
+  );
+  const virtualLocation = locations.find((loc) => loc.type === 'virtual');
+
+  if (clinicEnabled && clinicLocation) return clinicLocation;
+  if (videoEnabled && virtualLocation) return virtualLocation;
+  return locations[0]!;
+}
+
+/** Ensures the practice has at least one bookable location before saving hours. */
+export const ensurePracticeBookingLocation = async (
+  practiceId: string,
+  typeSettings?: ConsultTypeSetting[],
+): Promise<{ locationId: string; locations: PracticeLocation[]; created: boolean }> => {
+  const practice = await getPractice(practiceId);
+  if (!practice) {
+    throw new Error('Practice not found.');
+  }
+
+  const settings =
+    typeSettings && typeSettings.length > 0
+      ? typeSettings
+      : await getResolvedConsultTypeSettings(practiceId);
+
+  if (practice.locations.length > 0) {
+    const location = pickBookingLocation(practice.locations, settings);
+    return {
+      locationId: location.id,
+      locations: practice.locations,
+      created: false,
+    };
+  }
+
+  const clinicEnabled = settings.some(
+    (s) => s.enabled && CLINIC_CONSULT_TYPES.includes(s.type),
+  );
+  const videoEnabled = settings.some((s) => s.enabled && s.type === VIDEO_CONSULT_TYPE);
+
+  const newLocations: PracticeLocation[] = [];
+  if (clinicEnabled || !videoEnabled) {
+    newLocations.push({
+      id: crypto.randomUUID(),
+      name: 'Main clinic',
+      type: 'clinic',
+    });
+  }
+  if (videoEnabled) {
+    newLocations.push({
+      id: crypto.randomUUID(),
+      name: 'Video consultation',
+      type: 'virtual',
+    });
+  }
+  if (newLocations.length === 0) {
+    newLocations.push({
+      id: crypto.randomUUID(),
+      name: 'Main clinic',
+      type: 'clinic',
+    });
+  }
+
+  await updatePractice(practiceId, { locations: newLocations });
+  const location = pickBookingLocation(newLocations, settings);
+  return {
+    locationId: location.id,
+    locations: newLocations,
+    created: true,
+  };
+};
+
 /**
  * Replaces all active bookable blocks for one doctor + weekday with the given periods.
  * Reloads and verifies the persisted schedule before returning.
@@ -766,14 +846,18 @@ export const replaceDoctorDayAvailability = async (params: {
     bufferAfterMinutes,
   } = params;
 
-  if (!locationId) {
-    throw new Error('Add a location under Overview before saving availability.');
-  }
-  if (allowedConsultTypes.length === 0) {
-    throw new Error('Enable at least one appointment type before saving availability.');
-  }
-  if (slotDurationMinutes <= 0) {
-    throw new Error('Appointment duration must be greater than zero.');
+  // Clearing a day only deactivates blocks, so it must not require a location,
+  // an enabled appointment type, or a valid duration.
+  if (periods.length > 0) {
+    if (!locationId) {
+      throw new Error('Add a location under Overview before saving availability.');
+    }
+    if (allowedConsultTypes.length === 0) {
+      throw new Error('Enable at least one appointment type before saving availability.');
+    }
+    if (slotDurationMinutes <= 0) {
+      throw new Error('Appointment duration must be greater than zero.');
+    }
   }
 
   const existing = (await getBookableBlocks(practiceId)).filter(

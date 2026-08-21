@@ -106,7 +106,7 @@ const checkPatientFields = async () => {
   }
 };
 
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
   (window as any).checkPatientFields = checkPatientFields;
 }
 
@@ -170,7 +170,7 @@ const debugSharingRequestsData = async () => {
   }
 };
 
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
   (window as any).checkPatientFields = checkPatientFields;
   (window as any).debugSharingRequests = debugSharingRequests;
   (window as any).debugSharingRequestsData = debugSharingRequestsData;

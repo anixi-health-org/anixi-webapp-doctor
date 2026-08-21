@@ -19,8 +19,10 @@ service cloud.firestore {
     }
 
   function isBootstrapAdmin() {
+    // Keep in sync with anixi-admin-panel/src/environments/environment*.ts ADMIN_UIDS
     return isSignedIn() && uid() in [
-      'Xwf3BwiJRJb6eL87p8LyL4Syyku1'
+      'Xwf3BwiJRJb6eL87p8LyL4Syyku1',
+      'jDasmaQBTQNktVEedUkw6Ec6mNr2'
     ];
   }
 
@@ -303,6 +305,13 @@ service cloud.firestore {
       );
     }
 
+    // User profile root document (admin portal reads/updates account metadata).
+    match /Users/{userId} {
+      allow read: if isSignedIn() && (uid() == userId || isAdmin());
+      allow create: if isSignedIn() && uid() == userId;
+      allow update: if isSignedIn() && (uid() == userId || isAdmin());
+    }
+
     match /Users/{userId}/{document=**} {
       allow read, write: if isSignedIn() && uid() == userId;
     }
@@ -415,15 +424,27 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // Doc ids are `{uid}_{postId}`. Allow get on missing docs for the owner's
+    // id prefix — otherwise isPostSaved() permission-denies when unsaved.
     match /community_saved_posts/{savedId} {
-      allow read: if isSignedIn() && resource.data.userId == uid();
-      allow create: if isSignedIn() && request.resource.data.userId == uid();
+      allow get: if isSignedIn() && (
+        savedId.matches('^' + uid() + '_.+')
+        || (resource != null && resource.data.userId == uid())
+      );
+      allow list: if isSignedIn() && resource.data.userId == uid();
+      allow create: if isSignedIn()
+        && request.resource.data.userId == uid()
+        && savedId == uid() + '_' + request.resource.data.postId;
       allow delete: if isSignedIn() && resource.data.userId == uid();
       allow update: if false;
     }
 
     match /community_blocks/{blockId} {
-      allow read: if isSignedIn() && resource.data.blockerId == uid();
+      allow get: if isSignedIn() && (
+        blockId.matches('^' + uid() + '_.+')
+        || (resource != null && resource.data.blockerId == uid())
+      );
+      allow list: if isSignedIn() && resource.data.blockerId == uid();
       allow create: if isSignedIn() && request.resource.data.blockerId == uid();
       allow delete: if isSignedIn() && resource.data.blockerId == uid();
       allow update: if false;
@@ -566,8 +587,8 @@ service cloud.firestore {
     // ─── Practices ──────────────────────────────────────────────────────────────
 
     match /practices/{practiceId} {
-      // Members and practice owners may read practice context
-      allow read: if isSignedIn() && (isMember(practiceId) || isPracticeOwner(practiceId));
+      // Anixi admins first so admin portal can list all establishments.
+      allow read: if isSignedIn() && (isAdmin() || isMember(practiceId) || isPracticeOwner(practiceId));
       // Only owners can create or update practice metadata
       allow create: if isSignedIn();   // owner auto-provisioned on first login
       allow update: if isSignedIn() && (isOwner(practiceId) || isPracticeOwner(practiceId));
@@ -575,9 +596,9 @@ service cloud.firestore {
       // ─── Members ──────────────────────────────────────────────────────────────
 
       match /members/{memberId} {
-        // Members can read their own record; owners/managers can read all
+        // Members can read their own record; owners/managers/Anixi admins can read all
         allow read: if isSignedIn() &&
-          (uid() == memberId || isOwner(practiceId) || hasPerm(practiceId, 'manageMembers'));
+          (uid() == memberId || isOwner(practiceId) || hasPerm(practiceId, 'manageMembers') || isAdmin());
         // Owner bootstrap + invited member self-activate + managers inviting
         allow create: if isSignedIn() && (
           isOwner(practiceId) ||

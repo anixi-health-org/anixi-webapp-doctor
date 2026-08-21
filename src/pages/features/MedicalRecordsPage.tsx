@@ -15,6 +15,9 @@ import {
   patientFileCategoryLabel,
   type PatientUploadedFile,
 } from '../../services/patientDocumentService';
+import { getPatientsSharingRecords } from '../../services/medicalRecordShareService';
+import { PendingRecordShares } from '../../components/records/PendingRecordShares';
+import { useIncomingRecordShares } from '../../hooks/useIncomingRecordShares';
 import { Appointment, AppointmentDocument, PostConsultAction } from '../../types';
 
 type RecordItem =
@@ -84,24 +87,35 @@ export const MedicalRecordsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'documents' | 'notes'>('all');
+  const { requests: pendingShares } = useIncomingRecordShares(user?.id);
 
   const load = useCallback(async () => {
     if (!user?.id) return;
     setIsLoading(true);
     setError(null);
     try {
-      const [data, patients] = await Promise.all([
+      const [data, patients, sharedGrants] = await Promise.all([
         getDoctorAppointments(user.id),
         getDoctorPatients(user.id),
+        getPatientsSharingRecords(user.id),
       ]);
       setAppointments(data);
-      setPatientNames(
-        new Map(patients.map((p) => [p.id, p.displayName || p.email || p.id]))
+
+      const names = new Map(
+        patients.map((p) => [p.id, p.displayName || p.email || p.id])
       );
+      // A patient can share records without being on the roster, so their name
+      // comes from the share itself.
+      sharedGrants.forEach((grant) => {
+        if (!names.has(grant.patientId)) {
+          names.set(grant.patientId, grant.patientName || 'Shared patient');
+        }
+      });
+      setPatientNames(names);
 
       // Documents the patients uploaded themselves, read from the same
       // collection the mobile app writes to.
-      const files = await getPatientUploadedFiles(patients.map((p) => p.id));
+      const files = await getPatientUploadedFiles(Array.from(names.keys()));
       setPatientFiles(files);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load medical records');
@@ -200,6 +214,14 @@ export const MedicalRecordsPage: React.FC = () => {
         </div>
       )}
 
+      {user?.id && (
+        <PendingRecordShares
+          requests={pendingShares}
+          doctorId={user.id}
+          onReviewed={() => void load()}
+        />
+      )}
+
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full max-w-md">
           <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#65758b]" />
@@ -253,8 +275,8 @@ export const MedicalRecordsPage: React.FC = () => {
             <DocumentTextIcon className="mx-auto h-10 w-10 text-[#c5ced9]" />
             <p className="mt-3 text-sm font-medium text-[#344256]">No records found</p>
             <p className="mt-1 text-sm text-[#65758b]">
-              Consultation notes, appointment documents and files your patients
-              upload will appear here.
+              Consultation notes, appointment documents, and records patients
+              share with you will appear here.
             </p>
             <Link
               to="/patients"

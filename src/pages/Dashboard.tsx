@@ -2,8 +2,10 @@ import { V2Dashboard } from '../components/dashboard/V2Dashboard';
 import { AddPatientModal } from '../components/patients/AddPatientModal';
 import { PageShell } from '../components/page-layout';
 import {
+  derivePatientRosterStatus,
   listenToDoctorPatients,
 } from '../services/patientManagementService';
+import { syncDoctorPatientRoster } from '../services/patientRosterSync';
 import { useIncomingSharingRequests } from '../hooks/useIncomingSharingRequests';
 import { Patient } from '../types';
 import { useAuth } from '../hooks/useAuth';
@@ -24,65 +26,10 @@ export const Dashboard: React.FC = () => {
       .map((request) => request.patientId)
   );
 
-  const actionRequiredCount = patients.filter(
-    (patient) =>
-      pendingPatientIds.has(patient.id) ||
-      (patient.chronicDiseases && patient.chronicDiseases.length > 0)
-  ).length;
+  const actionRequiredCount = patients.filter((patient) => pendingPatientIds.has(patient.id)).length;
 
-  const [stableCount, setStableCount] = useState(0);
-  const [inactiveCount, setInactiveCount] = useState(0);
-
-  useEffect(() => {
-    const calculateCounts = async () => {
-      let inactive = 0;
-      let stable = 0;
-
-      for (const patient of patients) {
-        const hasChronicDiseases = patient.chronicDiseases && patient.chronicDiseases.length > 0;
-
-        if (hasChronicDiseases) {
-          continue;
-        }
-
-        let isInactive = false;
-        try {
-          const thirtyDaysAgo = new Date();
-          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-          const today = new Date();
-
-          const { getAdherenceStats } = await import('../services/adherenceService');
-          const stats = await getAdherenceStats(
-            patient.id,
-            thirtyDaysAgo.toISOString().split('T')[0],
-            today.toISOString().split('T')[0]
-          );
-
-          isInactive = stats.averageAdherence < 5;
-        } catch (err) {
-          const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
-          const lastUpdate = patient.updatedAt ? new Date(patient.updatedAt) : new Date(patient.createdAt);
-          isInactive = lastUpdate < fiveDaysAgo;
-        }
-
-        if (isInactive) {
-          inactive++;
-        } else {
-          stable++;
-        }
-      }
-
-      setStableCount(stable);
-      setInactiveCount(inactive);
-    };
-
-    if (patients.length > 0) {
-      calculateCounts();
-    } else {
-      setStableCount(0);
-      setInactiveCount(0);
-    }
-  }, [patients]);
+  const stableCount = patients.filter((patient) => derivePatientRosterStatus(patient) === 'stable').length;
+  const inactiveCount = patients.filter((patient) => derivePatientRosterStatus(patient) === 'inactive').length;
 
   useEffect(() => {
     if (!user?.id) {
@@ -91,6 +38,10 @@ export const Dashboard: React.FC = () => {
 
     
     setIsLoading(true);
+
+    // Pulls in patients whose roster entry was never written (older bookings,
+    // record shares); the listener below picks them up as soon as they land.
+    void syncDoctorPatientRoster(user.id);
 
     const unsubscribePatients = listenToDoctorPatients(
       user.id,

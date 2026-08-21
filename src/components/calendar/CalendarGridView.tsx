@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Appointment, SoftBlock, BookableBlock } from '../../types';
 import { useAuth } from '../../hooks/AuthContext';
@@ -8,7 +8,15 @@ import { getSoftBlocks, getBookableBlocks } from '../../services/practiceSetting
 import { AppointmentDetails } from '../appointments/AppointmentDetails';
 import { CreateAppointmentModal } from '../appointments/CreateAppointmentModal';
 import { CalendarPageSkeleton } from '../ui/Skeleton';
-import { appointmentOnDate, parseTimeToMinutes, toDateKey } from './calendarDateUtils';
+import {
+  appointmentDurationMinutes,
+  appointmentOnDate,
+  parseHhmmToMinutes,
+  formatHourLabel,
+  parseTimeToMinutes,
+  toDateKey,
+  visibleHourRange,
+} from './calendarDateUtils';
 
 const isSameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() &&
@@ -31,13 +39,11 @@ const addDays = (date: Date, days: number): Date => {
 };
 
 const ROW_HEIGHT = 64;
-const DAY_START_HOUR = 7;
-const DAY_END_HOUR = 20;
-const VISIBLE_HOURS = DAY_END_HOUR - DAY_START_HOUR;
-const DEFAULT_DURATION_MIN = 30;
+const FALLBACK_START_HOUR = 8;
+const FALLBACK_END_HOUR = 17;
 
 const toMinutes = (h: number, m: number) => h * 60 + m;
-const minToTop = (min: number) => ((min - DAY_START_HOUR * 60) / 60) * ROW_HEIGHT;
+const minToTop = (min: number, startHour: number) => ((min - startHour * 60) / 60) * ROW_HEIGHT;
 
 /**
  * Parse appointment time labels into minutes-from-midnight.
@@ -54,19 +60,17 @@ const appointmentStartMinutes = (apt: Appointment): number => {
 };
 
 const appointmentEndMinutes = (apt: Appointment, startMin: number): number => {
-  if (apt.startAt && apt.endAt) {
-    const duration = Math.round((apt.endAt.getTime() - apt.startAt.getTime()) / 60_000);
-    if (duration > 0 && duration < 24 * 60) {
-      return startMin + duration;
-    }
-  }
-  return startMin + DEFAULT_DURATION_MIN;
+  return startMin + appointmentDurationMinutes(apt);
 };
 
-const getEventStyleFromMinutes = (startMin: number, endMin: number): React.CSSProperties => {
-  const clampedStart = Math.max(startMin, DAY_START_HOUR * 60);
+const getEventStyleFromMinutes = (
+  startMin: number,
+  endMin: number,
+  startHour: number,
+): React.CSSProperties => {
+  const clampedStart = Math.max(startMin, startHour * 60);
   const clampedEnd = Math.max(endMin, clampedStart + 15);
-  const top = minToTop(clampedStart);
+  const top = minToTop(clampedStart, startHour);
   const height = Math.max(((clampedEnd - clampedStart) / 60) * ROW_HEIGHT, ROW_HEIGHT / 2);
   return { position: 'absolute', top, height, left: 2, right: 2 };
 };
@@ -124,7 +128,35 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const hours = Array.from({ length: VISIBLE_HOURS }, (_, i) => DAY_START_HOUR + i);
+
+  const weekAppointments = useMemo(() => {
+    const keys = new Set(days.map((day) => toDateKey(day)));
+    return appointments.filter((apt) =>
+      Array.from(keys).some((key) => appointmentOnDate(apt, key)),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appointments, weekStart]);
+
+  const { startHour, endHour } = useMemo(() => {
+    const windows = clinicHours
+      .map((block) => {
+        const start = parseHhmmToMinutes(block.startTime);
+        const end = parseHhmmToMinutes(block.endTime);
+        if (start == null || end == null || end <= start) return null;
+        return { start, end };
+      })
+      .filter((window): window is { start: number; end: number } => window != null);
+    return visibleHourRange(windows, weekAppointments, {
+      startHour: FALLBACK_START_HOUR,
+      endHour: FALLBACK_END_HOUR,
+    });
+  }, [clinicHours, weekAppointments]);
+
+  const visibleHours = endHour - startHour;
+  const hours = useMemo(
+    () => Array.from({ length: visibleHours }, (_, i) => startHour + i),
+    [startHour, visibleHours],
+  );
 
   const practiceId = practiceSession?.practice?.id;
 
@@ -173,7 +205,7 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
   const getSoftBlockStyle = (start: Date, end: Date): React.CSSProperties => {
     const startMin = toMinutes(start.getHours(), start.getMinutes());
     const endMin = toMinutes(end.getHours(), end.getMinutes());
-    return getEventStyleFromMinutes(startMin, endMin);
+    return getEventStyleFromMinutes(startMin, endMin, startHour);
   };
 
   const clinicWindowsForDay = (day: Date) => {
@@ -191,8 +223,8 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
   /** Outside clinic hours - shaded like non-working time on Google Calendar. */
   const outsideClinicRanges = (day: Date): { start: number; end: number }[] => {
     const windows = clinicWindowsForDay(day).sort((a, b) => a.start - b.start);
-    const dayStart = DAY_START_HOUR * 60;
-    const dayEnd = DAY_END_HOUR * 60;
+    const dayStart = startHour * 60;
+    const dayEnd = endHour * 60;
     if (windows.length === 0) {
       return [{ start: dayStart, end: dayEnd }];
     }
@@ -207,20 +239,11 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
   };
 
   const handleAppointmentClick = (apt: Appointment) => {
-    const isAnixiPatient = !apt.isManual && apt.patientId && apt.patientId !== 'unknown';
-    if (isAnixiPatient) {
-      navigate(`/patient-profile/${apt.patientId}`, {
-        state: {
-          appointmentId: apt.id,
-          appointmentTime: apt.time,
-          appointmentDate: apt.date ? new Date(apt.date).toLocaleDateString() : undefined,
-          consultType: apt.consultType,
-          status: apt.status,
-        },
-      });
-    } else {
-      setSelectedAppointment(apt);
+    if (apt.id) {
+      navigate(`/appointments/${apt.id}`);
+      return;
     }
+    setSelectedAppointment(apt);
   };
 
   const handleStatusChange = (id: string, status: Appointment['status']) => {
@@ -275,7 +298,10 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
       {isLoading ? (
         <CalendarPageSkeleton />
       ) : (
-        <div className="overflow-auto rounded-xl border border-[#e1e7ef] bg-white shadow-sm">
+        <div
+          className="overflow-auto overscroll-contain rounded-xl border border-[#e1e7ef] bg-white shadow-sm"
+          style={{ maxHeight: 620 }}
+        >
           <div
             className="sticky top-0 z-10 grid border-b border-[#e1e7ef] bg-white"
             style={{ gridTemplateColumns: '56px repeat(7, 1fr)' }}
@@ -307,7 +333,7 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
             className="grid"
             style={{
               gridTemplateColumns: '56px repeat(7, 1fr)',
-              height: `${VISIBLE_HOURS * ROW_HEIGHT}px`,
+              height: `${visibleHours * ROW_HEIGHT}px`,
               position: 'relative',
             }}
           >
@@ -316,9 +342,9 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
                 <div
                   key={h}
                   className="absolute w-full pr-2 text-right text-[11px] text-[#8FA0B6]"
-                  style={{ top: (h - DAY_START_HOUR) * ROW_HEIGHT - 8 }}
+                  style={{ top: (h - startHour) * ROW_HEIGHT - 8 }}
                 >
-                  {h === 12 ? '12 PM' : h < 12 ? `${h} AM` : `${h - 12} PM`}
+                  {formatHourLabel(h)}
                 </div>
               ))}
             </div>
@@ -333,13 +359,13 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
                 <div
                   key={day.toISOString()}
                   className="relative border-l border-[#eef2f6]"
-                  style={{ height: `${VISIBLE_HOURS * ROW_HEIGHT}px` }}
+                  style={{ height: `${visibleHours * ROW_HEIGHT}px` }}
                 >
                   {hours.map((h) => (
                     <div
                       key={h}
                       className="absolute w-full border-t border-[#eef2f6]"
-                      style={{ top: (h - DAY_START_HOUR) * ROW_HEIGHT }}
+                      style={{ top: (h - startHour) * ROW_HEIGHT }}
                     />
                   ))}
 
@@ -347,7 +373,7 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
                     <div
                       key={`off-${idx}`}
                       className="pointer-events-none absolute inset-x-0 bg-[#f1f5f9]/80"
-                      style={getEventStyleFromMinutes(range.start, range.end)}
+                      style={getEventStyleFromMinutes(range.start, range.end, startHour)}
                       title="Outside clinic hours"
                     />
                   ))}
@@ -373,7 +399,7 @@ export const CalendarGridView: React.FC<CalendarGridViewProps> = ({
                   {dayApts.map((apt) => {
                     const startMin = appointmentStartMinutes(apt);
                     const endMin = appointmentEndMinutes(apt, startMin);
-                    const style = getEventStyleFromMinutes(startMin, endMin);
+                    const style = getEventStyleFromMinutes(startMin, endMin, startHour);
                     const colors = STATUS_COLORS[apt.status] ?? STATUS_COLORS.confirmed;
                     const isAnixiPatient = !apt.isManual && apt.patientId && apt.patientId !== 'unknown';
                     return (

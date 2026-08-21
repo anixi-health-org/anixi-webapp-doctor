@@ -77,9 +77,9 @@ export const AvailabilityExceptionsEditor: React.FC<Props> = ({
   return (
     <section className="space-y-3">
       <div>
-        <h4 className="text-[13px] font-semibold text-[#344256]">Exceptions</h4>
+        <h4 className="text-[13px] font-semibold text-[#344256]">Time off</h4>
         <p className="mt-0.5 text-[12px] text-[#65758b]">
-          One-off changes that do not modify your recurring weekly schedule.
+          Block a specific day for leave, holidays, or shorter hours — without changing your usual weekly schedule.
         </p>
       </div>
 

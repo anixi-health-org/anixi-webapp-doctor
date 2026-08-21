@@ -18,13 +18,17 @@ import {
   formatAppointmentTypeLabel,
   isWhatsAppComingSoon,
 } from '../utils/teleconsult';
-import { formatAppointmentStatusLabel } from '../services/appointmentCanonical';
+import {
+  formatAppointmentStatusLabel,
+  needsDoctorConfirmation,
+} from '../services/appointmentCanonical';
 
 const statusClass = (status: Appointment['status']) => {
   switch (status) {
     case 'confirmed':
       return 'bg-emerald-50 text-emerald-800 border-emerald-200';
     case 'pending':
+    case 'rescheduled':
       return 'bg-amber-50 text-amber-800 border-amber-200';
     case 'completed':
       return 'bg-slate-100 text-slate-700 border-slate-200';
@@ -110,7 +114,13 @@ export const AppointmentSummary: React.FC = () => {
     if (!user?.id || !appointment) return;
     setLoadingConfirm(true);
     try {
-      await updateAppointment(user.id, appointment.id, { status: 'confirmed' });
+      const confirmedScheduledAt =
+        appointment.startAt ?? appointment.scheduledAt ?? appointment.date;
+      await updateAppointment(user.id, appointment.id, {
+        status: 'confirmed',
+        requiresConfirmation: false,
+        confirmedScheduledAt,
+      });
       await syncAppointmentStatus(appointment.id);
 
       const practiceId = appointment.practiceId ?? practiceSession?.practice?.id;
@@ -136,7 +146,12 @@ export const AppointmentSummary: React.FC = () => {
         }).catch(() => {});
       }
 
-      setAppointment({ ...appointment, status: 'confirmed' });
+      setAppointment({
+        ...appointment,
+        status: 'confirmed',
+        requiresConfirmation: false,
+        confirmedScheduledAt,
+      });
       setToast({ visible: true, message: 'Appointment confirmed.', type: 'success' });
     } catch (err) {
       setToast({ visible: true, message: 'Failed to confirm appointment', type: 'error' });
@@ -226,7 +241,7 @@ export const AppointmentSummary: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-2 border-t border-[#eef2f6] bg-[#f8fafc] p-4 sm:flex-row sm:flex-wrap">
-          {appointment.status === 'pending' && can('manageAppointments') && (
+          {needsDoctorConfirmation(appointment) && can('manageAppointments') && (
             <button
               type="button"
               onClick={confirmAppointment}

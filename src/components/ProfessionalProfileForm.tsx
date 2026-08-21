@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../lib/firebase';
+import { useSearchParams } from 'react-router-dom';
 import { TabPill } from '../components/ui/TabPill';
 import { PageHeader } from './page-layout/PageHeader';
 import { PageShell } from './page-layout/PageShell';
 import { LogoCropModal } from './LogoCropModal';
 import { useAuth } from '../hooks/useAuth';
-import { getDoctorProfileFormData, saveDoctorProfileForm } from '../services/doctorService';
+import { getDoctorProfileFormData, saveDoctorProfileForm, uploadDoctorProfilePhoto, uploadPracticeLogo } from '../services/doctorService';
 import { updatePractice } from '../services/practiceSettingsService';
 import {
   EMPTY_PROFILE_FORM,
@@ -53,6 +52,30 @@ const btnPrimaryClass =
 const btnSecondaryClass =
   'inline-flex h-10 items-center justify-center rounded-[10px] border border-[#e1e7ef] bg-white px-4 text-sm font-medium text-[#344256] transition-colors hover:border-[#427160]/40 hover:text-[#427160]';
 
+function describeImageUploadError(err: unknown, kind: 'photo' | 'logo'): string {
+  const code = typeof err === 'object' && err && 'code' in err
+    ? String((err as { code?: string }).code)
+    : '';
+  const message = err instanceof Error ? err.message : String(err ?? '');
+
+  if (code === 'storage/unauthorized' || code === 'storage/unauthenticated') {
+    return `Could not save the ${kind}. Please sign in again and retry.`;
+  }
+  if (
+    code === 'storage/quota-exceeded' ||
+    /too large|5 mb|maximum size/i.test(message)
+  ) {
+    return `That ${kind} is too large. Please use a PNG or JPG under 5 MB.`;
+  }
+  if (code === 'storage/canceled') {
+    return `The ${kind} upload was cancelled. Please try again.`;
+  }
+  if (code === 'storage/retry-limit-exceeded' || /network/i.test(message)) {
+    return `Network issue while uploading the ${kind}. Check your connection and try again.`;
+  }
+  return `Could not upload the ${kind}. Please try a PNG or JPG.`;
+}
+
 interface ProfessionalProfileFormProps {
   mode?: 'settings' | 'onboarding';
   onSubmitted?: () => void | Promise<void>;
@@ -66,15 +89,22 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
   onStepChange,
 }) => {
   const isOnboarding = mode === 'onboarding';
-  const { user, practiceSession, refreshPracticeSession } = useAuth();
+  const { user, practiceSession, refreshPracticeSession, refreshUser } = useAuth();
+  const [searchParams] = useSearchParams();
   const doctor = user?.role === 'doctor' ? user : null;
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(() =>
+    searchParams.get('tab') === 'practice' ? 3 : 1,
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState('');
   const [logoUploading, setLogoUploading] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [cropKind, setCropKind] = useState<'logo' | 'photo'>('logo');
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const [idOrPassportError, setIdOrPassportError] = useState('');
@@ -90,6 +120,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
     timezone: practiceSession?.practice?.timezone || detectBrowserTimezone(),
     practiceAddress: doctor?.officeAddress || '',
     logoUrl: doctor?.logoUrl || '',
+    profileImageUrl: doctor?.profileImageUrl || '',
   });
 
   useEffect(() => {
@@ -119,6 +150,9 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
           }));
           if (saved.logoUrl) {
             setLogoPreview(saved.logoUrl);
+          }
+          if (saved.profileImageUrl) {
+            setPhotoPreview(saved.profileImageUrl);
           }
         } else {
           setFormData((prev) => ({
@@ -153,28 +187,47 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
       ...prev,
       [name]: value
     }));
-    if (name === 'idOrPassport') {
+    if (name === 'idOrPassport' || name === 'nationality') {
       setIdOrPassportError('');
     }
   };
 
-  const validateIdOrPassport = (value: string): string | null => {
+  const isSouthAfricanNationality = (nationality: string) =>
+    nationality.trim().toLowerCase() === 'south african';
+
+  const validateIdOrPassport = (
+    value: string,
+    nationality: string,
+  ): string | null => {
     const trimmed = value.trim();
     if (!trimmed) return 'ID or passport is required';
-    if (/^\d+$/.test(trimmed)) {
-      if (trimmed.length !== 13) {
-        return 'South African ID must be exactly 13 digits';
+
+    if (isSouthAfricanNationality(nationality)) {
+      if (/^\d+$/.test(trimmed)) {
+        if (trimmed.length !== 13) {
+          return 'South African ID must be exactly 13 digits';
+        }
+        const result = validateSouthAfricanId(trimmed);
+        if (!result.valid) return result.error ?? 'Invalid South African ID number';
+        return null;
       }
-      const result = validateSouthAfricanId(trimmed);
-      if (!result.valid) return result.error ?? 'Invalid South African ID number';
-    } else if (!/^[a-zA-Z0-9]+$/.test(trimmed)) {
-      return 'Passport must contain only letters and numbers';
+      if (!/^[a-zA-Z0-9]+$/.test(trimmed)) {
+        return 'Passport must contain only letters and numbers';
+      }
+      return null;
+    }
+
+    if (!/^[a-zA-Z0-9\s-]+$/.test(trimmed)) {
+      return 'Passport or ID must contain only letters, numbers, spaces, or hyphens';
+    }
+    if (trimmed.replace(/[\s-]/g, '').length < 5) {
+      return 'Passport or ID number is too short';
     }
     return null;
   };
 
   const handleIdOrPassportBlur = () => {
-    const error = validateIdOrPassport(formData.idOrPassport);
+    const error = validateIdOrPassport(formData.idOrPassport, formData.nationality);
     setIdOrPassportError(error ?? '');
   };
 
@@ -186,7 +239,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
     setMessage('');
 
     try {
-      const idError = validateIdOrPassport(formData.idOrPassport);
+      const idError = validateIdOrPassport(formData.idOrPassport, formData.nationality);
       if (idError) {
         setIdOrPassportError(idError);
         setMessage(idError);
@@ -203,18 +256,29 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
       }
 
       let logoUrl: string | undefined = formData.logoUrl || doctor?.logoUrl;
+      let profileImageUrl: string | undefined =
+        formData.profileImageUrl || doctor?.profileImageUrl;
 
       if (logoFile && doctor?.id) {
         setLogoUploading(true);
-        const storageRef = ref(storage, `doctor-logos/${doctor.id}`);
-        const snapshot = await uploadBytes(storageRef, logoFile);
-        logoUrl = await getDownloadURL(snapshot.ref);
+        logoUrl = await uploadPracticeLogo(doctor.id, logoFile);
         setLogoUploading(false);
       }
 
-      await saveDoctorProfileForm(doctor.id, formData, logoUrl, {
-        submitForReview: isOnboarding,
-      });
+      if (photoFile && doctor?.id) {
+        setPhotoUploading(true);
+        profileImageUrl = await uploadDoctorProfilePhoto(doctor.id, photoFile);
+        setPhotoUploading(false);
+      }
+
+      await saveDoctorProfileForm(
+        doctor.id,
+        { ...formData, profileImageUrl: profileImageUrl || formData.profileImageUrl },
+        logoUrl,
+        {
+          submitForReview: isOnboarding,
+        }
+      );
 
       const practiceId = practiceSession?.practice?.id;
       if (practiceId && (formData.practiceName.trim() || formData.timezone.trim())) {
@@ -231,13 +295,19 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
         setFormData((prev) => ({ ...prev, logoUrl: logoUrl as string }));
         setLogoPreview(logoUrl);
       }
+      if (profileImageUrl) {
+        setFormData((prev) => ({ ...prev, profileImageUrl: profileImageUrl as string }));
+        setPhotoPreview(profileImageUrl);
+      }
 
       setLogoFile(null);
+      setPhotoFile(null);
       setMessage(
         isOnboarding
           ? 'Application submitted for Anixi Admin review.'
           : 'Professional profile saved successfully.'
       );
+      await refreshUser();
       if (isOnboarding) {
         await onSubmitted?.();
       }
@@ -246,12 +316,27 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
       setMessage('Failed to update profile. Please try again.');
     } finally {
       setIsLoading(false);
+      setLogoUploading(false);
+      setPhotoUploading(false);
     }
   };
 
   useEffect(() => {
     onStepChange?.(currentStep);
   }, [currentStep, onStepChange]);
+
+  useEffect(() => {
+    if (currentStep !== 3) return;
+    const focusId =
+      searchParams.get('tab') === 'practice'
+        ? 'letterhead-practice-number'
+        : null;
+    if (!focusId) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(focusId)?.focus();
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [currentStep, searchParams]);
 
   const renderTabNavigation = () => {
     const tabs = [
@@ -278,9 +363,43 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
 
   const renderPersonalInformation = () => (
     <div className="space-y-6">
-      <div className="border-b border-[#eef2f6] pb-4">
-        <h2 className={sectionTitleClass}>Personal Information</h2>
-        <p className={sectionHintClass}>Tell us about yourself and your contact details.</p>
+      <div className="flex items-center justify-between gap-4 border-b border-[#eef2f6] pb-4">
+        <div className="min-w-0">
+          <h2 className={sectionTitleClass}>Personal Information</h2>
+          <p className={sectionHintClass}>Tell us about yourself and your contact details.</p>
+        </div>
+        <label className="flex shrink-0 cursor-pointer flex-col items-center gap-1.5">
+          <span className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-[#e1e7ef] bg-[#427160] text-2xl font-semibold text-white shadow-sm">
+            {photoPreview ? (
+              <img
+                src={photoPreview}
+                alt="Profile photo"
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              (formData.fullName || 'D').charAt(0).toUpperCase()
+            )}
+          </span>
+          <span className="text-[11px] font-medium text-[#427160]">
+            {photoUploading ? 'Uploading…' : photoPreview ? 'Change' : 'Add photo'}
+          </span>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/jpg"
+            className="hidden"
+            aria-label="Upload profile photo"
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              e.target.value = '';
+              if (file) {
+                const src = URL.createObjectURL(file);
+                setCropKind('photo');
+                setCropImageSrc(src);
+                setCropModalOpen(true);
+              }
+            }}
+          />
+        </label>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -353,6 +472,11 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
           {idOrPassportError && (
             <p className="mt-1 text-xs text-red-600">{idOrPassportError}</p>
           )}
+          <p className="mt-1 text-xs text-[#65758b]">
+            {isSouthAfricanNationality(formData.nationality)
+              ? 'South African IDs must be 13 digits.'
+              : 'Enter your passport or national ID number.'}
+          </p>
         </div>
 
         <div>
@@ -622,6 +746,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
             Practice Number (BHF) <span className="text-gray-500">(optional)</span>
           </label>
           <input
+            id="letterhead-practice-number"
             type="text"
             name="practiceNumber"
             value={formData.practiceNumber}
@@ -635,6 +760,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
             VAT Number <span className="text-gray-500">(optional)</span>
           </label>
           <input
+            id="letterhead-vat-number"
             type="text"
             name="vatNumber"
             value={formData.vatNumber}
@@ -751,6 +877,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
                   e.target.value = '';
                   if (file) {
                     const src = URL.createObjectURL(file);
+                    setCropKind('logo');
                     setCropImageSrc(src);
                     setCropModalOpen(true);
                   }
@@ -760,27 +887,6 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
           </div>
         </div>
       </div>
-
-      {cropImageSrc && (
-        <LogoCropModal
-          isOpen={cropModalOpen}
-          imageSrc={cropImageSrc}
-          onClose={() => {
-            setCropModalOpen(false);
-            URL.revokeObjectURL(cropImageSrc);
-            setCropImageSrc(null);
-          }}
-          onCropComplete={(file, previewUrl) => {
-            if (logoPreview.startsWith('blob:')) {
-              URL.revokeObjectURL(logoPreview);
-            }
-            setLogoFile(file);
-            setLogoPreview(previewUrl);
-            URL.revokeObjectURL(cropImageSrc);
-            setCropImageSrc(null);
-          }}
-        />
-      )}
     </div>
   );
 
@@ -855,7 +961,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
               </div>
               <button
                 type="submit"
-                disabled={isLoading || logoUploading}
+                disabled={isLoading || logoUploading || photoUploading}
                 className={btnPrimaryClass}
               >
                 {isLoading
@@ -870,6 +976,71 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
           </form>
         </div>
       </div>
+
+      {cropImageSrc && (
+        <LogoCropModal
+          isOpen={cropModalOpen}
+          imageSrc={cropImageSrc}
+          title={cropKind === 'photo' ? 'Crop profile photo' : 'Crop practice logo'}
+          description={
+            cropKind === 'photo'
+              ? 'Frame your face. Patients will see this on doctor listings.'
+              : 'Drag to reposition. This logo is used on invoices and letterheads.'
+          }
+          cropShape={cropKind === 'photo' ? 'round' : 'rect'}
+          onClose={() => {
+            setCropModalOpen(false);
+            URL.revokeObjectURL(cropImageSrc);
+            setCropImageSrc(null);
+          }}
+          onCropComplete={(file, previewUrl) => {
+            URL.revokeObjectURL(cropImageSrc);
+            setCropImageSrc(null);
+            if (!doctor?.id) return;
+
+            if (cropKind === 'photo') {
+              if (photoPreview.startsWith('blob:')) {
+                URL.revokeObjectURL(photoPreview);
+              }
+              setPhotoFile(file);
+              setPhotoPreview(previewUrl);
+              setPhotoUploading(true);
+              void uploadDoctorProfilePhoto(doctor.id, file)
+                .then(async (url) => {
+                  setFormData((prev) => ({ ...prev, profileImageUrl: url }));
+                  setPhotoPreview(url);
+                  setPhotoFile(null);
+                  await refreshUser();
+                })
+                .catch((err) => {
+                  console.error('[ProfessionalProfileForm] photo upload failed:', err);
+                  setMessage(describeImageUploadError(err, 'photo'));
+                })
+                .finally(() => setPhotoUploading(false));
+              return;
+            }
+
+            if (logoPreview.startsWith('blob:')) {
+              URL.revokeObjectURL(logoPreview);
+            }
+            setLogoFile(file);
+            setLogoPreview(previewUrl);
+            setLogoUploading(true);
+            void uploadPracticeLogo(doctor.id, file)
+              .then(async (url) => {
+                setFormData((prev) => ({ ...prev, logoUrl: url }));
+                setLogoPreview(url);
+                setLogoFile(null);
+                await refreshUser();
+              })
+                .catch((err) => {
+                  console.error('[ProfessionalProfileForm] logo upload failed:', err);
+                  setMessage(describeImageUploadError(err, 'logo'));
+                })
+              .finally(() => setLogoUploading(false));
+          }}
+        />
+      )}
     </>
   );
 

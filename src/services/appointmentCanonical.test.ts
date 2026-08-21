@@ -9,6 +9,7 @@ import {
   isTypeOnlyPatientEdit,
   needsDoctorConfirmation,
   parseAppointmentStatus,
+  preferAppointmentStatus,
   resolveAppointmentEndAt,
   resolveScheduledAt,
   shouldAutoMarkNoShow,
@@ -152,5 +153,20 @@ describe('auto missed (no-show) rules', () => {
         afterEnd
       )
     ).toBe(false);
+  });
+
+  it('treats post-consult actions and ended calls as started', () => {
+    expect(hasConsultBeenStarted({ postConsultActions: [{ id: 'note' }] })).toBe(true);
+    expect(hasConsultBeenStarted({ teleconsult: { status: 'ended' } })).toBe(true);
+    expect(hasConsultBeenStarted({ teleconsult: { roomName: 'room-1', provider: 'livekit' } })).toBe(
+      true
+    );
+  });
+});
+
+describe('preferAppointmentStatus', () => {
+  it('keeps completed over no_show when copies disagree', () => {
+    expect(preferAppointmentStatus('no_show', 'completed')).toBe('completed');
+    expect(preferAppointmentStatus('completed', 'no_show')).toBe('completed');
   });
 });

@@ -426,6 +426,7 @@ export const ClinicAdminSettingsPage: React.FC = () => {
                   timezone={practice.timezone}
                   practiceConsultTypes={practice.consultTypes}
                   onChanged={reload}
+                  onPracticeUpdated={() => void refreshPracticeSession()}
                   doctorId={selectedDoctorId}
                 />
               )}

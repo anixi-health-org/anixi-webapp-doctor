@@ -7,6 +7,9 @@ interface LogoCropModalProps {
   imageSrc: string;
   onClose: () => void;
   onCropComplete: (file: File, previewUrl: string) => void;
+  title?: string;
+  description?: string;
+  cropShape?: 'rect' | 'round';
 }
 
 export const LogoCropModal: React.FC<LogoCropModalProps> = ({
@@ -14,6 +17,9 @@ export const LogoCropModal: React.FC<LogoCropModalProps> = ({
   imageSrc,
   onClose,
   onCropComplete,
+  title = 'Crop practice logo',
+  description = 'Drag to reposition. Use the slider to zoom.',
+  cropShape = 'rect',
 }) => {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -45,8 +51,8 @@ export const LogoCropModal: React.FC<LogoCropModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="bg-white rounded-lg w-full max-w-lg overflow-hidden shadow-xl">
         <div className="px-4 py-3 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Crop practice logo</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Drag to reposition. Use the slider to zoom.</p>
+          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+          <p className="text-sm text-gray-500 mt-0.5">{description}</p>
         </div>
 
         <div className="relative w-full h-72 bg-gray-900">
@@ -55,7 +61,7 @@ export const LogoCropModal: React.FC<LogoCropModalProps> = ({
             crop={crop}
             zoom={zoom}
             aspect={1}
-            cropShape="rect"
+            cropShape={cropShape}
             showGrid
             onCropChange={setCrop}
             onZoomChange={setZoom}

@@ -13,6 +13,8 @@ import {
   Timestamp, 
   updateDoc, 
   where,
+  type DocumentData,
+  type QuerySnapshot,
   type Unsubscribe
 } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
@@ -26,7 +28,9 @@ import {
   canAutoNoShowStatus,
   effectiveAppointmentStatus,
   formatAppointmentClock,
+  hasConsultBeenStarted,
   parseAppointmentStatus,
+  preferAppointmentStatus,
   resolveScheduledAt,
   shouldAutoMarkNoShow,
 } from './appointmentCanonical';
@@ -86,14 +90,17 @@ export const migrateDoctorAppointmentsToGlobal = async (doctorId: string): Promi
 };
 const normalizeType = (type: any): Appointment['type'] => {
   if (!type) return 'In-Person';
-  const normalized = String(type).toLowerCase();
+  const normalized = String(type).toLowerCase().replace(/_/g, '-').trim();
   const typeMap: { [key: string]: Appointment['type'] } = {
     'in-person': 'In-Person',
-    'inperson': 'In-Person',
-    'virtual': 'Virtual',
-    'phone': 'Phone',
+    inperson: 'In-Person',
+    virtual: 'Virtual',
+    teleconsult: 'Virtual',
+    telehealth: 'Virtual',
+    video: 'Virtual',
+    phone: 'Phone',
     'follow-up': 'Follow-up',
-    'followup': 'Follow-up',
+    followup: 'Follow-up',
   };
   return typeMap[normalized] || 'In-Person';
 };
@@ -208,6 +215,30 @@ const mapAppointmentFields = (
       time: data.time,
     }) ?? parsedStatus;
 
+  const teleconsult = normalizeTeleconsult(data.teleconsult);
+  const postConsultActions = normalizePostConsultActions(data.postConsultActions);
+  const teleconsultConsent = data.teleconsultConsent
+    ? {
+        obtained: Boolean(data.teleconsultConsent.obtained),
+        at: convertTimestamp(data.teleconsultConsent.at) || undefined,
+        by: typeof data.teleconsultConsent.by === 'string' ? data.teleconsultConsent.by : undefined,
+      }
+    : undefined;
+
+  // Auto no-show can race ahead of "mark completed" and leave a done visit as
+  // Missed. If the consult clearly happened, surface Completed instead.
+  let status = displayStatus;
+  if (
+    status === 'no_show' &&
+    hasConsultBeenStarted({
+      status,
+      teleconsult,
+      postConsultActions,
+    })
+  ) {
+    status = 'completed';
+  }
+
   return {
     id,
     doctorId,
@@ -215,25 +246,19 @@ const mapAppointmentFields = (
     patientName: data.patientName || 'Patient',
     patientEmail: data.patientEmail || '',
     type: normalizeType(data.type),
-    status: displayStatus,
+    status,
     date,
     time: normalizeAppointmentTime(data),
     scheduledAt: instant ?? undefined,
     notes: data.notes || '',
     documents: normalizeAppointmentDocuments(data.documents),
-    postConsultActions: normalizePostConsultActions(data.postConsultActions),
+    postConsultActions,
     isManual: data.isManual ?? false,
     practiceId: data.practiceId || undefined,
     locationId: data.locationId || undefined,
     consultType: data.consultType || data.consultationType || undefined,
-    teleconsult: normalizeTeleconsult(data.teleconsult),
-    teleconsultConsent: data.teleconsultConsent
-      ? {
-          obtained: Boolean(data.teleconsultConsent.obtained),
-          at: convertTimestamp(data.teleconsultConsent.at) || undefined,
-          by: typeof data.teleconsultConsent.by === 'string' ? data.teleconsultConsent.by : undefined,
-        }
-      : undefined,
+    teleconsult,
+    teleconsultConsent,
     virtualMeetingLink: typeof data.virtualMeetingLink === 'string' ? data.virtualMeetingLink : undefined,
     startAt: convertTimestamp(data.startAt) || undefined,
     endAt: convertTimestamp(data.endAt) || undefined,
@@ -306,14 +331,7 @@ const applyAutoCancellationToAppointment = async (
       console.warn(`[Doctor Subcollection] Could not update appointment ${appointmentId}:`, doctorError);
     }
 
-    if (patientId && !patientId.startsWith('manual_')) {
-      const patientRef = doc(db, USERS_COLLECTION, patientId, 'appointments', appointmentId);
-      try {
-        await setDoc(patientRef, autoCancelPayload, { merge: true });
-      } catch (patientError) {
-        console.warn(`[Patient Subcollection] Could not update appointment ${appointmentId}:`, patientError);
-      }
-    }
+    // Patient copy is updated by mirrorSharedAppointment when the global doc changes.
 
     return true;
   } catch (error) {
@@ -325,6 +343,9 @@ const applyAutoCancellationToAppointment = async (
 /**
  * Marks a confirmed appointment as missed (no_show) once the booked slot has ended
  * and no consult was started. Mirrors mobile auto-close behaviour.
+ *
+ * Always re-reads Firestore before writing so a concurrent "mark completed"
+ * cannot be overwritten by a stale in-memory confirmed status.
  */
 const applyAutoNoShowToAppointment = async (
   appointment: Appointment,
@@ -338,44 +359,112 @@ const applyAutoNoShowToAppointment = async (
       return false;
     }
 
+    const globalRef = doc(db, APPOINTMENTS_COLLECTION, appointment.id);
+    const doctorRef = doc(db, USERS_COLLECTION, doctorId, 'appointments', appointment.id);
+    const [globalSnap, doctorSnap] = await Promise.all([getDoc(globalRef), getDoc(doctorRef)]);
+
+    const liveStatuses = [globalSnap.data()?.status, doctorSnap.data()?.status]
+      .map((value) => parseAppointmentStatus(value))
+      .filter((value): value is NonNullable<typeof value> => value != null);
+
+    if (liveStatuses.some((status) => status === 'completed' || status === 'cancelled' || status === 'auto_cancelled' || status === 'no_show')) {
+      return false;
+    }
+
+    const liveTeleconsult = {
+      ...(globalSnap.data()?.teleconsult ?? {}),
+      ...(doctorSnap.data()?.teleconsult ?? {}),
+    };
+    const liveActions =
+      doctorSnap.data()?.postConsultActions ?? globalSnap.data()?.postConsultActions;
+
+    if (
+      hasConsultBeenStarted({
+        status: preferAppointmentStatus(
+          doctorSnap.data()?.status,
+          globalSnap.data()?.status
+        ),
+        teleconsult: {
+          status: liveTeleconsult.status,
+          doctorJoinedAt: convertTimestamp(liveTeleconsult.doctorJoinedAt),
+          patientJoinedAt: convertTimestamp(liveTeleconsult.patientJoinedAt),
+          roomName: liveTeleconsult.roomName,
+          provider: liveTeleconsult.provider,
+        },
+        postConsultActions: Array.isArray(liveActions) ? liveActions : null,
+      })
+    ) {
+      return false;
+    }
+
+    if (!canAutoNoShowStatus(preferAppointmentStatus(doctorSnap.data()?.status, globalSnap.data()?.status))) {
+      return false;
+    }
+
     const noShowPayload = {
       status: 'no_show' as const,
       updatedAt: serverTimestamp(),
       autoNoShowAt: serverTimestamp(),
     };
 
-    const globalRef = doc(db, APPOINTMENTS_COLLECTION, appointment.id);
     try {
       await setDoc(globalRef, noShowPayload, { merge: true });
     } catch (globalError) {
       console.warn(`[Global Collection] Could not mark no-show ${appointment.id}:`, globalError);
     }
 
-    const doctorRef = doc(db, USERS_COLLECTION, doctorId, 'appointments', appointment.id);
     try {
       await setDoc(doctorRef, noShowPayload, { merge: true });
     } catch (doctorError) {
       console.warn(`[Doctor Subcollection] Could not mark no-show ${appointment.id}:`, doctorError);
     }
 
-    if (appointment.patientId && !appointment.patientId.startsWith('manual_') && !appointment.isManual) {
-      const patientRef = doc(
-        db,
-        USERS_COLLECTION,
-        appointment.patientId,
-        'appointments',
-        appointment.id
-      );
-      try {
-        await setDoc(patientRef, noShowPayload, { merge: true });
-      } catch (patientError) {
-        console.warn(`[Patient Subcollection] Could not mark no-show ${appointment.id}:`, patientError);
-      }
-    }
+    // Patient copy is mirrored from appointments/{id} by Cloud Function.
+    // Doctors cannot write Users/{patientId}/** under security rules.
 
     return true;
   } catch (error) {
     console.error(`Error applying auto no-show to appointment ${appointment.id}:`, error);
+    return false;
+  }
+};
+
+/**
+ * If auto no-show overwrote a visit that actually had a consult, restore Completed.
+ */
+const healMisfiredNoShow = async (
+  appointment: Appointment,
+  doctorId: string
+): Promise<boolean> => {
+  try {
+    if (!hasConsultBeenStarted(appointment)) return false;
+
+    const globalRef = doc(db, APPOINTMENTS_COLLECTION, appointment.id);
+    const doctorRef = doc(db, USERS_COLLECTION, doctorId, 'appointments', appointment.id);
+    const [globalSnap, doctorSnap] = await Promise.all([getDoc(globalRef), getDoc(doctorRef)]);
+
+    const liveStatus = preferAppointmentStatus(
+      doctorSnap.data()?.status,
+      globalSnap.data()?.status
+    );
+    if (liveStatus !== 'no_show') return false;
+
+    const payload = {
+      status: 'completed' as const,
+      updatedAt: serverTimestamp(),
+      healedFromNoShowAt: serverTimestamp(),
+    };
+
+    await Promise.all([
+      setDoc(globalRef, payload, { merge: true }).catch(() => undefined),
+      setDoc(doctorRef, payload, { merge: true }).catch(() => undefined),
+    ]);
+
+    // Patient copy is mirrored from appointments/{id} by Cloud Function.
+
+    return true;
+  } catch (error) {
+    console.error(`Error healing no-show appointment ${appointment.id}:`, error);
     return false;
   }
 };
@@ -503,18 +592,39 @@ export const listenToDoctorAppointments = (
   const owned = new Map<string, Appointment>();
   const autoCancelChecked = new Set<string>();
   const autoNoShowChecked = new Set<string>();
+  const healChecked = new Set<string>();
 
   const emit = () => {
     const merged = new Map(owned);
-    shared.forEach((apt, id) => merged.set(id, apt));
+    shared.forEach((sharedApt, id) => {
+      const ownedApt = merged.get(id);
+      if (!ownedApt) {
+        merged.set(id, sharedApt);
+        return;
+      }
+      const preferredStatus =
+        preferAppointmentStatus(ownedApt.status, sharedApt.status) ?? sharedApt.status;
+      const teleconsult = {
+        ...(ownedApt.teleconsult ?? {}),
+        ...(sharedApt.teleconsult ?? {}),
+      };
+      merged.set(id, {
+        ...ownedApt,
+        ...sharedApt,
+        status: preferredStatus,
+        teleconsult: Object.keys(teleconsult).length > 0 ? teleconsult : sharedApt.teleconsult,
+        postConsultActions:
+          (ownedApt.postConsultActions?.length ?? 0) >= (sharedApt.postConsultActions?.length ?? 0)
+            ? ownedApt.postConsultActions
+            : sharedApt.postConsultActions,
+      });
+    });
     const appointments = Array.from(merged.values()).sort(
       (a, b) => b.date.getTime() - a.date.getTime()
     );
 
     onAppointmentsUpdate(appointments);
 
-    // Past pending visits are auto-cancelled once per session per appointment;
-    // the resulting write flows back through these listeners.
     appointments
       .filter((apt) => canAutoCancelStatus(apt.status) && !autoCancelChecked.has(apt.id))
       .forEach((apt) => {
@@ -530,12 +640,18 @@ export const listenToDoctorAppointments = (
         );
       });
 
-    // Confirmed visits whose slot has ended become missed unless a consult started.
     appointments
       .filter((apt) => shouldAutoMarkNoShow(apt) && !autoNoShowChecked.has(apt.id))
       .forEach((apt) => {
         autoNoShowChecked.add(apt.id);
         void applyAutoNoShowToAppointment(apt, doctorId);
+      });
+
+    appointments
+      .filter((apt) => hasConsultBeenStarted(apt) && !healChecked.has(apt.id))
+      .forEach((apt) => {
+        healChecked.add(apt.id);
+        void healMisfiredNoShow(apt, doctorId);
       });
   };
 
@@ -615,15 +731,89 @@ export const getAppointmentById = async (
 ): Promise<Appointment | null> => {
   try {
     const appointmentRef = doc(db, USERS_COLLECTION, doctorId, 'appointments', appointmentId);
-    const appointmentDoc = await getDoc(appointmentRef);
-    if (!appointmentDoc.exists()) {
-      ;
+    const sharedRef = doc(db, APPOINTMENTS_COLLECTION, appointmentId);
+    const [appointmentDoc, sharedDoc] = await Promise.all([
+      getDoc(appointmentRef),
+      getDoc(sharedRef),
+    ]);
+
+    if (!appointmentDoc.exists() && !sharedDoc.exists()) {
       return null;
     }
-    const data = appointmentDoc.data();
-    const appointment: Appointment = mapAppointmentFields(appointmentDoc.id, doctorId, data);
 
-    // Apply auto-cancellation rule if applicable
+    // Prefer the doctor's copy for notes, but pull scheduling / teleconsult
+    // fields from the shared record when the subcollection is stale.
+    const doctorData = appointmentDoc.exists() ? appointmentDoc.data() : {};
+    const sharedData = sharedDoc.exists() ? sharedDoc.data() : {};
+    const mergedData: DocumentData = {
+      ...sharedData,
+      ...doctorData,
+    };
+    if (sharedDoc.exists()) {
+      const shared = sharedData;
+      if (shared.teleconsult) {
+        mergedData.teleconsult = {
+          ...(doctorData.teleconsult ?? {}),
+          ...shared.teleconsult,
+        };
+      }
+      const preferredStatus = preferAppointmentStatus(doctorData.status, shared.status);
+      if (preferredStatus) {
+        mergedData.status = preferredStatus;
+      }
+      const doctorActions = Array.isArray(doctorData.postConsultActions)
+        ? doctorData.postConsultActions
+        : [];
+      const sharedActions = Array.isArray(shared.postConsultActions)
+        ? shared.postConsultActions
+        : [];
+      if (sharedActions.length > doctorActions.length) {
+        mergedData.postConsultActions = sharedActions;
+      }
+      if (!mergedData.consultType && shared.consultType) {
+        mergedData.consultType = shared.consultType;
+      }
+      if (!mergedData.consultationType && shared.consultationType) {
+        mergedData.consultationType = shared.consultationType;
+      }
+      if (shared.type && (!mergedData.type || mergedData.type === 'In-Person')) {
+        const sharedType = String(shared.type).toLowerCase();
+        if (
+          sharedType === 'virtual' ||
+          sharedType === 'teleconsult' ||
+          sharedType === 'telehealth' ||
+          sharedType === 'video'
+        ) {
+          mergedData.type = shared.type;
+        }
+      }
+    }
+
+    const appointment: Appointment = mapAppointmentFields(
+      appointmentId,
+      doctorId,
+      mergedData
+    );
+
+    const healed = await healMisfiredNoShow(appointment, doctorId);
+    if (healed) {
+      appointment.status = 'completed';
+      return appointment;
+    }
+
+    const teleconsultOpen =
+      appointment.teleconsult?.status === 'in_progress' ||
+      appointment.teleconsult?.status === 'waiting' ||
+      Boolean(
+        appointment.teleconsult?.doctorJoinedAt ||
+          appointment.teleconsult?.patientJoinedAt
+      );
+
+    // Never auto-cancel / no-show a visit that still has an open video session.
+    if (teleconsultOpen) {
+      return appointment;
+    }
+
     const wasAutoCancelled = await applyAutoCancellationToAppointment(
       appointment.id,
       doctorId,
@@ -646,7 +836,6 @@ export const getAppointmentById = async (
 
     return appointment;
   } catch (error) {
-    ;
     throw error;
   }
 };
@@ -715,15 +904,9 @@ export const createAppointment = async (data: Omit<Appointment, 'id' | 'createdA
       updatedAt: serverTimestamp(),
     });
 
-    if (data.patientId && !data.isManual) {
-      const patientAppointmentRef = doc(db, USERS_COLLECTION, data.patientId, 'appointments', globalDocRef.id);
-      await setDoc(patientAppointmentRef, {
-        ...basePayload,
-        isManual: false,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
+    // Patient copy is created/updated by mirrorSharedAppointment from the global doc.
+    // Do not client-write Users/{patientId}/appointments — rules deny it and can
+    // fail the whole create after the shared/doctor docs already exist.
     
     return globalDocRef.id;
   } catch (error) {
@@ -840,15 +1023,6 @@ export const updateAppointment = async (
       }
     });
 
-    const isManualAppointment = Boolean(
-      updates.isManual ?? appointmentData?.isManual ?? false
-    );
-    const canWritePatientSubcollection = Boolean(
-      foundPatientId &&
-        !isManualAppointment &&
-        !String(foundPatientId).startsWith('manual_')
-    );
-
     
     const updatePromises = [];
 
@@ -883,21 +1057,6 @@ export const updateAppointment = async (
       })
     );
 
-    if (canWritePatientSubcollection && foundPatientId) {
-      const patientRef = doc(db, USERS_COLLECTION, foundPatientId, 'appointments', appointmentId);
-      updatePromises.push(
-        updateDoc(patientRef, updateData).catch(async (error) => {
-          const fullData = {
-            doctorId,
-            patientId: foundPatientId,
-            ...appointmentData,
-            ...updateData,
-          };
-          return setDoc(patientRef, fullData);
-        })
-      );
-    }
-
     
     await Promise.all(updatePromises);
 
@@ -927,20 +1086,16 @@ export const syncAppointmentStatus = async (appointmentId: string): Promise<void
     }
 
     const doctorId = masterData.doctorId;
-    const patientId = masterData.patientId;
 
-    
     if (doctorId) {
       const doctorRef = doc(db, USERS_COLLECTION, doctorId, 'appointments', appointmentId);
       await setDoc(doctorRef, masterData, { merge: true });
     }
 
-    
-    if (patientId) {
-      const patientRef = doc(db, USERS_COLLECTION, patientId, 'appointments', appointmentId);
-      await setDoc(patientRef, masterData, { merge: true });
-    }
-
+    // The patient's copy is mirrored by the `mirrorSharedAppointment` Cloud
+    // Function. Security rules block a doctor from writing another user's
+    // subcollection, so attempting it here fails silently and leaves the
+    // patient looking at a stale status.
   } catch (error) {
     console.error('Error syncing appointment:', error);
   }
@@ -963,12 +1118,7 @@ export const syncAllDoctorAppointments = async (doctorId: string): Promise<void>
       const doctorRef = doc(db, USERS_COLLECTION, doctorId, 'appointments', appointmentId);
       await setDoc(doctorRef, masterData, { merge: true });
 
-      
-      const patientId = masterData.patientId;
-      if (patientId) {
-        const patientRef = doc(db, USERS_COLLECTION, patientId, 'appointments', appointmentId);
-        await setDoc(patientRef, masterData, { merge: true });
-      }
+      // Patient copy is owned by mirrorSharedAppointment — never write it from the portal.
 
     });
 
@@ -1082,47 +1232,68 @@ export const getMobileAppAppointments = async (doctorId: string): Promise<Appoin
   }
 };
 
-export const getPatientAppointments = async (patientId: string): Promise<Appointment[]> => {
+/**
+ * Every visit this doctor has with one patient, newest first.
+ *
+ * Reads must stay inside what the doctor owns: `Users/{patientId}/appointments`
+ * belongs to the patient and is denied outright, and querying the shared
+ * collection by `patientId` alone would sweep in other doctors' visits and be
+ * rejected. Scoping both queries to this doctor keeps them readable.
+ */
+export const getDoctorPatientAppointments = async (
+  doctorId: string,
+  patientId: string
+): Promise<Appointment[]> => {
+  if (!doctorId || !patientId) return [];
+
+  const byId = new Map<string, Appointment>();
+
+  const collect = (snapshot: QuerySnapshot<DocumentData>) => {
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (data.patientId !== patientId) return;
+      if (byId.has(docSnap.id)) return;
+      try {
+        byId.set(
+          docSnap.id,
+          mapAppointmentFields(docSnap.id, data.doctorId || doctorId, data)
+        );
+      } catch {
+        // Skip records we cannot map into the portal's shape.
+      }
+    });
+  };
+
   try {
-    const appointments: Appointment[] = [];
-
-    try {
-      const patientAppointmentsRef = collection(db, USERS_COLLECTION, patientId, 'appointments');
-      const patientSnapshot = await getDocs(patientAppointmentsRef);
-      patientSnapshot.forEach((doc) => {
-        const data = doc.data();
-        try {
-          appointments.push(mapAppointmentFields(doc.id, data.doctorId || 'unknown', data));
-        } catch (error) {
-        }
-      });
-    } catch (error) {
-    }
-
-    try {
-      const globalAppointmentsRef = collection(db, APPOINTMENTS_COLLECTION);
-      const q = query(globalAppointmentsRef, where('patientId', '==', patientId));
-      const globalSnapshot = await getDocs(q);
-      globalSnapshot.forEach((doc) => {
-        const data = doc.data();
-        try {
-          
-          const exists = appointments.some(apt => apt.id === doc.id);
-          if (!exists) {
-            appointments.push(mapAppointmentFields(doc.id, data.doctorId || 'unknown', data));
-          }
-        } catch (error) {
-        }
-      });
-    } catch (error) {
-    }
-
-    const sorted = appointments.sort((a, b) => b.date.getTime() - a.date.getTime());
-    return sorted;
+    collect(
+      await getDocs(
+        query(
+          collection(db, USERS_COLLECTION, doctorId, 'appointments'),
+          where('patientId', '==', patientId)
+        )
+      )
+    );
   } catch (error) {
-    console.error('Error getting patient appointments:', error);
-    throw error;
+    console.error('[appointmentService] doctor-owned patient appointments', error);
   }
+
+  try {
+    collect(
+      await getDocs(
+        query(
+          collection(db, APPOINTMENTS_COLLECTION),
+          where('doctorId', '==', doctorId),
+          where('patientId', '==', patientId)
+        )
+      )
+    );
+  } catch (error) {
+    console.error('[appointmentService] shared patient appointments', error);
+  }
+
+  return Array.from(byId.values()).sort(
+    (a, b) => b.date.getTime() - a.date.getTime()
+  );
 };
 
 export const fixInconsistentAppointments = async (): Promise<void> => {
@@ -1153,22 +1324,7 @@ export const fixInconsistentAppointments = async (): Promise<void> => {
         }
       }
 
-      
-      if (patientId) {
-        const patientRef = doc(db, USERS_COLLECTION, patientId, 'appointments', appointmentId);
-        const patientSnap = await getDoc(patientRef);
-
-        if (patientSnap.exists()) {
-          const patientData = patientSnap.data();
-          
-          if (patientData?.status !== globalData.status) {
-            await setDoc(patientRef, globalData, { merge: true });
-          }
-        } else {
-          
-          await setDoc(patientRef, globalData);
-        }
-      }
+      // Patient copies are repaired by mirrorSharedAppointment on global writes.
     }
 
   } catch (error) {
@@ -1303,26 +1459,13 @@ export const addAppointmentDocument = async (
     };
 
     const globalRef = doc(db, APPOINTMENTS_COLLECTION, appointmentId);
-    let patientId: string | undefined;
-
-    const globalSnap = await getDoc(globalRef);
-    if (globalSnap.exists()) {
-      patientId = globalSnap.data()?.patientId;
-    } else {
-      const doctorSnap = await getDoc(doc(db, USERS_COLLECTION, doctorId, 'appointments', appointmentId));
-      if (doctorSnap.exists()) {
-        patientId = doctorSnap.data()?.patientId;
-      }
-    }
 
     const writeTargets = [
       globalRef,
       doc(db, USERS_COLLECTION, doctorId, 'appointments', appointmentId),
     ];
 
-    if (patientId) {
-      writeTargets.push(doc(db, USERS_COLLECTION, patientId, 'appointments', appointmentId));
-    }
+    // Patient document list is mirrored when the global appointment updates.
 
     await Promise.all(
       writeTargets.map((targetRef) =>

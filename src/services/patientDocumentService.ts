@@ -46,6 +46,13 @@ const chunk = <T,>(items: T[], size: number): T[][] => {
   return chunks;
 };
 
+/** Scope keys map onto the `category` field stored on each medical file. */
+const SCOPE_TO_FILE_CATEGORY: Array<[keyof MedicalRecordScope, string]> = [
+  ['xrays', 'xrays'],
+  ['bloodTests', 'blood_tests'],
+  ['notes', 'notes'],
+];
+
 async function resolvePatientFileAccess(patientId: string, doctorId: string) {
   const [approvedShareSnap, approvedPatientSnap, approvedDoctorSnap] =
     await Promise.all([
@@ -122,17 +129,50 @@ export const getPatientUploadedFiles = async (
     }),
   );
 
-  const snapshots = await Promise.all(
-    chunk(ids, IN_QUERY_CHUNK).map((idChunk) =>
+  // Patients with a full connection allow reading every file, so they can be
+  // batched. Scoped shares must be queried per allowed category: security rules
+  // reject the whole query if it would return a single out-of-scope document.
+  const fullAccessIds: string[] = [];
+  const scopedRequests: Array<{ patientId: string; category: string }> = [];
+
+  ids.forEach((patientId) => {
+    const access = accessByPatient.get(patientId);
+    if (!access) return;
+    if (access.hasApprovedShareConnection) {
+      fullAccessIds.push(patientId);
+      return;
+    }
+    if (access.status !== 'approved') return;
+    SCOPE_TO_FILE_CATEGORY.forEach(([scopeKey, category]) => {
+      if (access.scope?.[scopeKey] === true) {
+        scopedRequests.push({ patientId, category });
+      }
+    });
+  });
+
+  const snapshots = await Promise.all([
+    ...chunk(fullAccessIds, IN_QUERY_CHUNK).map((idChunk) =>
       getDocs(
         query(collection(db, MEDICAL_FILES_COLLECTION), where('userId', 'in', idChunk))
       )
-    )
-  );
+    ),
+    ...scopedRequests.map((request) =>
+      getDocs(
+        query(
+          collection(db, MEDICAL_FILES_COLLECTION),
+          where('userId', '==', request.patientId),
+          where('category', '==', request.category)
+        )
+      )
+    ),
+  ]);
 
   const files: PatientUploadedFile[] = [];
+  const seen = new Set<string>();
   snapshots.forEach((snapshot) => {
     snapshot.forEach((docSnap) => {
+      if (seen.has(docSnap.id)) return;
+      seen.add(docSnap.id);
       const data = docSnap.data();
       const patientId = String(data.userId ?? '');
       const category = String(data.category ?? '');

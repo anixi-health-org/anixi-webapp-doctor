@@ -24,11 +24,14 @@ const CONSULT_TYPES: { value: ConsultType; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-const WHATSAPP_COMING_SOON_NOTE =
-  'WhatsApp consultations are coming soon.';
-
 const fmt12 = (d: Date) =>
   d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+
+const todayKey = () => {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().split('T')[0];
+};
 
 interface CreateAppointmentModalProps {
   isOpen: boolean;
@@ -91,6 +94,10 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
     notes: '',
   });
 
+  // Booking from a patient's own record: the patient is already decided, so the
+  // picker is replaced by a locked summary.
+  const isPatientLocked = Boolean(prefillPatientId) && !prefillIsManual;
+
   const practiceId = practiceSession?.practice?.id ?? null;
   const isClinicAdmin = usesClinicAdminPortal(practiceSession);
   const hasBookableBlocks = !!practiceId;
@@ -102,11 +109,19 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
     canManageAppointments &&
     (!isClinicAdmin || (clinicians.length > 0 && Boolean(selectedDoctorId)));
   const isFollowUpFlow = consultTypeDefault === 'follow-up';
-  const modalTitle = isFollowUpFlow ? 'Book Follow-up' : 'New Appointment';
-  const submitLabel = isFollowUpFlow ? 'Book Follow-up' : 'Create Appointment';
+  const modalTitle = isPatientLocked
+    ? 'New appointment'
+    : isFollowUpFlow
+    ? 'Book Follow-up'
+    : 'New Appointment';
+  const submitLabel = isPatientLocked
+    ? 'Book appointment'
+    : isFollowUpFlow
+    ? 'Book Follow-up'
+    : 'Create Appointment';
 
   const loadPatients = useCallback(async () => {
-    if (!user?.id || !isOpen) return;
+    if (!user?.id || !isOpen || isPatientLocked) return;
     setIsLoading(true);
     try {
       if (practiceId && (isClinicAdmin || canManagePatients)) {
@@ -121,7 +136,15 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id, practiceId, bookingDoctorId, canManagePatients, isClinicAdmin, isOpen]);
+  }, [
+    user?.id,
+    practiceId,
+    bookingDoctorId,
+    canManagePatients,
+    isClinicAdmin,
+    isOpen,
+    isPatientLocked,
+  ]);
 
   useEffect(() => {
     if (!isOpen || !practiceId) {
@@ -159,6 +182,34 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
       void loadPatients();
     }
   }, [isOpen, user?.id, loadPatients]);
+
+  // The modal stays mounted between openings, so the prefill has to be applied
+  // each time it opens rather than only on first render.
+  useEffect(() => {
+    if (!isOpen) return;
+    setBookingMode(prefillIsManual ? 'manual' : 'anixi');
+    setSelectedConsultType(consultTypeDefault ?? 'initial');
+    setSelectedDate((prev) => prev || todayKey());
+    setError(null);
+    if (prefillIsManual) {
+      setManualName(prefillPatientName ?? '');
+      setManualEmail(prefillPatientEmail ?? '');
+      return;
+    }
+    setFormData((prev) => ({
+      ...prev,
+      patientId: prefillPatientId ?? '',
+      patientName: prefillPatientName ?? '',
+      patientEmail: prefillPatientEmail ?? '',
+    }));
+  }, [
+    isOpen,
+    prefillPatientId,
+    prefillPatientName,
+    prefillPatientEmail,
+    prefillIsManual,
+    consultTypeDefault,
+  ]);
 
   useEffect(() => {
     if (!selectedDate || !practiceId || !bookingDoctorId) {
@@ -454,7 +505,21 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 </div>
               )}
 
-              {}
+              {isPatientLocked && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Patient</label>
+                  <div className="rounded-lg border border-[#e1e7ef] bg-[#f8fafc] px-3 py-2.5">
+                    <p className="text-sm font-semibold text-[#0E2340]">
+                      {formData.patientName || 'Patient'}
+                    </p>
+                    {formData.patientEmail && (
+                      <p className="text-xs text-[#65758b]">{formData.patientEmail}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {!isPatientLocked && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Booking Type</label>
                 <div className="flex rounded-lg border border-gray-300 overflow-hidden">
@@ -482,9 +547,9 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                   </button>
                 </div>
               </div>
+              )}
 
-              
-              {bookingMode === 'anixi' && (
+              {!isPatientLocked && bookingMode === 'anixi' && (
                 <div className="min-h-[72px]">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Patient *</label>
                   {isLoading ? (
@@ -519,8 +584,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                 </div>
               )}
 
-              
-              {bookingMode === 'manual' && (
+              {!isPatientLocked && bookingMode === 'manual' && (
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Patient Name *</label>
@@ -561,7 +625,6 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                     <option key={ct.value} value={ct.value}>{ct.label}</option>
                   ))}
                 </select>
-                <p className="mt-1.5 text-xs text-amber-700">{WHATSAPP_COMING_SOON_NOTE}</p>
               </div>
 
               {}
@@ -573,7 +636,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
                   onChange={(e) => { setSelectedDate(e.target.value); setSelectedSlot(null); }}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
-                  min={new Date().toISOString().split('T')[0]}
+                  min={todayKey()}
                 />
               </div>
 

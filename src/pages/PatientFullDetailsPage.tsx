@@ -14,8 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { PageShell } from '../components/page-layout';
 import { PatientProfileSkeleton } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
-import { getDoctorPatients } from '../services/doctorService';
-import { removePatientFromDoctor } from '../services/patientManagementService';
+import { getPatientForDoctorView, removePatientFromDoctor } from '../services/patientManagementService';
 import { Patient } from '../types';
 import {
   calculateAge,
@@ -89,8 +88,7 @@ export const PatientFullDetailsPage: React.FC = () => {
       try {
         setIsLoading(true);
         setError(null);
-        const patients = await getDoctorPatients(user.id);
-        const found = patients.find((p) => p.id === patientId);
+        const found = await getPatientForDoctorView(user.id, patientId);
         if (!found) {
           setError('Patient not found in your practice.');
           return;

@@ -165,6 +165,27 @@ export function canAutoNoShowStatus(
   return status === 'confirmed';
 }
 
+/** Prefer the stronger lifecycle state when appointment copies disagree. */
+export function preferAppointmentStatus(
+  primary: CanonicalAppointmentStatus | string | null | undefined,
+  secondary: CanonicalAppointmentStatus | string | null | undefined
+): CanonicalAppointmentStatus | null {
+  const a = parseAppointmentStatus(primary);
+  const b = parseAppointmentStatus(secondary);
+  if (!a) return b;
+  if (!b) return a;
+  const rank: Record<CanonicalAppointmentStatus, number> = {
+    completed: 60,
+    cancelled: 50,
+    auto_cancelled: 50,
+    no_show: 40,
+    confirmed: 30,
+    rescheduled: 20,
+    pending: 10,
+  };
+  return rank[a] >= rank[b] ? a : b;
+}
+
 const DEFAULT_SLOT_DURATION_MINUTES = 30;
 
 export type AppointmentSlotTiming = {
@@ -216,17 +237,31 @@ export function hasConsultBeenStarted(appointment: {
     status?: string | null;
     doctorJoinedAt?: Date | null;
     patientJoinedAt?: Date | null;
+    roomName?: string | null;
+    provider?: string | null;
   } | null;
+  postConsultActions?: unknown[] | null;
 }): boolean {
   if (appointment.status === 'completed') return true;
   const teleconsult = appointment.teleconsult;
-  if (!teleconsult) return false;
-  if (teleconsult.doctorJoinedAt || teleconsult.patientJoinedAt) return true;
-  const status = String(teleconsult.status ?? '').toLowerCase();
-  return status === 'waiting' || status === 'in_progress' || status === 'ended';
+  if (teleconsult) {
+    if (teleconsult.doctorJoinedAt || teleconsult.patientJoinedAt) return true;
+    const status = String(teleconsult.status ?? '').toLowerCase();
+    if (status === 'waiting' || status === 'in_progress' || status === 'ended') {
+      return true;
+    }
+    if (teleconsult.provider === 'livekit' && teleconsult.roomName) return true;
+  }
+  if (Array.isArray(appointment.postConsultActions) && appointment.postConsultActions.length > 0) {
+    return true;
+  }
+  return false;
 }
 
-/** True when a confirmed visit's slot has ended and no consult was started. */
+/**
+ * Confirmed visits whose slot has ended, and where nobody started the consult,
+ * can be marked missed. Never demote a completed visit.
+ */
 export function shouldAutoMarkNoShow(
   appointment: AppointmentSlotTiming & {
     status?: string | null;
@@ -234,7 +269,10 @@ export function shouldAutoMarkNoShow(
       status?: string | null;
       doctorJoinedAt?: Date | null;
       patientJoinedAt?: Date | null;
+      roomName?: string | null;
+      provider?: string | null;
     } | null;
+    postConsultActions?: unknown[] | null;
   },
   now: Date = new Date()
 ): boolean {

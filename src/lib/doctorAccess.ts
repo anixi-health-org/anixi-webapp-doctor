@@ -34,11 +34,13 @@ export type DoctorVerificationStatus =
   | 'approved'
   | 'rejected'
   | 'suspended'
+  | 'on_hold'
   | 'not_required';
 
 export type DoctorAccessState =
   | 'onboarding'
   | 'under_review'
+  | 'on_hold'
   | 'rejected'
   | 'suspended'
   | 'full';
@@ -81,15 +83,22 @@ export function isOnboardingFormComplete(form: ProfessionalProfileFormData): boo
  * - Rejected / suspended → status screens (login allowed)
  */
 export function getDoctorAccessState(doctor: Doctor): DoctorAccessState {
+  const status = doctor.verificationStatus;
+
+  if (status === 'suspended') {
+    return 'suspended';
+  }
+  if (status === 'on_hold') {
+    return 'on_hold';
+  }
+
   if (
     doctor.accountKind === 'clinic_admin' ||
     doctor.requiresClinicalVerification === false ||
-    doctor.verificationStatus === 'not_required'
+    status === 'not_required'
   ) {
     return 'full';
   }
-
-  const status = doctor.verificationStatus;
 
   if (!status) {
     return 'full';
@@ -103,11 +112,6 @@ export function getDoctorAccessState(doctor: Doctor): DoctorAccessState {
     return 'rejected';
   }
 
-  if (status === 'suspended') {
-    return 'suspended';
-  }
-
-  // pending
   if (!doctor.applicationComplete) {
     return 'onboarding';
   }
@@ -121,6 +125,7 @@ export function doctorHomePath(doctor: Doctor): string {
     case 'onboarding':
       return '/onboarding';
     case 'under_review':
+    case 'on_hold':
     case 'rejected':
     case 'suspended':
       return '/account-review';
@@ -156,6 +161,13 @@ export function professionalHomePath(
   const session = options?.practiceSession ?? null;
   const clinicAdmin = usesClinicAdminPortal(session);
   const clinicOwner = options?.isClinicOwner || isClinicOwner(session);
+
+  if (user.role === 'doctor') {
+    const access = getDoctorAccessState(user as Doctor);
+    if (access === 'suspended' || access === 'on_hold' || access === 'rejected') {
+      return '/account-review';
+    }
+  }
 
   if (user.role === 'staff') {
     if (!options?.hasPractice && !session) {

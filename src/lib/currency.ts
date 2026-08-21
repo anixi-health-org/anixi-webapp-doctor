@@ -91,8 +91,10 @@ export function formatCurrency(
   currencyCode: string,
   countryCode?: string
 ): string {
-  const currency = currencyCode.toUpperCase();
+  const currency = (currencyCode || 'ZAR').toUpperCase();
   const locale = (countryCode && LOCALE_BY_COUNTRY[countryCode.toUpperCase()]) || 'en';
+  // Missing or malformed amounts must not surface as "ZARNaN".
+  const value = Number.isFinite(amount) ? amount : 0;
 
   try {
     return new Intl.NumberFormat(locale, {
@@ -100,8 +102,8 @@ export function formatCurrency(
       currency,
       minimumFractionDigits: currency === 'JPY' ? 0 : 2,
       maximumFractionDigits: currency === 'JPY' ? 0 : 2,
-    }).format(amount);
+    }).format(value);
   } catch {
-    return `${currency} ${amount.toFixed(2)}`;
+    return `${currency} ${value.toFixed(2)}`;
   }
 }

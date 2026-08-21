@@ -1,5 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  Building2,
+  CalendarClock,
+  CalendarOff,
+  ClipboardList,
+  MapPin,
+  Shield,
+  Users,
+  Video,
+} from 'lucide-react';
 import { useAuth } from '../hooks/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { usePracticeSettings } from '../hooks/usePracticeSettings';
@@ -8,33 +18,36 @@ import { SoftBlocksEditor } from '../components/practice/SoftBlocksEditor';
 import { BookingPoliciesForm } from '../components/practice/BookingPoliciesForm';
 import { PracticePermissionsPanel } from '../components/practice/PracticePermissionsPanel';
 import { PracticeMembersPanel } from '../components/practice/PracticeMembersPanel';
+import { PracticeLogoUploader } from '../components/practice/PracticeLogoUploader';
 import { LetterheadSetupBanner } from '../components/invoices/LetterheadSetupBanner';
 import { Toast, SettingsPageSkeleton, CardSkeleton } from '../components/ui';
-import { TabPill } from '../components/ui/TabPill';
 import { PageShell } from '../components/page-layout';
 import { updatePractice, provisionPracticeForDoctor } from '../services/practiceSettingsService';
+import {
+  consultTypesFromVisitModes,
+  practiceOffersClinicVisits,
+  practiceOffersVideoConsults,
+} from '../lib/consultTypeSettings';
 import type { ConsultType, Doctor, PracticeLocation } from '../types';
 
 type Tab = 'overview' | 'availability' | 'soft-blocks' | 'policies' | 'permissions' | 'team';
 
-const TAB_CONFIG: { id: Tab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'availability', label: 'Availability' },
-  { id: 'soft-blocks', label: 'Blocked Time' },
-  { id: 'policies', label: 'Booking Rules' },
-  { id: 'team', label: 'Team' },
-  { id: 'permissions', label: 'Delegates' },
+const TAB_CONFIG: { id: Tab; label: string; icon: React.ElementType }[] = [
+  { id: 'overview', label: 'Overview', icon: Building2 },
+  { id: 'availability', label: 'Availability', icon: CalendarClock },
+  { id: 'soft-blocks', label: 'Blocked Time', icon: CalendarOff },
+  { id: 'policies', label: 'Booking Rules', icon: ClipboardList },
+  { id: 'team', label: 'Team', icon: Users },
+  { id: 'permissions', label: 'Delegates', icon: Shield },
 ];
 
 const isValidTab = (value: string | null): value is Tab =>
   TAB_CONFIG.some((tab) => tab.id === value);
 
-const CONSULT_TYPE_LABELS: Record<ConsultType, string> = {
-  initial: 'Initial',
-  'follow-up': 'Follow-up',
-  urgent: 'Urgent',
-  procedure: 'Procedure',
-  teleconsult: 'Virtual / video',
+const LOCATION_TYPE_LABELS: Record<PracticeLocation['type'], string> = {
+  clinic: 'Clinic',
+  hospital: 'Clinic',
+  virtual: 'Video',
   other: 'Other',
 };
 
@@ -66,9 +79,10 @@ const PracticeSettingsPage: React.FC = () => {
   const [newLocType, setNewLocType] = useState<PracticeLocation['type']>('clinic');
   const [newLocAddress, setNewLocAddress] = useState('');
   const [savingLoc, setSavingLoc] = useState(false);
+  const [savingVisitModes, setSavingVisitModes] = useState(false);
+  const [addingLocation, setAddingLocation] = useState(false);
 
   const [consultTypesDraft, setConsultTypesDraft] = useState<ConsultType[]>([]);
-  const [savingConsultTypes, setSavingConsultTypes] = useState(false);
 
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
     visible: false,
@@ -166,6 +180,7 @@ const PracticeSettingsPage: React.FC = () => {
       setNewLocName('');
       setNewLocType('clinic');
       setNewLocAddress('');
+      setAddingLocation(false);
       setToast({ visible: true, message: 'Location added.', type: 'success' });
     } catch (e: unknown) {
       setToast({
@@ -194,32 +209,46 @@ const PracticeSettingsPage: React.FC = () => {
     }
   };
 
-  const handleSaveConsultTypes = async () => {
-    setSavingConsultTypes(true);
-    try {
-      await updatePractice(practice.id, { consultTypes: consultTypesDraft });
-      await refreshPracticeSession();
-      setToast({ visible: true, message: 'Consult types updated.', type: 'success' });
-    } catch (e: unknown) {
+  const offersClinic = practiceOffersClinicVisits(consultTypesDraft);
+  const offersVideo = practiceOffersVideoConsults(consultTypesDraft);
+
+  const handleSaveVisitModes = async (clinic: boolean, video: boolean) => {
+    if (!clinic && !video) {
       setToast({
         visible: true,
-        message: e instanceof Error ? e.message : 'Failed to update consult types.',
+        message: 'Keep at least one visit type so patients can book.',
+        type: 'error',
+      });
+      return;
+    }
+    const next = consultTypesFromVisitModes(clinic, video);
+    setSavingVisitModes(true);
+    setConsultTypesDraft(next);
+    try {
+      await updatePractice(practice.id, { consultTypes: next });
+      await refreshPracticeSession();
+      setToast({ visible: true, message: 'Visit types updated.', type: 'success' });
+    } catch (e: unknown) {
+      setConsultTypesDraft(practice.consultTypes ?? []);
+      setToast({
+        visible: true,
+        message: e instanceof Error ? e.message : 'Failed to update visit types.',
         type: 'error',
       });
     } finally {
-      setSavingConsultTypes(false);
+      setSavingVisitModes(false);
     }
   };
 
   const permissionItems = [
     { key: 'manageAppointments' as const, label: 'Manage appointments' },
     { key: 'overrideConflicts' as const, label: 'Override conflicts' },
-    { key: 'manageSoftBlocks' as const, label: 'Manage soft blocks' },
-    { key: 'editBookingPolicies' as const, label: 'Edit booking policies' },
+    { key: 'manageSoftBlocks' as const, label: 'Manage blocked time' },
+    { key: 'editBookingPolicies' as const, label: 'Edit booking rules' },
   ];
 
   return (
-    <PageShell className="max-w-5xl pb-10">
+    <PageShell className="max-w-5xl pb-12">
       {toast.visible && (
         <Toast
           message={toast.message}
@@ -228,44 +257,50 @@ const PracticeSettingsPage: React.FC = () => {
         />
       )}
 
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">Practice settings</h1>
-            <span
-              className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
-                isOwner ? 'bg-[#0E2340] text-white' : 'bg-[#f0f4f8] text-[#65758b]'
-              }`}
-            >
-              {isOwner ? 'Owner' : 'Delegate'}
-            </span>
-          </div>
-          <p className="mt-1 text-[13px] text-[#65758b]">
-            Manage availability, blocked time, branding, and booking rules.
-          </p>
+      <div className="mb-5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">Practice settings</h1>
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+              isOwner ? 'bg-anixi-green text-white' : 'bg-[#eef4f1] text-[#427160]'
+            }`}
+          >
+            {isOwner ? 'Owner' : 'Delegate'}
+          </span>
         </div>
+        <p className="mt-1 text-[13px] text-[#65758b]">
+          Hours, visit types, branding, and who can book with you.
+        </p>
       </div>
 
       {activeTab === 'overview' && (
         <LetterheadSetupBanner doctor={doctor} className="mb-5" />
       )}
 
-      <div className="mb-5 flex gap-1 overflow-x-auto rounded-xl border border-[#e1e7ef] bg-[#f0f4f8] p-1">
-        {TAB_CONFIG.map((tab) => (
-          <TabPill
-            key={tab.id}
-            onClick={() => selectTab(tab.id)}
-            active={activeTab === tab.id}
-            className={`min-w-0 flex-1 whitespace-nowrap px-3 py-2 text-center text-xs sm:text-[13px] ${
-              activeTab === tab.id
-                ? '!bg-white !text-[#0E2340] !shadow-sm'
-                : '!bg-transparent !text-[#65758b] hover:!text-[#344256]'
-            }`}
-          >
-            {tab.label}
-          </TabPill>
-        ))}
-      </div>
+      <nav
+        className="mb-6 flex gap-1 overflow-x-auto rounded-2xl bg-[#e8f0ec] p-1.5"
+        aria-label="Practice settings sections"
+      >
+        {TAB_CONFIG.map((tab) => {
+          const Icon = tab.icon;
+          const active = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => selectTab(tab.id)}
+              className={`inline-flex min-w-max flex-1 items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-[13px] font-semibold transition ${
+                active
+                  ? 'bg-anixi-green text-white shadow-sm'
+                  : 'text-[#4d675c] hover:bg-white/70 hover:text-[#0E2340]'
+              }`}
+            >
+              <Icon className="h-4 w-4 shrink-0" strokeWidth={2.1} />
+              {tab.label}
+            </button>
+          );
+        })}
+      </nav>
 
       {error && (
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3.5 text-sm text-red-700">
@@ -276,213 +311,213 @@ const PracticeSettingsPage: React.FC = () => {
       {isLoading ? (
         <CardSkeleton rows={6} />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-[#e1e7ef] bg-white shadow-sm">
-          <div className="p-5 sm:p-6">
-            {activeTab === 'overview' && (
-              <div className="space-y-6">
-                <section>
-                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
-                    Practice identity
+        <>
+          {activeTab === 'overview' && (
+            <div className="space-y-4">
+              <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
+                <div className="mb-4">
+                  <h2 className="text-base font-semibold text-[#0E2340]">How patients see you</h2>
+                  <p className="mt-1 text-[13px] text-[#65758b]">
+                    Offer clinic visits, video consults, or both. Patients pick one when they book.
                   </p>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-xl border border-[#e1e7ef] bg-[#f8fafc] p-4">
-                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
-                        Practice name
-                      </label>
-                      <p className="text-sm font-semibold text-[#0E2340]">{practice.name}</p>
-                    </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <VisitModeCard
+                    icon={Building2}
+                    title="Clinic visits"
+                    description="In-person appointments at your practice."
+                    enabled={offersClinic}
+                    disabled={!isOwner || savingVisitModes}
+                    onToggle={() => void handleSaveVisitModes(!offersClinic, offersVideo)}
+                  />
+                  <VisitModeCard
+                    icon={Video}
+                    title="Video consultation"
+                    description="Remote video appointments with patients."
+                    enabled={offersVideo}
+                    disabled={!isOwner || savingVisitModes}
+                    onToggle={() => void handleSaveVisitModes(offersClinic, !offersVideo)}
+                  />
+                </div>
+              </section>
 
-                    <div className="rounded-xl border border-[#e1e7ef] bg-[#f8fafc] p-4">
-                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
-                        Timezone
-                      </label>
-                      <p className="text-sm font-semibold text-[#0E2340]">{practice.timezone}</p>
-                    </div>
+              <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-base font-semibold text-[#0E2340]">Practice details</h2>
+                    <p className="mt-1 text-[13px] text-[#65758b]">
+                      Name, timezone, and letterhead used on invoices and prescriptions.
+                    </p>
                   </div>
-                  <p className="mt-2 text-[12px] text-[#65758b]">
-                    Practice name and timezone are set during onboarding.{' '}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/professional-profile?tab=practice')}
+                    className="text-[13px] font-semibold text-anixi-green hover:underline"
+                  >
+                    Edit in profile
+                  </button>
+                </div>
+                <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl bg-[#f6f8fa] px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                      Practice name
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[#0E2340]">{practice.name}</p>
+                  </div>
+                  <div className="rounded-xl bg-[#f6f8fa] px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                      Timezone
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[#0E2340]">{practice.timezone}</p>
+                  </div>
+                </div>
+                <PracticeLogoUploader logoUrl={doctor?.logoUrl} />
+              </section>
+
+              <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-base font-semibold text-[#0E2340]">Locations</h2>
+                    <p className="mt-1 text-[13px] text-[#65758b]">
+                      Where clinic visits happen, plus a video option if you offer remote consults.
+                    </p>
+                  </div>
+                  {isOwner && !addingLocation && (
                     <button
                       type="button"
-                      onClick={() => navigate('/professional-profile')}
-                      className="font-semibold text-anixi-green hover:underline"
+                      onClick={() => setAddingLocation(true)}
+                      className="inline-flex h-9 items-center rounded-lg bg-anixi-green px-3.5 text-xs font-semibold text-white hover:bg-[#365c4f]"
                     >
-                      Update in Professional Profile
+                      Add location
                     </button>
-                  </p>
+                  )}
+                </div>
 
-                  <div className="mt-4 rounded-xl border border-[#e1e7ef] bg-white p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-[#0E2340]">Letterhead & logo</p>
-                        <p className="mt-0.5 text-[13px] text-[#65758b]">
-                          Used on invoices, prescriptions, and doctor letters.
-                        </p>
+                <div className="divide-y divide-[#eef2f6] overflow-hidden rounded-xl border border-[#e1e7ef]">
+                  {practice.locations.map((loc) => (
+                    <div
+                      key={loc.id}
+                      className="flex items-center justify-between gap-3 px-4 py-3"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#eef4f1] text-anixi-green">
+                          {loc.type === 'virtual' ? (
+                            <Video className="h-4 w-4" />
+                          ) : (
+                            <MapPin className="h-4 w-4" />
+                          )}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-[#0E2340]">{loc.name}</p>
+                          <p className="text-xs text-[#65758b]">
+                            {LOCATION_TYPE_LABELS[loc.type]}
+                            {loc.address ? ` · ${loc.address}` : ''}
+                          </p>
+                        </div>
                       </div>
+                      {isOwner && (
+                        <button
+                          type="button"
+                          onClick={() => void handleRemoveLocation(loc.id)}
+                          className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {practice.locations.length === 0 && (
+                    <p className="px-4 py-8 text-center text-[13px] text-[#94a3b8]">
+                      No locations yet. Add your clinic address or a video consult option.
+                    </p>
+                  )}
+                </div>
+
+                {isOwner && addingLocation && (
+                  <div className="mt-4 rounded-xl bg-[#f6f8fa] p-4">
+                    <p className="mb-3 text-sm font-semibold text-[#0E2340]">New location</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <input
+                        value={newLocName}
+                        onChange={(e) => setNewLocName(e.target.value)}
+                        placeholder="Name (e.g. Main rooms)"
+                        className="h-10 rounded-lg border border-[#e1e7ef] bg-white px-3 text-sm outline-none focus:border-anixi-green"
+                      />
+                      <select
+                        value={newLocType}
+                        onChange={(e) => setNewLocType(e.target.value as PracticeLocation['type'])}
+                        className="h-10 rounded-lg border border-[#e1e7ef] bg-white px-3 text-sm outline-none focus:border-anixi-green"
+                      >
+                        <option value="clinic">Clinic visit</option>
+                        <option value="virtual">Video consultation</option>
+                      </select>
+                      <input
+                        value={newLocAddress}
+                        onChange={(e) => setNewLocAddress(e.target.value)}
+                        placeholder="Address (optional)"
+                        className="h-10 rounded-lg border border-[#e1e7ef] bg-white px-3 text-sm outline-none focus:border-anixi-green"
+                      />
+                    </div>
+                    <div className="mt-3 flex gap-2">
                       <button
                         type="button"
-                        onClick={() => navigate('/professional-profile')}
-                        className="inline-flex h-9 items-center rounded-lg border border-[#e1e7ef] bg-[#f8fafc] px-3.5 text-xs font-semibold text-[#344256] shadow-sm transition hover:border-anixi-green hover:text-anixi-green"
+                        onClick={() => {
+                          setAddingLocation(false);
+                          setNewLocName('');
+                          setNewLocAddress('');
+                          setNewLocType('clinic');
+                        }}
+                        className="inline-flex h-9 items-center rounded-lg border border-[#e1e7ef] bg-white px-3.5 text-xs font-semibold text-[#344256]"
                       >
-                        {doctor?.logoUrl ? 'Update branding' : 'Upload logo'}
+                        Cancel
                       </button>
-                    </div>
-                  </div>
-                </section>
-
-                <section>
-                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
-                    Your access level
-                  </p>
-                  <div className="rounded-xl border border-[#e1e7ef] bg-[#f8fafc] p-4">
-                    <p className="mb-3 text-sm font-semibold capitalize text-[#0E2340]">{role}</p>
-                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                      {permissionItems.map((p) => {
-                        const enabled = Boolean(
-                          member?.permissions[p.key as keyof typeof member.permissions]
-                        );
-                        return (
-                          <div key={p.key} className="flex items-center gap-2.5">
-                            <span
-                              className={`inline-block h-2 w-2 rounded-full ${
-                                enabled ? 'bg-emerald-500' : 'bg-slate-300'
-                              }`}
-                            />
-                            <span className="text-[13px] text-[#344256]">{p.label}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </section>
-
-                <section>
-                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
-                    Locations
-                  </p>
-                  <div className="space-y-2">
-                    {practice.locations.map((loc) => (
-                      <div
-                        key={loc.id}
-                        className="flex items-center justify-between gap-3 rounded-xl border border-[#e1e7ef] px-4 py-3"
-                      >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#eef4f1] text-anixi-green">
-                            <svg
-                              width="16"
-                              height="16"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                              <circle cx="12" cy="10" r="3" />
-                            </svg>
-                          </span>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-[#0E2340]">{loc.name}</p>
-                            <p className="text-xs capitalize text-[#65758b]">
-                              {loc.type}
-                              {loc.address ? ` · ${loc.address}` : ''}
-                            </p>
-                          </div>
-                        </div>
-                        {isOwner && (
-                          <button
-                            type="button"
-                            onClick={() => void handleRemoveLocation(loc.id)}
-                            className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    {practice.locations.length === 0 && (
-                      <p className="rounded-xl border border-dashed border-[#e1e7ef] px-4 py-6 text-center text-[13px] text-[#94a3b8]">
-                        No locations added yet.
-                      </p>
-                    )}
-                  </div>
-
-                  {isOwner && (
-                    <div className="mt-3 rounded-xl border border-[#e1e7ef] bg-[#f8fafc] p-4">
-                      <p className="mb-3 text-sm font-semibold text-[#0E2340]">Add a location</p>
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                        <input
-                          value={newLocName}
-                          onChange={(e) => setNewLocName(e.target.value)}
-                          placeholder="Location name"
-                          className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        <select
-                          value={newLocType}
-                          onChange={(e) => setNewLocType(e.target.value as PracticeLocation['type'])}
-                          className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="clinic">Clinic</option>
-                          <option value="hospital">Hospital</option>
-                          <option value="virtual">Virtual</option>
-                          <option value="other">Other</option>
-                        </select>
-                        <input
-                          value={newLocAddress}
-                          onChange={(e) => setNewLocAddress(e.target.value)}
-                          placeholder="Address (optional)"
-                          className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
                       <button
                         type="button"
                         onClick={() => void handleAddLocation()}
                         disabled={savingLoc || !newLocName.trim()}
-                        className="mt-3 inline-flex h-9 items-center rounded-lg bg-anixi-green px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#365c4f] disabled:opacity-50"
+                        className="inline-flex h-9 items-center rounded-lg bg-anixi-green px-4 text-xs font-semibold text-white hover:bg-[#365c4f] disabled:opacity-50"
                       >
-                        {savingLoc ? 'Adding…' : 'Add location'}
+                        {savingLoc ? 'Adding…' : 'Save location'}
                       </button>
                     </div>
-                  )}
-                </section>
-
-                <section>
-                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
-                    Consult types
-                  </p>
-                  <p className="mb-3 text-[13px] text-[#65758b]">
-                    Toggle which consult types this practice offers.
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {(Object.keys(CONSULT_TYPE_LABELS) as ConsultType[]).map((ct) => {
-                      const active = consultTypesDraft.includes(ct);
-                      return (
-                        <button
-                          key={ct}
-                          type="button"
-                          onClick={() => {
-                            if (!isOwner) return;
-                            setConsultTypesDraft((prev) =>
-                              active ? prev.filter((t) => t !== ct) : [...prev, ct]
-                            );
-                          }}
-                          className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
-                            active
-                              ? 'border-anixi-green bg-anixi-green text-white'
-                              : 'border-[#e1e7ef] bg-white text-[#65758b] hover:border-anixi-green/40 hover:text-anixi-green'
-                          } ${!isOwner ? 'cursor-default' : ''}`}
-                        >
-                          {CONSULT_TYPE_LABELS[ct]}
-                        </button>
-                      );
-                    })}
                   </div>
-                </section>
-              </div>
-            )}
+                )}
+              </section>
 
-            {activeTab === 'availability' &&
-              (can('manageAppointments') ? (
+              <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
+                <h2 className="text-base font-semibold capitalize text-[#0E2340]">
+                  Your access · {role}
+                </h2>
+                <p className="mt-1 text-[13px] text-[#65758b]">
+                  What you can change in this practice.
+                </p>
+                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {permissionItems.map((p) => {
+                    const enabled = Boolean(
+                      member?.permissions[p.key as keyof typeof member.permissions]
+                    );
+                    return (
+                      <div
+                        key={p.key}
+                        className="flex items-center gap-2.5 rounded-lg bg-[#f6f8fa] px-3 py-2"
+                      >
+                        <span
+                          className={`inline-block h-2 w-2 rounded-full ${
+                            enabled ? 'bg-emerald-500' : 'bg-slate-300'
+                          }`}
+                        />
+                        <span className="text-[13px] text-[#344256]">{p.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+          )}
+
+          {activeTab === 'availability' &&
+            (can('manageAppointments') ? (
+              <div className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
                 <BookableBlocksEditor
                   practiceId={practice.id}
                   blocks={bookableBlocks}
@@ -490,76 +525,101 @@ const PracticeSettingsPage: React.FC = () => {
                   timezone={practice.timezone}
                   practiceConsultTypes={practice.consultTypes}
                   onChanged={reload}
+                  onPracticeUpdated={() => void refreshPracticeSession()}
                 />
-              ) : (
-                <PermissionDenied message="You don't have permission to manage availability blocks." />
-              ))}
+              </div>
+            ) : (
+              <PermissionDenied message="You don't have permission to manage availability." />
+            ))}
 
-            {activeTab === 'soft-blocks' &&
-              (can('manageSoftBlocks') ? (
+          {activeTab === 'soft-blocks' &&
+            (can('manageSoftBlocks') ? (
+              <div className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
                 <SoftBlocksEditor
                   practiceId={practice.id}
                   softBlocks={softBlocks}
                   onChanged={reload}
                 />
-              ) : (
-                <PermissionDenied message="You don't have permission to manage soft blocks." />
-              ))}
+              </div>
+            ) : (
+              <PermissionDenied message="You don't have permission to manage blocked time." />
+            ))}
 
-            {activeTab === 'policies' && bookingPolicy && (
+          {activeTab === 'policies' && bookingPolicy && (
+            <div className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
               <BookingPoliciesForm
                 practiceId={practice.id}
                 policy={bookingPolicy}
                 onSaved={reload}
                 readOnly={!can('editBookingPolicies')}
               />
-            )}
+            </div>
+          )}
 
-            {activeTab === 'team' && <PracticeMembersPanel />}
+          {activeTab === 'team' && (
+            <div className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
+              <PracticeMembersPanel />
+            </div>
+          )}
 
-            {activeTab === 'permissions' && (
+          {activeTab === 'permissions' && (
+            <div className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
               <PracticePermissionsPanel
                 doctorId={user?.id ?? practice.ownerId}
                 doctorName={user?.displayName ?? practice.name}
                 isOwner={isOwner}
               />
-            )}
-          </div>
-
-          {activeTab === 'overview' && isOwner && (
-            <div className="flex justify-end border-t border-[#e1e7ef] bg-[#f8fafc] px-5 py-4 sm:px-6">
-              <button
-                type="button"
-                onClick={() => void handleSaveConsultTypes()}
-                disabled={savingConsultTypes}
-                className="inline-flex h-10 items-center rounded-lg bg-anixi-green px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f] disabled:opacity-50"
-              >
-                {savingConsultTypes ? 'Saving…' : 'Save changes'}
-              </button>
             </div>
           )}
-        </div>
+        </>
       )}
     </PageShell>
   );
 };
 
-const PermissionDenied: React.FC<{ message: string }> = ({ message }) => (
-  <div className="flex h-40 flex-col items-center justify-center text-center">
-    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[#f0f4f8] text-[#8FA0B6]">
-      <svg
-        width="22"
-        height="22"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+const VisitModeCard: React.FC<{
+  icon: React.ElementType;
+  title: string;
+  description: string;
+  enabled: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}> = ({ icon: Icon, title, description, enabled, disabled, onToggle }) => (
+  <button
+    type="button"
+    onClick={onToggle}
+    disabled={disabled}
+    className={`rounded-2xl border p-4 text-left transition ${
+      enabled
+        ? 'border-anixi-green bg-[#eef6f2] shadow-sm'
+        : 'border-[#e1e7ef] bg-[#f8fafc] hover:border-anixi-green/40'
+    } disabled:cursor-not-allowed disabled:opacity-70`}
+  >
+    <div className="flex items-start justify-between gap-3">
+      <span
+        className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${
+          enabled ? 'bg-anixi-green text-white' : 'bg-white text-[#65758b]'
+        }`}
       >
-        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-      </svg>
+        <Icon className="h-5 w-5" />
+      </span>
+      <span
+        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+          enabled ? 'bg-anixi-green text-white' : 'bg-white text-[#8FA0B6]'
+        }`}
+      >
+        {enabled ? 'Offered' : 'Off'}
+      </span>
+    </div>
+    <p className="mt-3 text-sm font-semibold text-[#0E2340]">{title}</p>
+    <p className="mt-1 text-[13px] leading-relaxed text-[#65758b]">{description}</p>
+  </button>
+);
+
+const PermissionDenied: React.FC<{ message: string }> = ({ message }) => (
+  <div className="flex h-40 flex-col items-center justify-center rounded-2xl border border-[#e1e7ef] bg-white text-center">
+    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[#f0f4f8] text-[#8FA0B6]">
+      <Shield className="h-5 w-5" />
     </div>
     <p className="text-sm text-[#344256]">{message}</p>
     <p className="mt-1 text-xs text-[#94a3b8]">Contact the practice owner to request access.</p>

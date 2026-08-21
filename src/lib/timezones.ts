@@ -47,3 +47,80 @@ export function timezoneSelectOptions(current?: string): { value: string; label:
   }
   return options;
 }
+
+/** YYYY-MM-DD in the given IANA timezone. */
+export function calendarDateKeyInTimeZone(instant: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(instant);
+}
+
+function addCalendarDays(dateKey: string, deltaDays: number): string {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + deltaDays));
+  return next.toISOString().slice(0, 10);
+}
+
+function weekdayIndexInTimeZone(instant: Date, timeZone: string): number {
+  const label = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+  }).format(instant);
+  const map: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+  return map[label] ?? 0;
+}
+
+export type DashboardDateRangeKey = 'today' | 'yesterday' | 'week' | '7days' | 'month';
+
+/** Inclusive calendar-day bounds in a practice timezone (YYYY-MM-DD strings). */
+export function getCalendarRangeInTimeZone(
+  key: DashboardDateRangeKey,
+  timeZone: string,
+  now: Date = new Date(),
+): { startKey: string; endKey: string } {
+  const todayKey = calendarDateKeyInTimeZone(now, timeZone);
+
+  if (key === 'today') {
+    return { startKey: todayKey, endKey: todayKey };
+  }
+
+  if (key === 'yesterday') {
+    const yesterdayKey = addCalendarDays(todayKey, -1);
+    return { startKey: yesterdayKey, endKey: yesterdayKey };
+  }
+
+  if (key === 'week') {
+    const day = weekdayIndexInTimeZone(now, timeZone);
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const weekStartKey = addCalendarDays(todayKey, mondayOffset);
+    return { startKey: weekStartKey, endKey: todayKey };
+  }
+
+  if (key === '7days') {
+    return { startKey: addCalendarDays(todayKey, -6), endKey: todayKey };
+  }
+
+  const monthPrefix = todayKey.slice(0, 7);
+  return { startKey: `${monthPrefix}-01`, endKey: todayKey };
+}
+
+export function instantInCalendarRange(
+  instant: Date,
+  startKey: string,
+  endKey: string,
+  timeZone: string,
+): boolean {
+  const key = calendarDateKeyInTimeZone(instant, timeZone);
+  return key >= startKey && key <= endKey;
+}

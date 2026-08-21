@@ -217,7 +217,10 @@ export interface Doctor extends User {
     phoneNumber?: string;
     officeAddress?: string;
     practiceName?: string;
+    /** Practice letterhead — invoices only */
     logoUrl?: string;
+    /** Doctor headshot — header and patient-facing cards */
+    profileImageUrl?: string;
     /** ISO 3166-1 alpha-2 - set at registration */
     country?: string;
     /** ISO 4217 - derived from country at registration */
@@ -229,6 +232,7 @@ export interface Doctor extends User {
       | 'approved'
       | 'rejected'
       | 'suspended'
+      | 'on_hold'
       | 'not_required';
     /** Clinic portal admin (not a practicing clinician) */
     accountKind?: 'clinic_admin' | 'clinician';

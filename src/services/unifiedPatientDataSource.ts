@@ -6,6 +6,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Patient } from '../types';
+import { resolveRosteredPatient } from './patientManagementService';
 const DEBUG_ENABLED = true;
 const log = (message: string, data?: any) => {
   if (DEBUG_ENABLED) {
@@ -40,57 +41,16 @@ export const getPatientsByDoctorId = async (
       return patients;
     }
 
-    
+    // A patient on the roster is bookable whether or not they have a medical
+    // profile document, so the roster entry supplies the fallback name.
     for (const approvedDoc of approvedSnapshot.docs) {
       const approvedData = approvedDoc.data();
       const patientId = approvedData.patientId || approvedDoc.id;
 
-      log(`🔍 Processing approved patient ${patientId}`);
-
       try {
-        
-        const patientRef = doc(db, 'patients', patientId);
-        const patientSnap = await getDoc(patientRef);
-
-        if (patientSnap.exists()) {
-          const patientData = patientSnap.data();
-          log(`✅ Found patient details for ${patientId}:`, {
-            fullName: patientData?.fullName,
-            displayName: patientData?.displayName,
-            email: patientData?.email,
-            allFields: Object.keys(patientData || {})
-          });
-
-          const displayName = patientData?.fullName ?? patientData?.displayName ?? 'Patient';
-
-          patients.push({
-            id: patientId,
-            email: patientData?.email ?? '',
-            displayName: displayName,
-            role: 'patient' as const,
-            dateOfBirth: patientData?.dateOfBirth?.toDate?.() ?? null,
-            gender: patientData?.gender ?? '',
-            maritalStatus: patientData?.maritalStatus ?? '',
-            language: patientData?.language ?? 'en',
-            address: patientData?.address ?? '',
-            phoneNumber: patientData?.phoneNumber ?? '',
-            assignedDoctorId: doctorId,
-            emergencyContact: patientData?.emergencyContact ?? '',
-            medicalAid: patientData?.medicalAid ?? '',
-            chronicDiseases: patientData?.chronicDiseases ?? [],
-            allergies: patientData?.allergies ?? [],
-            currentTreatments: (patientData?.currentTreatments || []).map((treatment: any) => ({
-              name: treatment.name,
-              dosage: treatment.dosage,
-              frequency: treatment.frequency,
-              startDate: treatment.startDate?.toDate?.() || new Date(),
-            })),
-            createdAt: patientData?.createdAt?.toDate?.() ?? null,
-            updatedAt: patientData?.updatedAt?.toDate?.() ?? null,
-          } as Patient);
-        } else {
-          log(`❌ Patient ${patientId} not found in patients collection`);
-        }
+        patients.push(
+          await resolveRosteredPatient(doctorId, patientId, approvedData)
+        );
       } catch (error) {
         logError(`❌ Error fetching patient ${patientId}:`, error);
       }

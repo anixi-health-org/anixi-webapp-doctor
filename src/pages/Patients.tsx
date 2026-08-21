@@ -8,7 +8,8 @@ import { AddPatientModal } from '../components/patients/AddPatientModal';
 import { PatientsPageSkeleton } from '../components/ui';
 import { PageHeader, PageShell } from '../components/page-layout';
 import { Patient } from '../types';
-import { listenToDoctorPatients } from '../services/patientManagementService';
+import { derivePatientRosterStatus, listenToDoctorPatients } from '../services/patientManagementService';
+import { syncDoctorPatientRoster } from '../services/patientRosterSync';
 import {
   useApproveIncomingRequest,
   useIncomingSharingRequests,
@@ -30,11 +31,7 @@ function ageFromDob(dob?: Date) {
 }
 
 function deriveStatus(patient: Patient): Exclude<StatusFilter, 'all'> {
-  if (patient.chronicDiseases && patient.chronicDiseases.length > 2) return 'critical';
-  if (patient.chronicDiseases && patient.chronicDiseases.length > 0) return 'recovering';
-  const last = patient.updatedAt ? new Date(patient.updatedAt) : patient.createdAt ? new Date(patient.createdAt) : null;
-  if (last && last.getTime() < Date.now() - 30 * 24 * 60 * 60 * 1000) return 'inactive';
-  return 'stable';
+  return derivePatientRosterStatus(patient);
 }
 
 function statusClass(status: string) {
@@ -70,6 +67,7 @@ export const Patients: React.FC = () => {
 
   useEffect(() => {
     if (!doctorId) return;
+    void syncDoctorPatientRoster(doctorId);
     const unsubscribe = listenToDoctorPatients(
       doctorId,
       (nextPatients) => {

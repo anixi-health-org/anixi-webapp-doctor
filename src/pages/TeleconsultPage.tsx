@@ -3,9 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   LiveKitRoom,
   RoomAudioRenderer,
-  VideoConference,
+  useLocalParticipant,
+  useRoomContext,
 } from '@livekit/components-react';
 import '@livekit/components-styles';
+import { ConnectionState, RoomEvent } from 'livekit-client';
 import { useAuth } from '../hooks/useAuth';
 import { getAppointmentById, updateAppointment } from '../services/appointmentService';
 import {
@@ -17,6 +19,7 @@ import { Appointment, PostConsultAction } from '../types';
 import { canDoctorStartVideoCall, isWhatsAppComingSoon } from '../utils/teleconsult';
 import { PageShell } from '../components/page-layout';
 import { DetailPageSkeleton } from '../components/ui';
+import { TeleconsultStage } from '../components/teleconsult/TeleconsultStage';
 
 const CALL_NOTES_TITLE = 'Call notes';
 const CALL_NOTES_ACTION_ID = 'call_notes';
@@ -28,12 +31,69 @@ const Room = LiveKitRoom as unknown as React.FC<{
   connect?: boolean;
   video?: boolean;
   audio?: boolean;
+  options?: {
+    adaptiveStream?: boolean | { pixelDensity?: 'screen' | number };
+    dynacast?: boolean;
+  };
+  connectOptions?: { autoSubscribe?: boolean };
+  onConnected?: () => void;
   onDisconnected?: () => void;
+  onError?: (error: Error) => void;
+  onMediaDeviceFailure?: (failure?: unknown, kind?: MediaDeviceKind) => void;
   className?: string;
+  style?: React.CSSProperties;
   children?: React.ReactNode;
 }>;
-const Conference = VideoConference as unknown as React.FC;
 const AudioRenderer = RoomAudioRenderer as unknown as React.FC;
+
+function mediaPermissionMessage(err: unknown): string {
+  const text =
+    err instanceof Error
+      ? err.message
+      : typeof err === 'string'
+        ? err
+        : 'Camera or microphone permission was denied';
+  if (/permission|denied|notallowed|not allowed/i.test(text)) {
+    return 'Camera/mic blocked in the browser. Allow access for this site, then tap the camera button.';
+  }
+  return text;
+}
+
+/** Enable mic/camera after the room is connected — never throw into the page overlay. */
+function EnableLocalMedia({ onHint }: { onHint: (hint: string | null) => void }) {
+  const room = useRoomContext();
+  const { localParticipant } = useLocalParticipant();
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (!room || !localParticipant || started.current) return;
+
+    const enable = async () => {
+      if (started.current) return;
+      if (room.state !== ConnectionState.Connected) return;
+      started.current = true;
+      try {
+        await localParticipant.setMicrophoneEnabled(true);
+      } catch (err) {
+        onHint(mediaPermissionMessage(err));
+      }
+      try {
+        await localParticipant.setCameraEnabled(true);
+        onHint(null);
+      } catch (err) {
+        onHint(mediaPermissionMessage(err));
+      }
+    };
+
+    void enable();
+    room.on(RoomEvent.Connected, enable);
+    return () => {
+      room.off(RoomEvent.Connected, enable);
+    };
+  }, [room, localParticipant, onHint]);
+
+  return null;
+}
 
 function findCallNotes(appointment: Appointment | null): PostConsultAction | undefined {
   if (!appointment?.postConsultActions?.length) return undefined;
@@ -57,9 +117,11 @@ export const TeleconsultPage: React.FC = () => {
   const [callNotes, setCallNotes] = useState('');
   const [notesOpen, setNotesOpen] = useState(true);
   const [notesStatus, setNotesStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [mediaHint, setMediaHint] = useState<string | null>(null);
   const lastSavedRef = useRef('');
   const callNotesRef = useRef('');
   const appointmentRef = useRef<Appointment | null>(null);
+  const endingCallRef = useRef(false);
 
   useEffect(() => {
     callNotesRef.current = callNotes;
@@ -100,7 +162,17 @@ export const TeleconsultPage: React.FC = () => {
           throw new Error('WhatsApp consults are coming soon. Book a Virtual / video teleconsult instead.');
         }
         if (!canDoctorStartVideoCall(apt)) {
-          throw new Error('This appointment cannot join a video call.');
+          const ended = apt.teleconsult?.status === 'ended';
+          const closed = ['cancelled', 'auto_cancelled', 'no_show', 'completed'].includes(
+            apt.status
+          );
+          throw new Error(
+            ended && closed
+              ? 'This video visit has ended.'
+              : closed
+                ? 'This appointment is closed and can no longer join a video call.'
+                : 'This appointment is not set up as a video consultation.'
+          );
         }
         if (!apt.teleconsultConsent?.obtained) {
           throw new Error(
@@ -211,6 +283,7 @@ export const TeleconsultPage: React.FC = () => {
 
   const handleEnd = async () => {
     if (!user?.id || !appointmentId || ending) return;
+    endingCallRef.current = true;
     setEnding(true);
     try {
       await persistCallNotes(callNotesRef.current);
@@ -270,7 +343,7 @@ export const TeleconsultPage: React.FC = () => {
           : 'Auto-saves as you type';
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col bg-[#0E2340] md:h-screen">
+    <div className="flex h-screen flex-col overflow-hidden bg-[#0E2340]">
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-white">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">
@@ -286,31 +359,54 @@ export const TeleconsultPage: React.FC = () => {
           >
             {notesOpen ? 'Hide notes' : 'Notes'}
           </button>
-          <button
-            type="button"
-            onClick={() => void handleEnd()}
-            disabled={ending}
-            className="rounded-2xl bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-60"
-          >
-            {ending ? 'Ending…' : 'End call'}
-          </button>
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <div className="relative min-h-0 min-w-0 flex-1" data-lk-theme="default">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col" data-lk-theme="default">
           <Room
             token={token}
             serverUrl={serverUrl}
             connect
-            video
-            audio
-            onDisconnected={() => {
-              void goPostConsult();
+            // Connect first without capturing devices. Auto-enable on SignalConnected
+            // throws "Permission denied by user" into the CRA overlay and can stall
+            // the call UI before remote tracks are attached.
+            video={false}
+            audio={false}
+            options={{ adaptiveStream: false, dynacast: false }}
+            connectOptions={{ autoSubscribe: true }}
+            onError={(err) => {
+              console.warn('[teleconsult] room error', err);
+              setMediaHint(mediaPermissionMessage(err));
             }}
-            className="h-full min-h-[280px]"
+            onMediaDeviceFailure={(failure, kind) => {
+              console.warn('[teleconsult] media device failure', failure, kind);
+              setMediaHint(
+                kind === 'videoinput'
+                  ? 'Camera blocked. Allow camera access, then tap the camera button.'
+                  : kind === 'audioinput'
+                    ? 'Microphone blocked. Allow mic access, then tap the mic button.'
+                    : 'Camera or microphone blocked. Allow access in the browser, then retry from the controls.'
+              );
+            }}
+            onDisconnected={() => {
+              // Refresh / brief network blips disconnect LiveKit — don't kick the
+              // doctor into wrap-up unless they pressed End call.
+              if (endingCallRef.current) {
+                void goPostConsult();
+              }
+            }}
+            className="flex h-full min-h-0 flex-1 flex-col"
+            style={{ height: '100%' }}
           >
-            <Conference />
+            <EnableLocalMedia onHint={setMediaHint} />
+            <TeleconsultStage
+              patientName={appointment?.patientName || 'Patient'}
+              doctorName={user?.displayName || 'You'}
+              onEndCall={() => void handleEnd()}
+              ending={ending}
+              mediaHint={mediaHint}
+            />
             <AudioRenderer />
           </Room>
         </div>

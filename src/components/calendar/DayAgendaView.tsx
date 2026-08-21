@@ -1,16 +1,19 @@
-import React, { useMemo } from 'react';
-import { Appointment } from '../../types';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Appointment, BookableBlock, SoftBlock } from '../../types';
 import {
-  formatMinutesClock,
-  parseTimeToMinutes,
+  appointmentDurationMinutes,
   appointmentSortMinutes,
+  formatHourLabel,
+  formatMinutesClock,
+  parseHhmmToMinutes,
+  toDateKey,
+  visibleHourRange,
 } from './calendarDateUtils';
 import { formatAppointmentStatusLabel } from '../../services/appointmentCanonical';
 
-const DAY_START_HOUR = 7;
-const DAY_END_HOUR = 20;
-const ROW_HEIGHT = 72;
-const VISIBLE_HOURS = DAY_END_HOUR - DAY_START_HOUR;
+const ROW_HEIGHT = 64;
+/** Keeps a long open day scannable instead of stretching the page. */
+const GRID_MAX_HEIGHT = 560;
 
 const STATUS_STYLES: Record<string, string> = {
   confirmed: 'border-l-emerald-500 bg-emerald-50 text-emerald-900',
@@ -18,30 +21,62 @@ const STATUS_STYLES: Record<string, string> = {
   completed: 'border-l-slate-400 bg-slate-100 text-slate-700',
   cancelled: 'border-l-red-300 bg-red-50 text-red-700 opacity-60',
   no_show: 'border-l-orange-500 bg-orange-50 text-orange-900',
+  rescheduled: 'border-l-amber-500 bg-amber-50 text-amber-900',
 };
 
 interface DayAgendaViewProps {
   dateLabel: string;
+  /** Local YYYY-MM-DD of the day shown, used to surface "now" on today. */
+  dateKey?: string;
   appointments: Appointment[];
+  clinicHours?: BookableBlock[];
+  blockedTime?: SoftBlock[];
   isLoading?: boolean;
   onSelectAppointment: (apt: Appointment) => void;
   onQuickAdd?: () => void;
+  onManageHours?: () => void;
   doctorLabels?: Record<string, string>;
   showDoctor?: boolean;
 }
 
+function clinicWindows(blocks: BookableBlock[]): { start: number; end: number }[] {
+  return blocks
+    .map((block) => {
+      const start = parseHhmmToMinutes(block.startTime);
+      const end = parseHhmmToMinutes(block.endTime);
+      if (start == null || end == null || end <= start) return null;
+      return { start, end };
+    })
+    .filter((window): window is { start: number; end: number } => window != null)
+    .sort((a, b) => a.start - b.start);
+}
+
 export const DayAgendaView: React.FC<DayAgendaViewProps> = ({
   dateLabel,
+  dateKey,
   appointments,
+  clinicHours = [],
+  blockedTime = [],
   isLoading = false,
   onSelectAppointment,
   onQuickAdd,
+  onManageHours,
   doctorLabels,
   showDoctor = false,
 }) => {
+  const windows = useMemo(() => clinicWindows(clinicHours), [clinicHours]);
+
+  const { startHour, endHour } = useMemo(
+    () => visibleHourRange(windows, appointments),
+    [windows, appointments],
+  );
+
+  const visibleHours = endHour - startHour;
+  const dayStartMin = startHour * 60;
+  const dayEndMin = endHour * 60;
   const hours = useMemo(
-    () => Array.from({ length: VISIBLE_HOURS }, (_, i) => DAY_START_HOUR + i),
-    []
+    () => Array.from({ length: visibleHours }, (_, i) => startHour + i),
+    [startHour, visibleHours],
   );
 
   const visible = useMemo(
@@ -50,21 +85,79 @@ export const DayAgendaView: React.FC<DayAgendaViewProps> = ({
         .filter((a) => a.status !== 'cancelled')
         .slice()
         .sort((a, b) => appointmentSortMinutes(a) - appointmentSortMinutes(b)),
-    [appointments]
+    [appointments],
   );
 
-  const positioned = useMemo(() => {
-    return visible.map((apt) => {
-      const startMin = appointmentSortMinutes(apt);
-      const duration =
-        apt.startAt && apt.endAt
-          ? Math.max(15, Math.round((apt.endAt.getTime() - apt.startAt.getTime()) / 60_000))
-          : 30;
-      const top = ((Math.max(startMin, DAY_START_HOUR * 60) - DAY_START_HOUR * 60) / 60) * ROW_HEIGHT;
-      const height = Math.max((duration / 60) * ROW_HEIGHT, 44);
-      return { apt, startMin, top, height };
-    });
-  }, [visible]);
+  const positioned = useMemo(
+    () =>
+      visible.map((apt) => {
+        const startMin = appointmentSortMinutes(apt);
+        const duration = appointmentDurationMinutes(apt);
+        const top = ((Math.max(startMin, dayStartMin) - dayStartMin) / 60) * ROW_HEIGHT;
+        const height = Math.max((duration / 60) * ROW_HEIGHT, 48);
+        return { apt, startMin, top, height };
+      }),
+    [dayStartMin, visible],
+  );
+
+  const unavailable = useMemo(() => {
+    const ranges: { start: number; end: number }[] = [];
+    if (windows.length === 0) {
+      return [{ start: dayStartMin, end: dayEndMin }];
+    }
+    let cursor = dayStartMin;
+    for (const window of windows) {
+      if (window.start > cursor) {
+        ranges.push({ start: cursor, end: Math.min(window.start, dayEndMin) });
+      }
+      cursor = Math.max(cursor, window.end);
+    }
+    if (cursor < dayEndMin) ranges.push({ start: cursor, end: dayEndMin });
+    return ranges.filter((range) => range.end > range.start);
+  }, [dayEndMin, dayStartMin, windows]);
+
+  const toTop = (minutes: number) => ((minutes - dayStartMin) / 60) * ROW_HEIGHT;
+  const hourLabel = formatHourLabel;
+
+  const isToday = dateKey != null && dateKey === toDateKey(new Date());
+  const [nowMinutes, setNowMinutes] = useState(() => {
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  });
+
+  useEffect(() => {
+    if (!isToday) return;
+    const tick = setInterval(() => {
+      const now = new Date();
+      setNowMinutes(now.getHours() * 60 + now.getMinutes());
+    }, 60_000);
+    return () => clearInterval(tick);
+  }, [isToday]);
+
+  const upNext = useMemo(() => {
+    if (visible.length === 0) return null;
+    if (!isToday) return visible[0];
+    return (
+      visible.find((apt) => appointmentSortMinutes(apt) >= nowMinutes) ?? null
+    );
+  }, [isToday, nowMinutes, visible]);
+
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  // Open the grid on what matters now rather than at the top of a long day.
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const anchor = upNext
+      ? appointmentSortMinutes(upNext)
+      : isToday
+        ? nowMinutes
+        : null;
+    if (anchor == null) return;
+    grid.scrollTop = Math.max(0, toTop(anchor) - ROW_HEIGHT);
+    // Re-anchor when the day or its bookings change, not on every clock tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateKey, upNext?.id, startHour, isLoading]);
 
   if (isLoading) {
     return (
@@ -80,128 +173,171 @@ export const DayAgendaView: React.FC<DayAgendaViewProps> = ({
     <div className="flex h-full flex-col">
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-[15px] font-semibold text-[#0E2340]">Today&apos;s schedule</h3>
+          <h3 className="text-[15px] font-semibold text-[#0E2340]">
+            {isToday ? 'Today\u2019s schedule' : 'Day schedule'}
+          </h3>
           <p className="mt-0.5 text-[13px] text-[#65758b]">{dateLabel}</p>
+          {windows.length > 0 ? (
+            <p className="mt-1 text-[12px] font-medium text-anixi-green">
+              Open {formatMinutesClock(windows[0].start)}
+              {windows.length > 1 ? `–${formatMinutesClock(windows[windows.length - 1].end)}` : `–${formatMinutesClock(windows[0].end)}`}
+            </p>
+          ) : (
+            <p className="mt-1 text-[12px] text-[#94a3b8]">No clinic hours set for this day</p>
+          )}
+          {upNext ? (
+            <button
+              type="button"
+              onClick={() => onSelectAppointment(upNext)}
+              className="mt-2 inline-flex items-center gap-2 rounded-lg border border-[#e1e7ef] bg-[#f8fafc] px-2.5 py-1.5 text-left transition hover:border-anixi-green"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                {isToday ? 'Up next' : 'First visit'}
+              </span>
+              <span className="text-[12px] font-semibold text-[#0E2340]">
+                {formatMinutesClock(appointmentSortMinutes(upNext))} · {upNext.patientName}
+              </span>
+            </button>
+          ) : (
+            visible.length > 0 && (
+              <p className="mt-2 text-[12px] text-[#94a3b8]">
+                No visits left today · {visible.length} earlier{' '}
+                {visible.length === 1 ? 'visit' : 'visits'}
+              </p>
+            )
+          )}
         </div>
-        {onQuickAdd && (
-          <button
-            type="button"
-            onClick={onQuickAdd}
-            className="inline-flex h-9 items-center rounded-lg border border-[#e1e7ef] bg-white px-3.5 text-xs font-semibold text-[#344256] shadow-sm transition hover:border-anixi-green hover:text-anixi-green"
-          >
-            + Book into this day
-          </button>
-        )}
-      </div>
-
-      {visible.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-[#e1e7ef] bg-[#f8fafc] px-6 py-16 text-center">
-          <p className="text-sm font-semibold text-[#0E2340]">No visits on this day</p>
-          <p className="mt-1 max-w-xs text-[13px] leading-relaxed text-[#65758b]">
-            When patients are booked, they appear here in time order - like your clinic day list.
-          </p>
+        <div className="flex flex-wrap gap-2">
+          {onManageHours && (
+            <button
+              type="button"
+              onClick={onManageHours}
+              className="inline-flex h-9 items-center rounded-lg border border-[#e1e7ef] bg-white px-3.5 text-xs font-semibold text-[#344256] shadow-sm transition hover:border-anixi-green hover:text-anixi-green"
+            >
+              Edit hours
+            </button>
+          )}
           {onQuickAdd && (
             <button
               type="button"
               onClick={onQuickAdd}
-              className="mt-4 inline-flex h-10 items-center rounded-lg bg-anixi-green px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f]"
+              className="inline-flex h-9 items-center rounded-lg bg-anixi-green px-3.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#365c4f]"
             >
-              + Add appointment
+              + Book into this day
             </button>
           )}
         </div>
-      ) : (
-        <>
-          {/* List (clinician-friendly primary view) */}
-          <div className="mb-5 space-y-2">
-            {visible.map((apt) => {
-              const mins = appointmentSortMinutes(apt);
-              const style = STATUS_STYLES[apt.status] ?? STATUS_STYLES.confirmed;
-              return (
-                <button
-                  key={apt.id}
-                  type="button"
-                  onClick={() => onSelectAppointment(apt)}
-                  className={`flex w-full items-stretch gap-0 overflow-hidden rounded-xl border border-[#e1e7ef] text-left transition hover:border-anixi-green/40 hover:shadow-sm ${style}`}
-                >
-                  <div className="flex w-20 shrink-0 flex-col items-center justify-center border-r border-black/5 bg-white/50 px-2 py-3">
-                    <span className="text-sm font-bold tabular-nums text-[#0E2340]">
-                      {formatMinutesClock(mins).replace(/ (AM|PM)/, '')}
-                    </span>
-                    <span className="text-[10px] font-semibold uppercase text-[#8FA0B6]">
-                      {mins >= 12 * 60 ? 'PM' : 'AM'}
-                    </span>
-                  </div>
-                  <div className="min-w-0 flex-1 px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-[#0E2340]">{apt.patientName}</p>
-                      <span className="rounded-md bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-[#65758b]">
-                        {formatAppointmentStatusLabel(apt.status)}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-[12px] capitalize text-[#65758b]">
-                      {showDoctor && (
-                        <span className="font-medium text-[#344256]">
-                          {doctorLabels?.[apt.doctorId] || 'Doctor'}
-                          {' · '}
-                        </span>
-                      )}
-                      {apt.consultType ?? apt.type}
-                      {apt.time ? ` · ${apt.time}` : ''}
-                      {apt.isManual ? ' · Manual booking' : ''}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+      </div>
 
-          {/* Compact timeline for visual orientation */}
-          <div className="overflow-hidden rounded-xl border border-[#e1e7ef]">
-            <div className="border-b border-[#e1e7ef] bg-[#f8fafc] px-4 py-2">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
-                Day timeline
-              </p>
-            </div>
+      <div
+        ref={gridRef}
+        className="overflow-y-auto overscroll-contain rounded-xl border border-[#e1e7ef]"
+        style={{ maxHeight: GRID_MAX_HEIGHT }}
+      >
+        <div
+          className="relative bg-white"
+          style={{ height: visibleHours * ROW_HEIGHT }}
+        >
+          {hours.map((hour) => (
             <div
-              className="relative"
-              style={{ height: VISIBLE_HOURS * ROW_HEIGHT }}
+              key={hour}
+              className="absolute left-0 right-0 border-t border-[#eef2f6]"
+              style={{ top: (hour - startHour) * ROW_HEIGHT }}
             >
-              {hours.map((h) => (
-                <div
-                  key={h}
-                  className="absolute left-0 right-0 border-t border-[#eef2f6]"
-                  style={{ top: (h - DAY_START_HOUR) * ROW_HEIGHT }}
-                >
-                  <span className="absolute left-2 top-0 -translate-y-1/2 bg-white px-1 text-[10px] font-medium text-[#8FA0B6]">
-                    {h === 12 ? '12 PM' : h < 12 ? `${h} AM` : `${h - 12} PM`}
-                  </span>
-                </div>
-              ))}
-              {positioned.map(({ apt, startMin, top, height }) => {
-                const style = STATUS_STYLES[apt.status] ?? STATUS_STYLES.confirmed;
-                const labelMins = parseTimeToMinutes(apt.time) ?? startMin;
-                return (
-                  <button
-                    key={`tl-${apt.id}`}
-                    type="button"
-                    onClick={() => onSelectAppointment(apt)}
-                    className={`absolute left-16 right-3 overflow-hidden rounded-lg border border-black/5 border-l-4 px-2.5 py-1.5 text-left shadow-sm transition hover:brightness-95 ${style}`}
-                    style={{ top, height }}
-                    title={`${apt.patientName} · ${formatMinutesClock(labelMins)}`}
-                  >
-                    <p className="truncate text-xs font-semibold">{apt.patientName}</p>
-                    <p className="truncate text-[10px] opacity-80">
-                      {formatMinutesClock(labelMins)}
-                      {apt.consultType ? ` · ${apt.consultType}` : ''}
-                    </p>
-                  </button>
-                );
-              })}
+              <span className="absolute left-2 top-0 z-10 -translate-y-1/2 bg-white px-1 text-[10px] font-medium text-[#8FA0B6]">
+                {hourLabel(hour)}
+              </span>
             </div>
-          </div>
-        </>
-      )}
+          ))}
+
+          {unavailable.map((range, index) => (
+            <div
+              key={`off-${index}`}
+              className="pointer-events-none absolute left-16 right-0 bg-[#f1f5f9]"
+              style={{
+                top: toTop(range.start),
+                height: toTop(range.end) - toTop(range.start),
+              }}
+              title="Outside clinic hours"
+            />
+          ))}
+
+          {windows.map((window, index) => (
+            <div
+              key={`open-${index}`}
+              className="pointer-events-none absolute left-16 right-0 border-l-2 border-anixi-green/40 bg-emerald-50/40"
+              style={{
+                top: toTop(window.start),
+                height: toTop(window.end) - toTop(window.start),
+              }}
+              title="Clinic hours"
+            />
+          ))}
+
+          {blockedTime.map((block) => {
+            const start =
+              block.startAt.getHours() * 60 + block.startAt.getMinutes();
+            const end = block.endAt.getHours() * 60 + block.endAt.getMinutes();
+            if (end <= start) return null;
+            return (
+              <div
+                key={block.id}
+                className="absolute left-16 right-3 overflow-hidden rounded-lg border border-slate-200 bg-slate-100/90 px-2.5 py-1.5 text-left"
+                style={{
+                  top: toTop(Math.max(start, dayStartMin)),
+                  height: Math.max(toTop(Math.min(end, dayEndMin)) - toTop(Math.max(start, dayStartMin)), 28),
+                }}
+                title={block.title}
+              >
+                <p className="truncate text-xs font-semibold text-slate-600">{block.title}</p>
+                <p className="text-[10px] text-slate-500">Blocked</p>
+              </div>
+            );
+          })}
+
+          {positioned.map(({ apt, startMin, top, height }) => {
+            const style = STATUS_STYLES[apt.status] ?? STATUS_STYLES.confirmed;
+            return (
+              <button
+                key={apt.id}
+                type="button"
+                onClick={() => onSelectAppointment(apt)}
+                className={`absolute left-16 right-3 z-20 overflow-hidden rounded-lg border border-black/5 border-l-4 px-2.5 py-1.5 text-left shadow-sm transition hover:brightness-95 ${style}`}
+                style={{ top, height }}
+                title={`${apt.patientName} · ${formatMinutesClock(startMin)}`}
+              >
+                <p className="truncate text-xs font-semibold">{apt.patientName}</p>
+                <p className="truncate text-[10px] opacity-80">
+                  {formatMinutesClock(startMin)}
+                  {apt.consultType === 'teleconsult' || apt.type === 'Virtual'
+                    ? ' · Video'
+                    : apt.consultType
+                      ? ` · ${apt.consultType}`
+                      : ''}
+                  {showDoctor ? ` · ${doctorLabels?.[apt.doctorId] || 'Doctor'}` : ''}
+                  {' · '}
+                  {formatAppointmentStatusLabel(apt.status)}
+                </p>
+              </button>
+            );
+          })}
+
+          {isToday && nowMinutes >= dayStartMin && nowMinutes <= dayEndMin && (
+            <div
+              className="pointer-events-none absolute left-12 right-0 z-30 border-t border-red-400"
+              style={{ top: toTop(nowMinutes) }}
+            >
+              <span className="absolute -top-1.5 left-0 h-3 w-3 -translate-x-1/2 rounded-full bg-red-400" />
+            </div>
+          )}
+
+          {visible.length === 0 && windows.length > 0 && (
+            <p className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 text-[13px] text-[#94a3b8]">
+              No visits booked in these hours
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

@@ -65,80 +65,57 @@ export const AppointmentsPage: React.FC = () => {
   }, [user?.id]);
 
   const handleAppointmentClick = (apt: Appointment) => {
-    const isAnixiPatient = !apt.isManual && apt.patientId && apt.patientId !== 'manual' && apt.patientId !== 'unknown';
-    if (isAnixiPatient) {
-      navigate(`/patient-profile/${apt.patientId}`, {
-        state: {
-          appointmentId: apt.id,
-          appointmentTime: apt.time,
-          appointmentDate: apt.date ? new Date(apt.date).toLocaleDateString() : undefined,
-          consultType: apt.consultType,
-          status: apt.status,
-        },
-      });
-    } else {
-      setSelectedAppointment(apt);
+    if (apt.id) {
+      navigate(`/appointments/${apt.id}`, { state: { appointment: apt } });
+      return;
     }
-
-    navigate(`/appointments/${apt.id}`, { state: { appointment: apt } });
+    setSelectedAppointment(apt);
   };
+
+  const isSameCalendarDay = (date: Date, other: Date) =>
+    date.getFullYear() === other.getFullYear() &&
+    date.getMonth() === other.getMonth() &&
+    date.getDate() === other.getDate();
+
+  const isPendingStatus = (status: Appointment['status']) =>
+    status === 'pending' || status === 'rescheduled';
+
+  const isCancelledStatus = (status: Appointment['status']) =>
+    status === 'cancelled' || status === 'auto_cancelled';
 
   const stats = {
-
-    total: appointments.filter((a) => a.status !== 'cancelled' && a.status !== 'completed').length,
+    total: appointments.length,
     confirmed: appointments.filter((a) => a.status === 'confirmed').length,
-    pending: appointments.filter(
-      (a) => a.status === 'pending' || a.status === 'rescheduled'
-    ).length,
+    pending: appointments.filter((a) => isPendingStatus(a.status)).length,
     completed: appointments.filter((a) => a.status === 'completed').length,
-    cancelled: appointments.filter((a) => a.status === 'cancelled').length,
+    cancelled: appointments.filter((a) => isCancelledStatus(a.status)).length,
     noShow: appointments.filter((a) => a.status === 'no_show').length,
-    today: appointments.filter((a) => {
-      const today = new Date();
-      const appointmentDate = new Date(a.date);
-      return (
-        appointmentDate.getFullYear() === today.getFullYear() &&
-        appointmentDate.getMonth() === today.getMonth() &&
-        appointmentDate.getDate() === today.getDate() &&
-        a.status !== 'cancelled' &&
-        a.status !== 'completed'
-      );
-    }).length,
+    today: appointments.filter((a) => isSameCalendarDay(new Date(a.date), new Date())).length,
   };
+
   const handleCardClick = (card: FilterType) => {
     setSelectedCard(card);
-    if (card === 'All') {
-      setFilterStatus('All');
-    } else if (card === 'Today') {
+    if (card === 'All' || card === 'Today') {
       setFilterStatus('All');
     } else {
       setFilterStatus(card as Appointment['status']);
     }
   };
 
-  const baseAppointments =
-    selectedCard === 'cancelled' || selectedCard === 'completed'
-      ? appointments
-      : appointments.filter((a) => a.status !== 'cancelled' && a.status !== 'completed');
-  let filteredAppointments: Appointment[] = [];
-  if (selectedCard === 'Today') {
+  const activeFilter: FilterType = selectedCard ?? filterStatus;
+
+  let filteredAppointments: Appointment[] = appointments;
+  if (activeFilter === 'Today') {
     const today = new Date();
-    filteredAppointments = baseAppointments.filter((a) => {
-      const appointmentDate = new Date(a.date);
-      return (
-        appointmentDate.getFullYear() === today.getFullYear() &&
-        appointmentDate.getMonth() === today.getMonth() &&
-        appointmentDate.getDate() === today.getDate()
-      );
-    });
-  } else if (selectedCard && selectedCard !== 'All') {
-    filteredAppointments = baseAppointments.filter((a) => a.status === selectedCard);
-  } else if (selectedCard === 'All') {
-    filteredAppointments = baseAppointments;
-  } else if ((filterStatus as string) === 'All') {
-    filteredAppointments = baseAppointments;
-  } else {
-    filteredAppointments = baseAppointments.filter((a) => a.status === filterStatus);
+    filteredAppointments = appointments.filter((a) =>
+      isSameCalendarDay(new Date(a.date), today)
+    );
+  } else if (activeFilter === 'pending') {
+    filteredAppointments = appointments.filter((a) => isPendingStatus(a.status));
+  } else if (activeFilter === 'cancelled') {
+    filteredAppointments = appointments.filter((a) => isCancelledStatus(a.status));
+  } else if (activeFilter !== 'All') {
+    filteredAppointments = appointments.filter((a) => a.status === activeFilter);
   }
 
   if (isLoading) {
@@ -204,7 +181,7 @@ export const AppointmentsPage: React.FC = () => {
               type="button"
               onClick={() => handleCardClick(item.card)}
               className={`rounded-[10px] border bg-white px-2.5 py-2 text-left transition-all duration-200 ${
-                selectedCard === item.card
+                activeFilter === item.card
                   ? 'border-anixi-green ring-1 ring-anixi-green/30'
                   : 'border-[#e1e7ef] hover:border-anixi-green/40'
               }`}
@@ -225,7 +202,7 @@ export const AppointmentsPage: React.FC = () => {
               type="button"
               onClick={() => handleCardClick(tab === 'All' ? 'All' : tab)}
               className={`rounded-[8px] px-3 py-1.5 text-sm font-medium capitalize transition-all duration-200 ${
-                (selectedCard === tab || (!selectedCard && tab === 'All' && filterStatus === 'All'))
+                activeFilter === tab
                   ? 'bg-anixi-green text-white shadow-sm'
                   : 'text-[#65758b] hover:bg-white hover:text-anixi-green hover:shadow-sm'
               }`}
@@ -235,12 +212,13 @@ export const AppointmentsPage: React.FC = () => {
           ))}
         </div>
         <p className="text-sm font-medium text-[#344256]">
-          {selectedCard === 'Today' && "Today's appointments"}
-          {selectedCard === 'confirmed' && 'Confirmed'}
-          {selectedCard === 'pending' && 'Pending'}
-          {selectedCard === 'completed' && 'Completed'}
-          {selectedCard === 'cancelled' && 'Cancelled'}
-          {(selectedCard === 'All' || !selectedCard) && 'All appointments'}
+          {activeFilter === 'Today' && "Today's appointments"}
+          {activeFilter === 'confirmed' && 'Confirmed'}
+          {activeFilter === 'pending' && 'Pending'}
+          {activeFilter === 'completed' && 'Completed'}
+          {activeFilter === 'cancelled' && 'Cancelled'}
+          {activeFilter === 'no_show' && 'Missed'}
+          {activeFilter === 'All' && 'All appointments'}
         </p>
       </div>
 

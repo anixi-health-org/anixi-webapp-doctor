@@ -89,9 +89,9 @@ export const BulkPatientImportPanel: React.FC<BulkPatientImportPanelProps> = ({
           <div>
             <p className="text-sm font-semibold text-[#344256]">Import your patients</p>
             <p className="text-xs text-[#65758b]">
-              Download the template, fill in your roster, then upload. Each patient receives app
-              download links and temporary login details (they choose a new password on first
-              sign-in).
+              Download the template, fill in your roster, then upload. Each patient receives an
+              app invite email with download links (they create their own password when they
+              sign up).
             </p>
           </div>
         </div>

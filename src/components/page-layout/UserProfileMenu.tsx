@@ -173,8 +173,16 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
         aria-haspopup="menu"
         aria-label="Open account menu"
       >
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#427160] text-sm font-semibold text-white">
-          {initial}
+        <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#427160] text-sm font-semibold text-white">
+          {user?.role === 'doctor' && user.profileImageUrl ? (
+            <img
+              src={user.profileImageUrl}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            initial
+          )}
         </div>
         <div className="hidden min-w-0 text-left lg:block">
           <p className="max-w-[140px] truncate text-sm font-semibold text-[#0a0a0a]">
@@ -194,8 +202,16 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
         >
           <div className="border-b border-gray-100 bg-gradient-to-br from-anixi-green/5 to-transparent px-4 py-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-anixi-green text-base font-semibold text-white">
-                {initial}
+              <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-anixi-green text-base font-semibold text-white">
+                {user?.role === 'doctor' && user.profileImageUrl ? (
+                  <img
+                    src={user.profileImageUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  initial
+                )}
               </div>
               <div className="min-w-0">
                 <p className="truncate font-sans text-sm font-semibold text-gray-900">

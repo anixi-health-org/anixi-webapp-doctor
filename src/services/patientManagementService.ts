@@ -5,6 +5,7 @@ import {
   getDocs,
   query,
   where,
+  limit,
   writeBatch,
   addDoc,
   setDoc,
@@ -17,7 +18,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { buildPatientSignupLink } from '../lib/referralLinks';
-import { USERS_COLLECTION } from '../shared/constants';
+import { APPOINTMENTS_COLLECTION, USERS_COLLECTION } from '../shared/constants';
 import { Patient, SharingRequest } from '../types';
 import { getDoctorReferral, logInvitation } from './referralService';
 import { mapPatientRecord } from './patientRecordMapper';
@@ -153,6 +154,169 @@ export const linkDoctorPatientAccess = async (
   );
 };
 
+async function doctorHasAppointmentWithPatient(
+  doctorId: string,
+  patientId: string
+): Promise<boolean> {
+  try {
+    const sharedQ = query(
+      collection(db, APPOINTMENTS_COLLECTION),
+      where('doctorId', '==', doctorId),
+      where('patientId', '==', patientId),
+      limit(1)
+    );
+    const sharedSnap = await getDocs(sharedQ);
+    if (!sharedSnap.empty) return true;
+  } catch {
+    // Fall through to doctor-owned appointment copies.
+  }
+
+  try {
+    const ownedQ = query(
+      collection(db, USERS_COLLECTION, doctorId, 'appointments'),
+      where('patientId', '==', patientId),
+      limit(1)
+    );
+    const ownedSnap = await getDocs(ownedQ);
+    return !ownedSnap.empty;
+  } catch {
+    return false;
+  }
+}
+
+async function loadPatientRecordForDoctor(
+  doctorId: string,
+  patientId: string
+): Promise<Patient | null> {
+  const approvedSnap = await getDoc(
+    doc(db, USERS_COLLECTION, doctorId, 'approved_patients', patientId)
+  );
+
+  let userData: Record<string, unknown> | undefined;
+  try {
+    const userSnap = await getDoc(doc(db, USERS_COLLECTION, patientId));
+    if (userSnap.exists()) userData = userSnap.data() as Record<string, unknown>;
+  } catch {
+    userData = undefined;
+  }
+
+  let patientData: Record<string, unknown> | undefined;
+  try {
+    const patientSnap = await getDoc(doc(db, 'patients', patientId));
+    if (patientSnap.exists()) patientData = patientSnap.data() as Record<string, unknown>;
+  } catch {
+    patientData = undefined;
+  }
+
+  if (!userData && !patientData && approvedSnap.exists()) {
+    const approved = approvedSnap.data();
+    userData = {
+      displayName: approved.patientName,
+      email: approved.patientEmail,
+    };
+  }
+
+  if (!userData && !patientData) return null;
+
+  return mapPatientRecord(patientId, patientData, userData, doctorId);
+}
+
+/**
+ * Build the portal's view of a rostered patient.
+ *
+ * `Users/{patientId}` is readable only by its owner, so the doctor portal must
+ * never let that read decide whether a patient exists — doing so drops every
+ * app-based patient from the list. `patients/{patientId}` carries the medical
+ * profile a doctor may read, and the roster entry itself is the last resort so
+ * a patient always appears once they are on the roster.
+ */
+export const resolveRosteredPatient = async (
+  doctorId: string,
+  patientId: string,
+  rosterData?: DocumentData
+): Promise<Patient> => {
+  let patientData: Record<string, unknown> | undefined;
+  try {
+    const patientSnap = await getDoc(doc(db, 'patients', patientId));
+    if (patientSnap.exists()) {
+      patientData = patientSnap.data() as Record<string, unknown>;
+    }
+  } catch {
+    patientData = undefined;
+  }
+
+  const fallback: Record<string, unknown> = {
+    displayName: rosterData?.patientName,
+    email: rosterData?.patientEmail || rosterData?.invitedEmail,
+  };
+
+  return mapPatientRecord(patientId, patientData, fallback, doctorId);
+};
+
+/** Resolve a patient for the doctor portal, including booked patients not yet on the roster. */
+export const getPatientForDoctorView = async (
+  doctorId: string,
+  patientId: string,
+  options?: {
+    patientName?: string;
+    patientEmail?: string;
+    ensureAccess?: boolean;
+  }
+): Promise<Patient | null> => {
+  if (!doctorId?.trim() || !patientId?.trim()) return null;
+  if (
+    patientId === 'manual' ||
+    patientId === 'unknown' ||
+    patientId.startsWith('manual_')
+  ) {
+    return null;
+  }
+
+  const existing = await loadPatientRecordForDoctor(doctorId, patientId);
+  if (existing) return existing;
+
+  const hasAppointment = await doctorHasAppointmentWithPatient(doctorId, patientId);
+  if (!hasAppointment) return null;
+
+  if (options?.ensureAccess !== false) {
+    try {
+      await linkDoctorPatientAccess(doctorId, patientId);
+      if (options?.patientName?.trim() || options?.patientEmail?.trim()) {
+        await setDoc(
+          doc(db, USERS_COLLECTION, doctorId, 'approved_patients', patientId),
+          {
+            patientId,
+            ...(options.patientName?.trim() ? { patientName: options.patientName.trim() } : {}),
+            ...(options.patientEmail?.trim() ? { patientEmail: options.patientEmail.trim() } : {}),
+            status: 'active',
+            source: 'appointment',
+          },
+          { merge: true }
+        );
+      }
+    } catch {
+      // Still attempt a read-only fallback below.
+    }
+  }
+
+  const linked = await loadPatientRecordForDoctor(doctorId, patientId);
+  if (linked) return linked;
+
+  if (options?.patientName?.trim()) {
+    return mapPatientRecord(
+      patientId,
+      undefined,
+      {
+        displayName: options.patientName.trim(),
+        email: options.patientEmail?.trim() || '',
+      },
+      doctorId
+    );
+  }
+
+  return null;
+};
+
 export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> => {
   try {
     if (!doctorId || doctorId.trim() === '') {
@@ -168,22 +332,13 @@ export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> =>
     if (snapshot.size === 0) {
       return [];
     }
-    const patientIds = snapshot.docs.map((doc) => doc.id);
     const patients: Patient[] = [];
-    const patientFetchPromises = patientIds.map(async (patientId) => {
+    const patientFetchPromises = snapshot.docs.map(async (rosterDoc) => {
       try {
-        const [userSnap, patientSnap] = await Promise.all([
-          getDoc(doc(db, 'Users', patientId)),
-          getDoc(doc(db, 'patients', patientId)),
-        ]);
-        if (!userSnap.exists() && !patientSnap.exists()) {
-          return null;
-        }
-        return mapPatientRecord(
-          patientId,
-          patientSnap.exists() ? (patientSnap.data() as Record<string, unknown>) : undefined,
-          userSnap.exists() ? (userSnap.data() as Record<string, unknown>) : undefined,
-          doctorId
+        return await resolveRosteredPatient(
+          doctorId,
+          rosterDoc.data().patientId || rosterDoc.id,
+          rosterDoc.data()
         );
       } catch {
         return null;
@@ -402,19 +557,27 @@ export const calculateAge = (dateOfBirth: Date | undefined | null): number | nul
     return null;
   }
 };
-export const getPatientStatus = (patient: Patient): 'stable' | 'warning' | 'inactive' => {
-  if (patient.chronicDiseases && patient.chronicDiseases.length > 0) {
-    return 'warning';
-  }
-  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
-  const lastUpdate = patient.updatedAt
-    ? new Date(patient.updatedAt)
-    : patient.createdAt
-      ? new Date(patient.createdAt)
-      : new Date();
-  if (lastUpdate < fiveDaysAgo) {
+export type PatientRosterStatus = 'stable' | 'critical' | 'recovering' | 'inactive';
+
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Same roster status as the Patients page — not adherence or 5-day recency. */
+export function derivePatientRosterStatus(patient: Patient): PatientRosterStatus {
+  const chronicCount = patient.chronicDiseases?.length ?? 0;
+  if (chronicCount > 2) return 'critical';
+  if (chronicCount > 0) return 'recovering';
+  const lastRaw = patient.updatedAt ?? patient.createdAt;
+  const last = lastRaw ? new Date(lastRaw) : null;
+  if (last && !Number.isNaN(last.getTime()) && last.getTime() < Date.now() - THIRTY_DAYS_MS) {
     return 'inactive';
   }
+  return 'stable';
+}
+
+export const getPatientStatus = (patient: Patient): 'stable' | 'warning' | 'inactive' => {
+  const status = derivePatientRosterStatus(patient);
+  if (status === 'inactive') return 'inactive';
+  if (status === 'critical' || status === 'recovering') return 'warning';
   return 'stable';
 };
 
@@ -1013,20 +1176,11 @@ export const listenToDoctorPatients = (
         }
 
         const patientDetailsPromises = approvedPatients.map(async (approvedPatient) => {
-          const patientId = approvedPatient.id;
           try {
-            const [patientSnap, userSnap] = await Promise.all([
-              getDoc(doc(db, 'patients', patientId)),
-              getDoc(doc(db, USERS_COLLECTION, patientId)),
-            ]);
-            if (!patientSnap.exists() && !userSnap.exists()) {
-              return null;
-            }
-            return mapPatientRecord(
-              patientId,
-              patientSnap.exists() ? (patientSnap.data() as Record<string, unknown>) : undefined,
-              userSnap.exists() ? (userSnap.data() as Record<string, unknown>) : undefined,
-              doctorId
+            return await resolveRosteredPatient(
+              doctorId,
+              approvedPatient.id,
+              approvedPatient
             );
           } catch {
             return null;

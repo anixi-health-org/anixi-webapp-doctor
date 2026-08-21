@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, ImageIcon } from 'lucide-react';
+import { getDoctorProfile } from '../../services/doctorService';
 import type { Doctor } from '../../types';
 
 /** Fields the invoice PDF letterhead is built from - see invoicePdfService. */
@@ -16,9 +17,52 @@ export const LETTERHEAD_FIELDS = [
 
 export type LetterheadFieldKey = (typeof LETTERHEAD_FIELDS)[number]['key'];
 
+/** Marked optional on the professional profile form — should not block letterhead setup. */
+const OPTIONAL_LETTERHEAD_FIELD_KEYS = new Set<LetterheadFieldKey>([
+  'practiceNumberBhf',
+  'vatNumber',
+]);
+
+type LetterheadDoctor = Doctor & {
+  practiceNumber?: string;
+  hpcsaRegistrationNumber?: string;
+  practiceAddress?: string;
+  profileImageUrl?: string;
+};
+
+export function resolveLetterheadFieldValue(
+  doctor: LetterheadDoctor | null | undefined,
+  key: LetterheadFieldKey
+): string {
+  if (!doctor) return '';
+
+  switch (key) {
+    case 'logoUrl':
+      return String(doctor.logoUrl ?? '').trim();
+    case 'practiceName':
+      return String(doctor.practiceName ?? '').trim();
+    case 'officeAddress':
+      return String(doctor.officeAddress ?? doctor.practiceAddress ?? '').trim();
+    case 'phoneNumber':
+      return String(doctor.phoneNumber ?? '').trim();
+    case 'licenseNumber':
+      return String(doctor.licenseNumber ?? doctor.hpcsaRegistrationNumber ?? '').trim();
+    case 'practiceNumberBhf':
+      return String(doctor.practiceNumberBhf ?? doctor.practiceNumber ?? '').trim();
+    case 'vatNumber':
+      return String(doctor.vatNumber ?? '').trim();
+    default:
+      return '';
+  }
+}
+
 export function getMissingLetterheadFields(doctor: Doctor | null | undefined) {
   if (!doctor) return [];
-  return LETTERHEAD_FIELDS.filter(({ key }) => !String(doctor[key] ?? '').trim());
+  return LETTERHEAD_FIELDS.filter(
+    ({ key }) =>
+      !OPTIONAL_LETTERHEAD_FIELD_KEYS.has(key) &&
+      !resolveLetterheadFieldValue(doctor, key)
+  );
 }
 
 interface LetterheadSetupBannerProps {
@@ -35,8 +79,32 @@ export const LetterheadSetupBanner: React.FC<LetterheadSetupBannerProps> = ({
 }) => {
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(false);
+  const [resolvedDoctor, setResolvedDoctor] = useState<Doctor | null | undefined>(doctor);
 
-  const missingLetterhead = useMemo(() => getMissingLetterheadFields(doctor), [doctor]);
+  useEffect(() => {
+    setResolvedDoctor(doctor);
+  }, [doctor]);
+
+  useEffect(() => {
+    const doctorId = doctor?.id;
+    if (!doctorId) return;
+
+    let cancelled = false;
+    void getDoctorProfile(doctorId).then((fresh) => {
+      if (!cancelled && fresh) {
+        setResolvedDoctor(fresh);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [doctor?.id]);
+
+  const missingLetterhead = useMemo(
+    () => getMissingLetterheadFields(resolvedDoctor ?? doctor),
+    [resolvedDoctor, doctor]
+  );
   const missingLogo = missingLetterhead.some(({ key }) => key === 'logoUrl');
 
   if (!doctor || missingLetterhead.length === 0 || dismissed) {
@@ -94,7 +162,18 @@ export const LetterheadSetupBanner: React.FC<LetterheadSetupBannerProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => navigate('/professional-profile')}
+            onClick={() => {
+              if (missingLogo) {
+                const input = document.getElementById('practice-logo-file-input');
+                if (input instanceof HTMLInputElement) {
+                  input.click();
+                  return;
+                }
+                navigate('/practice-settings');
+                return;
+              }
+              navigate('/professional-profile?tab=practice');
+            }}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-amber-600 px-3.5 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-700"
           >
             {missingLogo ? 'Upload logo' : 'Complete details'}
