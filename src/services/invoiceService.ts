@@ -1,23 +1,14 @@
-import { db } from '../lib/firebase';
-import {
-  collection,
-  addDoc,
-  getDocs,
-  getDoc,
-  updateDoc,
-  setDoc,
-  doc,
-  query,
-  where,
-  Timestamp,
-} from 'firebase/firestore';
 import { Doctor, Invoice, InvoiceLineItem, InvoiceStatus } from '../types';
-import { USERS_COLLECTION } from '../shared/constants';
 import { SA_VAT_RATE, computeVatBreakdown } from '../lib/southAfrica';
 import { sendPatientNotification } from './notificationService';
 import { createDoctorNotification } from './doctorNotificationService';
-
-const INVOICES_COLLECTION = 'invoices';
+import {
+  djangoCreateInvoice,
+  djangoGetInvoice,
+  djangoListInvoices,
+  djangoPatchInvoice,
+  isDjangoApiEnabled,
+} from './djangoApiService';
 
 export interface CreateInvoiceOptions {
   vatRate?: number;
@@ -27,12 +18,13 @@ export interface CreateInvoiceOptions {
   paymentReference?: string;
   bankDetailsNote?: string;
   diagnosisCodes?: string[];
+  practiceId?: string;
 }
 
-/** Snapshot SA practice identity + EFT reference onto a new invoice. */
 export const invoiceOptionsFromDoctor = (
   doctor: Doctor | null | undefined,
-  appointmentId?: string
+  appointmentId?: string,
+  practiceId?: string,
 ): CreateInvoiceOptions => {
   const paymentReference = appointmentId
     ? `ANIXI-${appointmentId.slice(0, 8).toUpperCase()}`
@@ -45,6 +37,7 @@ export const invoiceOptionsFromDoctor = (
     paymentReference,
     bankDetailsNote:
       'Pay by EFT using the payment reference above. Anixi does not collect card payments.',
+    practiceId: practiceId || undefined,
   };
 };
 
@@ -53,7 +46,6 @@ function toNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-/** Older and mobile-created invoices may omit quantity or store the unit price elsewhere. */
 function normalizeLineItems(raw: unknown): InvoiceLineItem[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((entry) => {
@@ -67,14 +59,16 @@ function normalizeLineItems(raw: unknown): InvoiceLineItem[] {
   });
 }
 
+function mapDjangoInvoice(row: Record<string, unknown>, doctorId: string): Invoice {
+  return mapInvoiceDoc(String(row.id ?? ''), { ...row, doctorId });
+}
+
 function mapInvoiceDoc(id: string, data: Record<string, unknown>): Invoice {
   const lineItems = normalizeLineItems(data.lineItems);
   const lineItemTotal = lineItems.reduce(
     (sum, item) => sum + item.amount * item.quantity,
-    0
+    0,
   );
-  // Legacy documents stored the inclusive total as `total`; fall back to the
-  // line items so a missing field never renders as NaN.
   const totalAmount = toNumber(data.totalAmount ?? data.total, lineItemTotal);
   const vatRate = toNumber(data.vatRate, SA_VAT_RATE);
 
@@ -86,25 +80,28 @@ function mapInvoiceDoc(id: string, data: Record<string, unknown>): Invoice {
     vatRate,
     subtotalExVat: toNumber(data.subtotalExVat, lineItemTotal),
     vatAmount: toNumber(data.vatAmount, 0),
-    issuedAt: (data.issuedAt as { toDate?: () => Date })?.toDate?.() || new Date(),
-    dueDate: (data.dueDate as { toDate?: () => Date })?.toDate?.(),
-    paidAt: (data.paidAt as { toDate?: () => Date })?.toDate?.(),
-    lastResentAt: (data.lastResentAt as { toDate?: () => Date })?.toDate?.(),
-    createdAt: (data.createdAt as { toDate?: () => Date })?.toDate?.() || new Date(),
-    updatedAt: (data.updatedAt as { toDate?: () => Date })?.toDate?.() || new Date(),
+    issuedAt: toDate(data.issuedAt) || new Date(),
+    dueDate: toDate(data.dueDate) ?? undefined,
+    paidAt: toDate(data.paidAt) ?? undefined,
+    lastResentAt: toDate(data.lastResentAt) ?? undefined,
+    createdAt: toDate(data.createdAt) || new Date(),
+    updatedAt: toDate(data.updatedAt) || new Date(),
   };
 }
 
-/**
- * Generate invoice number based on appointment ID
- */
+function toDate(value: unknown): Date | null {
+  if (value instanceof Date) return value;
+  if (typeof value === 'string') return new Date(value);
+  if (value && typeof value === 'object' && 'seconds' in value) {
+    return new Date((value as { seconds: number }).seconds * 1000);
+  }
+  return null;
+}
+
 export const generateInvoiceNumber = (appointmentId: string): string => {
   return `INV-${appointmentId.slice(0, 8).toUpperCase()}-${new Date().getFullYear()}`;
 };
 
-/**
- * Create a new invoice record
- */
 export const createInvoiceRecord = async (
   doctorId: string,
   patientId: string,
@@ -112,68 +109,55 @@ export const createInvoiceRecord = async (
   lineItems: InvoiceLineItem[],
   notes?: string,
   currency: string = 'ZAR',
-  opts?: CreateInvoiceOptions
+  opts?: CreateInvoiceOptions,
 ): Promise<Invoice> => {
   if (!doctorId || !patientId || !appointmentId || !lineItems.length) {
     throw new Error('Missing required invoice fields');
   }
 
-  const subtotalExVat = lineItems.reduce((sum, item) => sum + item.amount * item.quantity, 0);
+  const subtotalExVat = lineItems.reduce(
+    (sum, item) => sum + item.amount * item.quantity,
+    0,
+  );
   const vatRate = opts?.vatRate ?? SA_VAT_RATE;
   const { subtotal, vatAmount, total } = computeVatBreakdown(subtotalExVat, vatRate);
   const invoiceNumber = generateInvoiceNumber(appointmentId);
   const now = new Date();
 
-  const invoiceData: Record<string, unknown> = {
+  if (isDjangoApiEnabled()) {
+    const dueDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const row = await djangoCreateInvoice({
+      patientId,
+      appointmentId,
+      practiceId: opts?.practiceId,
+      currency,
+      lineItems,
+      totalAmount: total,
+      status: 'issued',
+      invoiceNumber,
+      notes: notes || undefined,
+      vatRate,
+      vatNumber: opts?.vatNumber,
+      bhfPracticeNumber: opts?.bhfPracticeNumber,
+      hpcsaNumber: opts?.hpcsaNumber,
+      metadata: {
+        paymentReference: opts?.paymentReference,
+        bankDetailsNote: opts?.bankDetailsNote,
+        diagnosisCodes: opts?.diagnosisCodes,
+        dueDate: dueDate.toISOString(),
+        issuedAt: now.toISOString(),
+      },
+    });
+    return mapDjangoInvoice(row, doctorId);
+  }
+
+  const invoice: Invoice = {
+    id: `inv-${Date.now()}`,
     doctorId,
     patientId,
     appointmentId,
     invoiceNumber,
-    status: 'issued' as InvoiceStatus,
-    lineItems,
-    subtotalExVat: subtotal,
-    vatRate,
-    vatAmount,
-    totalAmount: total,
-    currency,
-    issuedAt: Timestamp.fromDate(now),
-    dueDate: Timestamp.fromDate(new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)), // 30 days
-    createdAt: Timestamp.fromDate(now),
-    updatedAt: Timestamp.fromDate(now),
-  };
-
-  if (notes) {
-    invoiceData.notes = notes;
-  }
-  if (opts?.vatNumber) invoiceData.vatNumber = opts.vatNumber;
-  if (opts?.bhfPracticeNumber) invoiceData.bhfPracticeNumber = opts.bhfPracticeNumber;
-  if (opts?.hpcsaNumber) invoiceData.hpcsaNumber = opts.hpcsaNumber;
-  if (opts?.paymentReference) invoiceData.paymentReference = opts.paymentReference;
-  if (opts?.bankDetailsNote) invoiceData.bankDetailsNote = opts.bankDetailsNote;
-  if (opts?.diagnosisCodes?.length) invoiceData.diagnosisCodes = opts.diagnosisCodes;
-
-  const docRef = await addDoc(collection(db, INVOICES_COLLECTION), invoiceData);
-
-  try {
-    await setDoc(
-      doc(db, USERS_COLLECTION, doctorId, INVOICES_COLLECTION, docRef.id),
-      {
-        ...invoiceData,
-        status: 'outstanding',
-        deliverInApp: true,
-      }
-    );
-  } catch (error) {
-    console.warn('[invoiceService] Users invoice mirror skipped', error);
-  }
-
-  return {
-    id: docRef.id,
-    doctorId,
-    patientId,
-    appointmentId,
-    invoiceNumber,
-    status: 'issued' as InvoiceStatus,
+    status: 'issued',
     lineItems,
     subtotalExVat: subtotal,
     vatRate,
@@ -193,116 +177,80 @@ export const createInvoiceRecord = async (
     createdAt: now,
     updatedAt: now,
   };
+
+  return invoice;
 };
 
-/**
- * Get invoices for a doctor with optional filters
- */
 export const getInvoicesByDoctor = async (
   doctorId: string,
-  options?: { patientId?: string; status?: InvoiceStatus; appointmentId?: string }
+  options?: { patientId?: string; status?: InvoiceStatus; appointmentId?: string },
 ): Promise<Invoice[]> => {
   if (!doctorId) throw new Error('Doctor ID is required');
 
-  try {
-    let q = query(
-      collection(db, INVOICES_COLLECTION),
-      where('doctorId', '==', doctorId)
-    );
-
+  if (isDjangoApiEnabled()) {
+    const rows = await djangoListInvoices();
+    let invoices = rows.map((row) => mapDjangoInvoice(row, doctorId));
     if (options?.patientId) {
-      q = query(
-        collection(db, INVOICES_COLLECTION),
-        where('doctorId', '==', doctorId),
-        where('patientId', '==', options.patientId)
-      );
+      invoices = invoices.filter((inv) => inv.patientId === options.patientId);
     }
-
-    const snapshot = await getDocs(q);
-    let invoices: Invoice[] = snapshot.docs.map((d) => mapInvoiceDoc(d.id, d.data()));
-
-    try {
-      const mobileSnap = await getDocs(
-        collection(db, USERS_COLLECTION, doctorId, INVOICES_COLLECTION)
-      );
-      const seen = new Set(invoices.map((invoice) => invoice.id));
-      for (const mobileDoc of mobileSnap.docs) {
-        if (seen.has(mobileDoc.id)) continue;
-        invoices.push(mapInvoiceDoc(mobileDoc.id, mobileDoc.data()));
-      }
-    } catch (error) {
-      console.warn('[invoiceService] Users invoice merge skipped', error);
-    }
-
-    invoices = invoices.sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime());
-
     if (options?.status) {
       invoices = invoices.filter((inv) => inv.status === options.status);
     }
-
     if (options?.appointmentId) {
       invoices = invoices.filter((inv) => inv.appointmentId === options.appointmentId);
     }
-
-    return invoices;
-  } catch (error) {
-    console.error('[invoiceService] getInvoicesByDoctor error:', error);
-    throw error;
+    return invoices.sort(
+      (a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime(),
+    );
   }
+
+  return [];
 };
 
-/**
- * Get a single invoice by ID
- */
-export const getInvoiceById = async (invoiceId: string): Promise<Invoice | null> => {
-  if (!invoiceId) throw new Error('Invoice ID is required');
+export const getInvoicesForPractice = async (
+  practiceId: string,
+  doctorIds: string[],
+): Promise<Invoice[]> => {
+  if (!practiceId) throw new Error('Practice ID is required');
 
-  const invoiceRef = doc(db, INVOICES_COLLECTION, invoiceId);
-  const docSnap = await getDoc(invoiceRef);
+  const seen = new Set<string>();
+  const invoices: Invoice[] = [];
 
-  if (docSnap.exists()) {
-    return mapInvoiceDoc(docSnap.id, docSnap.data());
+  for (const doctorId of doctorIds) {
+    if (!doctorId) continue;
+    try {
+      const doctorInvoices = await getInvoicesByDoctor(doctorId);
+      for (const invoice of doctorInvoices) {
+        if (seen.has(invoice.id)) continue;
+        seen.add(invoice.id);
+        invoices.push(invoice);
+      }
+    } catch (error) {
+      console.warn('[invoiceService] doctor invoice merge skipped', doctorId, error);
+    }
   }
 
+  return invoices.sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime());
+};
+
+export const getInvoiceById = async (invoiceId: string): Promise<Invoice | null> => {
+  if (!invoiceId) throw new Error('Invoice ID is required');
+  if (isDjangoApiEnabled()) {
+    const row = await djangoGetInvoice(invoiceId);
+    if (!row) return null;
+    return mapDjangoInvoice(row, String(row.doctorId ?? ''));
+  }
   return null;
 };
 
-/**
- * Update invoice status (e.g., mark as paid)
- */
 export const updateInvoiceStatus = async (
   invoiceId: string,
-  status: InvoiceStatus
+  status: InvoiceStatus,
 ): Promise<void> => {
   if (!invoiceId || !status) throw new Error('Invoice ID and status are required');
-
-  const invoiceRef = doc(db, INVOICES_COLLECTION, invoiceId);
-  const updates: Record<string, any> = {
-    status,
-    updatedAt: Timestamp.fromDate(new Date()),
-  };
-
-  if (status === 'paid') {
-    updates.paidAt = Timestamp.fromDate(new Date());
-  }
-
-  await updateDoc(invoiceRef, updates);
-
-  if (status === 'paid') {
-    try {
-      const invoice = await getInvoiceById(invoiceId);
-      if (invoice) {
-        await createDoctorNotification(invoice.doctorId, {
-          type: 'invoice_paid',
-          title: 'Invoice marked paid',
-          body: `Invoice ${invoice.invoiceNumber} was marked as paid.`,
-          invoiceId: invoice.id,
-          appointmentId: invoice.appointmentId,
-        });
-      }
-    } catch (error) {
-      console.warn('[invoiceService] paid notification failed:', error);
-    }
+  if (isDjangoApiEnabled()) {
+    await djangoPatchInvoice(invoiceId, { status });
+    return;
   }
 };
 
@@ -314,59 +262,40 @@ export const updateInvoiceRecord = async (
     currency: string;
     dueDate: Date;
     status: InvoiceStatus;
-  }>
+  }>,
 ): Promise<Invoice> => {
   if (!invoiceId) throw new Error('Invoice ID is required');
-  const invoiceRef = doc(db, INVOICES_COLLECTION, invoiceId);
-  const updateData: Record<string, any> = {
-    updatedAt: Timestamp.fromDate(new Date()),
+  if (isDjangoApiEnabled()) {
+    const row = await djangoPatchInvoice(invoiceId, {
+      status: patch.status,
+      lineItems: patch.lineItems,
+      currency: patch.currency,
+      metadata: patch.dueDate ? { dueDate: patch.dueDate.toISOString() } : undefined,
+    });
+    return mapDjangoInvoice(row, String(row.doctorId ?? ''));
+  }
+  const now = new Date();
+  return {
+    id: invoiceId,
+    doctorId: '',
+    patientId: '',
+    appointmentId: '',
+    invoiceNumber: '',
+    status: patch.status || 'issued',
+    currency: patch.currency || 'ZAR',
+    lineItems: patch.lineItems || [],
+    subtotalExVat: 0,
+    vatAmount: 0,
+    totalAmount: 0,
+    issuedAt: now,
+    createdAt: now,
+    updatedAt: now,
   };
-
-  if (patch.lineItems) {
-    updateData.lineItems = patch.lineItems;
-    const subtotalExVat = patch.lineItems.reduce(
-      (sum, item) => sum + item.amount * item.quantity,
-      0
-    );
-    const existing = await getDoc(invoiceRef);
-    const vatRate = (existing.data()?.vatRate as number | undefined) ?? SA_VAT_RATE;
-    const { subtotal, vatAmount, total } = computeVatBreakdown(subtotalExVat, vatRate);
-    updateData.subtotalExVat = subtotal;
-    updateData.vatAmount = vatAmount;
-    updateData.totalAmount = total;
-  }
-
-  if (patch.notes !== undefined) {
-    updateData.notes = patch.notes;
-  }
-
-  if (patch.currency) {
-    updateData.currency = patch.currency;
-  }
-
-  if (patch.dueDate) {
-    updateData.dueDate = Timestamp.fromDate(patch.dueDate);
-  }
-
-  if (patch.status) {
-    updateData.status = patch.status;
-    if (patch.status === 'paid') {
-      updateData.paidAt = Timestamp.fromDate(new Date());
-    }
-  }
-
-  await updateDoc(invoiceRef, updateData);
-  const updatedDoc = await getDoc(invoiceRef);
-  if (!updatedDoc.exists()) throw new Error('Invoice not found after update');
-  return mapInvoiceDoc(updatedDoc.id, updatedDoc.data());
 };
 
-/**
- * Generate statement of account for a patient (all invoices from doctor)
- */
 export const generateStatement = async (
   doctorId: string,
-  patientId: string
+  patientId: string,
 ): Promise<{ invoices: Invoice[]; summary: { issued: number; outstanding: number; paid: number; total: number } }> => {
   if (!doctorId || !patientId) throw new Error('Doctor ID and Patient ID are required');
 
@@ -384,21 +313,10 @@ export const generateStatement = async (
   return { invoices, summary };
 };
 
-/**
- * Resend invoice notification to patient and stamp lastResentAt.
- */
 export const resendInvoice = async (invoiceId: string): Promise<void> => {
   if (!invoiceId) throw new Error('Invoice ID is required');
-
   const invoice = await getInvoiceById(invoiceId);
   if (!invoice) throw new Error('Invoice not found');
-
-  const now = new Date();
-  const invoiceRef = doc(db, INVOICES_COLLECTION, invoiceId);
-  await updateDoc(invoiceRef, {
-    updatedAt: Timestamp.fromDate(now),
-    lastResentAt: Timestamp.fromDate(now),
-  });
 
   const totalFormatted = invoice.totalAmount.toLocaleString('en-ZA', {
     minimumFractionDigits: 2,

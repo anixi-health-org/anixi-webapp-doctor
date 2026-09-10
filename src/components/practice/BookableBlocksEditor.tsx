@@ -113,6 +113,8 @@ interface Props {
   onChanged: () => void;
   onPracticeUpdated?: () => void;
   doctorId?: string;
+  /** Clinic-employed clinicians view admin-assigned hours only. */
+  readOnly?: boolean;
 }
 
 export const BookableBlocksEditor: React.FC<Props> = ({
@@ -124,6 +126,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
   onChanged,
   onPracticeUpdated,
   doctorId: doctorIdProp,
+  readOnly = false,
 }) => {
   const { user } = useAuth();
   const doctorId = doctorIdProp || user?.id || '';
@@ -157,11 +160,11 @@ export const BookableBlocksEditor: React.FC<Props> = ({
   }, [locations, locationId]);
 
   useEffect(() => {
-    if (!practiceId || !doctorId) return;
+    if (readOnly || !practiceId || !doctorId) return;
     void syncDoctorPublicAvailability(practiceId, doctorId).catch((err) => {
       console.warn('[Availability] sync failed:', err);
     });
-  }, [practiceId, doctorId]);
+  }, [readOnly, practiceId, doctorId]);
 
   useEffect(() => {
     void listPracticeDailySchedules(practiceId)
@@ -339,15 +342,19 @@ export const BookableBlocksEditor: React.FC<Props> = ({
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h3 className="text-[17px] font-semibold text-[#0E2340]">Your hours</h3>
+          <h3 className="text-[17px] font-semibold text-[#0E2340]">
+            {readOnly ? 'Your clinic hours' : 'Your hours'}
+          </h3>
           <p className="mt-1 text-[13px] leading-relaxed text-[#65758b]">
-            Set when patients can book clinic visits and video consults.
+            {readOnly
+              ? 'Hours assigned by your clinic administrator. Patients book within these windows.'
+              : 'Set when patients can book clinic visits and video consults.'}
           </p>
           <p className="mt-2 text-[12px] font-medium text-[#8FA0B6]">
             Timezone: {timezone}
           </p>
         </div>
-        {editingDay == null && (
+        {!readOnly && editingDay == null && (
           <button
             type="button"
             onClick={openAddAvailability}
@@ -386,22 +393,24 @@ export const BookableBlocksEditor: React.FC<Props> = ({
                   {available ? (
                     <p className="mt-0.5 text-[12px] text-[#4d675c]">
                       {dayBlocks
-                        .map((b) => `${formatClock(b.startTime)}–${formatClock(b.endTime)}`)
+                        .map((b) => `${formatClock(b.startTime)}-${formatClock(b.endTime)}`)
                         .join(' · ')}
                     </p>
                   ) : (
                     <p className="mt-0.5 text-[12px] text-[#94a3b8]">
-                      Unavailable — no bookings
+                      Unavailable, no bookings
                     </p>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => openEditDay(day)}
-                  className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-anixi-green hover:bg-[#eef4f1]"
-                >
-                  {available ? 'Edit' : 'Add hours'}
-                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => openEditDay(day)}
+                    className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-anixi-green hover:bg-[#eef4f1]"
+                  >
+                    {available ? 'Edit' : 'Add hours'}
+                  </button>
+                )}
               </div>
             );
           })}
@@ -414,7 +423,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
                 {DAY_LABELS[editingDay]} availability
               </p>
               <p className="mt-0.5 text-[12px] text-[#65758b]">
-                Set one or more periods. Presets are shortcuts only — saved times are exact.
+                Set one or more periods. Presets are shortcuts only, saved times are exact.
               </p>
             </div>
             <button
@@ -591,9 +600,13 @@ export const BookableBlocksEditor: React.FC<Props> = ({
           className="flex w-full items-center justify-between px-4 py-3 text-left"
         >
           <div>
-            <p className="text-sm font-semibold text-[#0E2340]">Appointment settings</p>
+            <p className="text-sm font-semibold text-[#0E2340]">
+              {readOnly ? 'Booking preview' : 'Appointment settings'}
+            </p>
             <p className="text-[12px] text-[#65758b]">
-              What patients can book, days off, and a booking preview
+              {readOnly
+                ? 'See the slots patients can book on a given day'
+                : 'What patients can book, days off, and a booking preview'}
             </p>
           </div>
           <span className="text-[12px] font-semibold text-anixi-green">
@@ -603,18 +616,28 @@ export const BookableBlocksEditor: React.FC<Props> = ({
 
         {showAdvanced && (
           <div className="space-y-6 border-t border-[#eef2f6] px-4 py-4">
-            <ConsultTypeSettingsEditor
-              practiceId={practiceId}
-              onChanged={syncTypeSettings}
-            />
+            {!readOnly && (
+              <>
+                <ConsultTypeSettingsEditor
+                  practiceId={practiceId}
+                  onChanged={syncTypeSettings}
+                />
 
-            <AvailabilityExceptionsEditor
-              practiceId={practiceId}
-              exceptions={exceptions}
-              onChanged={() => {
-                void listPracticeDailySchedules(practiceId).then(setExceptions);
-              }}
-            />
+                <AvailabilityExceptionsEditor
+                  practiceId={practiceId}
+                  exceptions={exceptions}
+                  onChanged={() => {
+                    void listPracticeDailySchedules(practiceId).then(setExceptions);
+                  }}
+                />
+              </>
+            )}
+
+            {readOnly && (
+              <p className="text-[13px] text-[#65758b]">
+                Appointment types: {typeSummary}
+              </p>
+            )}
 
             <section className="space-y-3">
               <h4 className="text-[13px] font-semibold text-[#344256]">

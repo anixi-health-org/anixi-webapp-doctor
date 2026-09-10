@@ -70,23 +70,46 @@ export function canDoctorStartVideoCall(appointment: Appointment): boolean {
   if (isWhatsAppComingSoon(appointment)) return false;
   if (!isJoinableTeleconsult(appointment)) return false;
 
-  // Active call — always allow rejoin, even if appointment status raced to no_show.
+  // Active call, always allow rejoin, even if appointment status raced to no_show.
   if (hasOpenTeleconsultSession(appointment)) return true;
 
   if (isVisitClosed(appointment)) return false;
 
-  // Call was ended but the visit is still open — doctor may restart.
+  // Call was ended but the visit is still open, doctor may restart.
   return true;
 }
 
-export function isWhatsAppComingSoon(appointment: Appointment): boolean {
-  if (appointment.type === 'Phone') return true;
+export function isWhatsAppComingSoon(_appointment: Appointment): boolean {
+  return false;
+}
+
+export function isWhatsAppConsult(appointment: Appointment): boolean {
+  if (appointment.type === 'Phone') return false;
   const consult = consultCategory(appointment);
-  return consult === 'whatsapp' || consult === 'phone';
+  return consult === 'whatsapp';
+}
+
+export function isPhoneConsult(appointment: Appointment): boolean {
+  if (appointment.type === 'Phone') return true;
+  return consultCategory(appointment) === 'phone';
+}
+
+export function whatsAppDeepLink(phone: string, message?: string): string {
+  const digits = phone.replace(/\D/g, '');
+  const normalized = digits.startsWith('27') ? digits : `27${digits.replace(/^0/, '')}`;
+  const text = message ? `?text=${encodeURIComponent(message)}` : '';
+  return `https://wa.me/${normalized}${text}`;
+}
+
+export function phoneDeepLink(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  const normalized = digits.startsWith('27') ? `+${digits}` : `+27${digits.replace(/^0/, '')}`;
+  return `tel:${normalized}`;
 }
 
 export function formatAppointmentTypeLabel(appointment: Appointment): string {
-  if (isWhatsAppComingSoon(appointment)) return 'WhatsApp (Coming soon)';
+  if (isWhatsAppConsult(appointment)) return 'WhatsApp consult';
+  if (isPhoneConsult(appointment)) return 'Phone consult';
 
   const consult = consultCategory(appointment);
   const consultLabels: Record<string, string> = {

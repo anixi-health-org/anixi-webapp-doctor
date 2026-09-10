@@ -18,7 +18,7 @@ export const AnixiLogo: React.FC<AnixiLogoProps> = ({
   showWordmark = true,
   subtitle = 'Doctor Portal',
   className,
-  linkTo = '/dashboard',
+  linkTo = '/ayah',
   onClick,
 }) => {
   const isSidebar = variant === 'sidebar';

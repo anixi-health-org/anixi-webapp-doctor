@@ -3,16 +3,22 @@ import { BulkPatientImportPanel } from '../../components/onboarding/BulkPatientI
 import { PageHeader, PageShell } from '../../components/page-layout';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
-import { listPracticePatients } from '../../services/practicePatientService';
-import type { Patient } from '../../types';
+import {
+  listPracticePatients,
+  updatePracticePatientAssignedDoctor,
+} from '../../services/practicePatientService';
+import { listPracticeClinicians } from '../../services/practiceSettingsService';
+import type { Patient, PracticeMember } from '../../types';
 
 export const ClinicAdminPatientsPage: React.FC = () => {
   const { user, practiceSession } = useAuth();
   const { can } = usePermissions();
   const practice = practiceSession?.practice;
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [clinicians, setClinicians] = useState<PracticeMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [assigningPatientId, setAssigningPatientId] = useState<string | null>(null);
 
   const canManagePatients = can('managePatients');
 
@@ -20,8 +26,12 @@ export const ClinicAdminPatientsPage: React.FC = () => {
     if (!practice?.id) return;
     setLoading(true);
     try {
-      const rows = await listPracticePatients(practice.id);
+      const [rows, clinicianRows] = await Promise.all([
+        listPracticePatients(practice.id),
+        listPracticeClinicians(practice.id),
+      ]);
       setPatients(rows);
+      setClinicians(clinicianRows);
     } finally {
       setLoading(false);
     }
@@ -30,6 +40,35 @@ export const ClinicAdminPatientsPage: React.FC = () => {
   useEffect(() => {
     void loadPatients();
   }, [loadPatients]);
+
+  const clinicianNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    clinicians.forEach((member) => {
+      map.set(member.uid, member.displayName || member.email || 'Doctor');
+    });
+    return map;
+  }, [clinicians]);
+
+  const handleAssignDoctor = async (patientId: string, doctorId: string) => {
+    if (!canManagePatients || !practice?.id) return;
+    setAssigningPatientId(patientId);
+    try {
+      await updatePracticePatientAssignedDoctor(
+        practice.id,
+        patientId,
+        doctorId || null,
+      );
+      setPatients((current) =>
+        current.map((patient) =>
+          patient.id === patientId
+            ? { ...patient, assignedDoctorId: doctorId || undefined }
+            : patient,
+        ),
+      );
+    } finally {
+      setAssigningPatientId(null);
+    }
+  };
 
   const filteredPatients = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -50,7 +89,7 @@ export const ClinicAdminPatientsPage: React.FC = () => {
     <PageShell maxWidth="wide" className="py-6 sm:py-8">
       <PageHeader
         title="Patient roster"
-        description="Import patients in bulk. They receive app download links and an invite to create their account."
+        description="Import patients in bulk for your clinic. Each patient belongs to this practice and receives an activation code for the Anixi app."
       />
 
       {!canManagePatients ? (
@@ -98,14 +137,56 @@ export const ClinicAdminPatientsPage: React.FC = () => {
                     <th className="px-4 py-3">Name</th>
                     <th className="px-4 py-3">Email</th>
                     <th className="px-4 py-3">Phone</th>
+                    <th className="px-4 py-3">Account</th>
+                    <th className="px-4 py-3">Activation code</th>
+                    <th className="px-4 py-3">Assigned doctor</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#eef2f6]">
                   {filteredPatients.map((patient) => (
                     <tr key={patient.id} className="text-[#344256]">
-                      <td className="px-4 py-3">{patient.displayName || '—'}</td>
-                      <td className="px-4 py-3 font-mono text-xs">{patient.email || '—'}</td>
-                      <td className="px-4 py-3 text-[#65758b]">{patient.phoneNumber || '—'}</td>
+                      <td className="px-4 py-3">{patient.displayName || '-'}</td>
+                      <td className="px-4 py-3 font-mono text-xs">{patient.email || '-'}</td>
+                      <td className="px-4 py-3 text-[#65758b]">{patient.phoneNumber || '-'}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={
+                            patient.rosterStatus === 'active'
+                              ? 'rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700'
+                              : 'rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700'
+                          }
+                        >
+                          {patient.rosterStatus === 'active' ? 'Activated' : 'Pending activation'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-[#65758b]">
+                        {patient.activationCode || '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {canManagePatients ? (
+                          <select
+                            value={patient.assignedDoctorId || ''}
+                            disabled={assigningPatientId === patient.id}
+                            onChange={(event) =>
+                              void handleAssignDoctor(patient.id, event.target.value)
+                            }
+                            className="w-full min-w-[180px] rounded-lg border border-[#e1e7ef] px-2 py-1.5 text-sm"
+                          >
+                            <option value="">Unassigned</option>
+                            {clinicians.map((clinician) => (
+                              <option key={clinician.uid} value={clinician.uid}>
+                                {clinician.displayName || clinician.email || clinician.uid}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-[#65758b]">
+                            {patient.assignedDoctorId
+                              ? clinicianNameById.get(patient.assignedDoctorId) || 'Assigned'
+                              : 'Unassigned'}
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

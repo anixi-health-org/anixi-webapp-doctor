@@ -7,6 +7,7 @@ interface LogoCropModalProps {
   imageSrc: string;
   onClose: () => void;
   onCropComplete: (file: File, previewUrl: string) => void;
+  onUseOriginal?: () => void;
   title?: string;
   description?: string;
   cropShape?: 'rect' | 'round';
@@ -17,6 +18,7 @@ export const LogoCropModal: React.FC<LogoCropModalProps> = ({
   imageSrc,
   onClose,
   onCropComplete,
+  onUseOriginal,
   title = 'Crop practice logo',
   description = 'Drag to reposition. Use the slider to zoom.',
   cropShape = 'rect',
@@ -82,23 +84,35 @@ export const LogoCropModal: React.FC<LogoCropModalProps> = ({
           />
         </div>
 
-        <div className="flex gap-2 px-4 py-3 border-t border-gray-200">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleApply}
-            disabled={saving || !croppedAreaPixels}
-            className="flex-1 px-4 py-2 bg-[#425950] text-white rounded-lg hover:bg-[#5a6f6a] disabled:opacity-50"
-          >
-            {saving ? 'Applying…' : 'Apply crop'}
-          </button>
+        <div className="flex flex-col gap-2 px-4 py-3 border-t border-gray-200">
+          {onUseOriginal ? (
+            <button
+              type="button"
+              onClick={onUseOriginal}
+              disabled={saving}
+              className="w-full px-4 py-2 text-sm font-medium text-[#427160] hover:underline disabled:opacity-50"
+            >
+              Use original image (skip crop)
+            </button>
+          ) : null}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleApply}
+              disabled={saving || !croppedAreaPixels}
+              className="flex-1 px-4 py-2 bg-[#425950] text-white rounded-lg hover:bg-[#5a6f6a] disabled:opacity-50"
+            >
+              {saving ? 'Applying…' : 'Apply crop'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

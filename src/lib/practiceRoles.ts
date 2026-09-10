@@ -36,6 +36,35 @@ export const DOCTOR_MEMBER_PERMISSIONS: PracticePermissions = {
   viewBilling: false,
 };
 
+/** Registered nurse, clinical support, patient care, limited diary */
+export const NURSE_PERMISSIONS: PracticePermissions = {
+  manageAppointments: true,
+  manageSoftBlocks: false,
+  overrideConflicts: false,
+  editBookingPolicies: false,
+  managePatients: true,
+  manageMembers: false,
+  viewAllDoctors: true,
+  viewBilling: false,
+};
+
+/** Allied health (physio, OT, etc.), own sessions + shared patients */
+export const ALLIED_HEALTH_PERMISSIONS: PracticePermissions = {
+  manageAppointments: true,
+  manageSoftBlocks: true,
+  overrideConflicts: false,
+  editBookingPolicies: false,
+  managePatients: true,
+  manageMembers: false,
+  viewAllDoctors: true,
+  viewBilling: false,
+};
+
+/** Locum doctor, same clinical access as doctor, time-bound membership */
+export const LOCUM_PERMISSIONS: PracticePermissions = {
+  ...DOCTOR_MEMBER_PERMISSIONS,
+};
+
 /** Front desk - booking & patient registration */
 export const RECEPTIONIST_PERMISSIONS: PracticePermissions = {
   manageAppointments: true,
@@ -76,6 +105,9 @@ export const ROLE_PERMISSION_PRESETS: Record<PracticeRole, PracticePermissions> 
   owner: OWNER_PERMISSIONS,
   practice_manager: PRACTICE_MANAGER_PERMISSIONS,
   doctor: DOCTOR_MEMBER_PERMISSIONS,
+  nurse: NURSE_PERMISSIONS,
+  allied_health: ALLIED_HEALTH_PERMISSIONS,
+  locum: LOCUM_PERMISSIONS,
   receptionist: RECEPTIONIST_PERMISSIONS,
   billing_clerk: BILLING_CLERK_PERMISSIONS,
   delegate: DELEGATE_PERMISSIONS,
@@ -85,6 +117,9 @@ export const ROLE_LABELS: Record<PracticeRole, string> = {
   owner: 'Owner',
   practice_manager: 'Practice Manager',
   doctor: 'Doctor',
+  nurse: 'Nurse',
+  allied_health: 'Allied Health',
+  locum: 'Locum',
   receptionist: 'Receptionist',
   billing_clerk: 'Billing Clerk',
   delegate: 'Delegate',
@@ -94,6 +129,9 @@ export const ROLE_DESCRIPTIONS: Record<PracticeRole, string> = {
   owner: 'Full control of the practice, members, billing, and settings',
   practice_manager: 'Runs day-to-day clinic operations and staff',
   doctor: 'Sees patients, manages their diary and clinical work',
+  nurse: 'Supports clinical care, vitals, and patient flow',
+  allied_health: 'Allied health professional with their own session diary',
+  locum: 'Temporary cover doctor with time-limited access',
   receptionist: 'Books appointments and registers patients',
   billing_clerk: 'Handles invoices and billing workflows',
   delegate: 'Scheduling support for a specific doctor',
@@ -102,14 +140,17 @@ export const ROLE_DESCRIPTIONS: Record<PracticeRole, string> = {
 /** Roles that can be invited by an owner / practice manager */
 export const INVITABLE_ROLES: PracticeRole[] = [
   'doctor',
+  'nurse',
+  'allied_health',
+  'locum',
   'practice_manager',
   'receptionist',
   'billing_clerk',
 ];
 
-/** Bookable clinicians only — practice managers run ops, they are not diary doctors. */
+/** Bookable clinicians, appear in doctor lists and can hold diaries */
 export function isClinicianRole(role: PracticeRole): boolean {
-  return role === 'doctor';
+  return role === 'doctor' || role === 'nurse' || role === 'allied_health' || role === 'locum';
 }
 
 export function permissionsForRole(role: PracticeRole): PracticePermissions {

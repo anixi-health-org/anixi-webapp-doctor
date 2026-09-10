@@ -177,7 +177,7 @@ export const AnalyticsPage: React.FC = () => {
           },
           {
             label: 'Avg adherence (30d)',
-            value: stats.avgAdherence == null ? '—' : `${stats.avgAdherence}%`,
+            value: stats.avgAdherence == null ? '-' : `${stats.avgAdherence}%`,
             icon: HeartPulse,
             hint:
               stats.avgAdherence == null

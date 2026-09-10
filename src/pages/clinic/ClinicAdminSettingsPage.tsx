@@ -6,6 +6,8 @@ import { usePracticeSettings } from '../../hooks/usePracticeSettings';
 import { BookableBlocksEditor } from '../../components/practice/BookableBlocksEditor';
 import { SoftBlocksEditor } from '../../components/practice/SoftBlocksEditor';
 import { BookingPoliciesForm } from '../../components/practice/BookingPoliciesForm';
+import { PracticeLogoUploader } from '../../components/practice/PracticeLogoUploader';
+import { LetterheadSetupBanner } from '../../components/invoices/LetterheadSetupBanner';
 import { Toast, SettingsPageSkeleton } from '../../components/ui';
 import { TabPill } from '../../components/ui/TabPill';
 import { PageHeader, PageShell } from '../../components/page-layout';
@@ -14,7 +16,7 @@ import {
   updatePractice,
 } from '../../services/practiceSettingsService';
 import { memberDisplayLabel } from '../../services/practiceMemberService';
-import type { PracticeLocation, PracticeMember } from '../../types';
+import type { Doctor, PracticeLocation, PracticeMember } from '../../types';
 
 type Tab = 'profile' | 'booking' | 'schedules';
 
@@ -29,7 +31,8 @@ const isValidTab = (value: string | null): value is Tab =>
 
 export const ClinicAdminSettingsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { practiceSession, refreshPracticeSession, isLoading: authLoading } = useAuth();
+  const { user, practiceSession, refreshPracticeSession, isLoading: authLoading } = useAuth();
+  const doctor = user?.role === 'doctor' ? (user as Doctor) : null;
   const { can } = usePermissions();
   const { bookableBlocks, softBlocks, bookingPolicy, isLoading, error, reload } =
     usePracticeSettings();
@@ -49,6 +52,12 @@ export const ClinicAdminSettingsPage: React.FC = () => {
     timezone: '',
     tradingName: '',
     bhfPracticeNumber: '',
+    listingPublished: false,
+    listingTagline: '',
+    listingDescription: '',
+    listingCity: '',
+    listingProvince: '',
+    listingAcceptsMedicalAid: false,
   });
   const [savingProfile, setSavingProfile] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
@@ -77,6 +86,12 @@ export const ClinicAdminSettingsPage: React.FC = () => {
         timezone: practice.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
         tradingName: practice.tradingName || '',
         bhfPracticeNumber: practice.bhfPracticeNumber || '',
+        listingPublished: practice.publicListing?.published ?? false,
+        listingTagline: practice.publicListing?.tagline || '',
+        listingDescription: practice.publicListing?.description || '',
+        listingCity: practice.publicListing?.city || '',
+        listingProvince: practice.publicListing?.province || '',
+        listingAcceptsMedicalAid: practice.publicListing?.acceptsMedicalAid ?? false,
       });
     }
   }, [practice]);
@@ -183,6 +198,15 @@ export const ClinicAdminSettingsPage: React.FC = () => {
         timezone: profileDraft.timezone.trim() || practice.timezone,
         tradingName: profileDraft.tradingName.trim() || undefined,
         bhfPracticeNumber: profileDraft.bhfPracticeNumber.trim() || undefined,
+        publicListing: {
+          published: profileDraft.listingPublished,
+          slug: practice.publicListing?.slug || practice.id,
+          tagline: profileDraft.listingTagline.trim() || undefined,
+          description: profileDraft.listingDescription.trim() || undefined,
+          city: profileDraft.listingCity.trim() || undefined,
+          province: profileDraft.listingProvince.trim() || undefined,
+          acceptsMedicalAid: profileDraft.listingAcceptsMedicalAid,
+        },
       });
       await refreshPracticeSession();
       setToast({ visible: true, message: 'Clinic profile updated.', type: 'success' });
@@ -238,6 +262,24 @@ export const ClinicAdminSettingsPage: React.FC = () => {
         <div className="mt-6">
           {activeTab === 'profile' && (
             <div className="space-y-6">
+              <LetterheadSetupBanner doctor={doctor} className="rounded-2xl" />
+              <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                  Letterhead & logo
+                </p>
+                <p className="mt-2 text-sm text-[#65758b]">
+                  Used on invoices, prescriptions, and patient communications for your entire clinic.
+                </p>
+                {canEditProfile ? (
+                  <div className="mt-4">
+                    <PracticeLogoUploader logoUrl={doctor?.logoUrl} />
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-[#65758b]">
+                    Contact your clinic administrator to update branding.
+                  </p>
+                )}
+              </section>
               <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
                   Clinic identity
@@ -311,6 +353,86 @@ export const ClinicAdminSettingsPage: React.FC = () => {
                       </p>
                     </div>
                   </div>
+                )}
+              </section>
+
+              <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                  Public listing
+                </p>
+                <p className="mt-2 text-sm text-[#65758b]">
+                  Publish your clinic on the patient marketplace when your profile is ready.
+                </p>
+                {canEditProfile ? (
+                  <div className="mt-4 space-y-4">
+                    <label className="flex items-center gap-2 text-sm text-[#344256]">
+                      <input
+                        type="checkbox"
+                        checked={profileDraft.listingPublished}
+                        onChange={(e) =>
+                          setProfileDraft((d) => ({
+                            ...d,
+                            listingPublished: e.target.checked,
+                          }))
+                        }
+                      />
+                      Publish clinic on Anixi marketplace
+                    </label>
+                    <input
+                      value={profileDraft.listingTagline}
+                      onChange={(e) =>
+                        setProfileDraft((d) => ({ ...d, listingTagline: e.target.value }))
+                      }
+                      placeholder="Short tagline"
+                      className="w-full rounded-lg border border-[#e1e7ef] px-3 py-2 text-sm"
+                    />
+                    <textarea
+                      value={profileDraft.listingDescription}
+                      onChange={(e) =>
+                        setProfileDraft((d) => ({ ...d, listingDescription: e.target.value }))
+                      }
+                      placeholder="About your clinic"
+                      rows={3}
+                      className="w-full rounded-lg border border-[#e1e7ef] px-3 py-2 text-sm"
+                    />
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <input
+                        value={profileDraft.listingCity}
+                        onChange={(e) =>
+                          setProfileDraft((d) => ({ ...d, listingCity: e.target.value }))
+                        }
+                        placeholder="City"
+                        className="w-full rounded-lg border border-[#e1e7ef] px-3 py-2 text-sm"
+                      />
+                      <input
+                        value={profileDraft.listingProvince}
+                        onChange={(e) =>
+                          setProfileDraft((d) => ({ ...d, listingProvince: e.target.value }))
+                        }
+                        placeholder="Province"
+                        className="w-full rounded-lg border border-[#e1e7ef] px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-sm text-[#344256]">
+                      <input
+                        type="checkbox"
+                        checked={profileDraft.listingAcceptsMedicalAid}
+                        onChange={(e) =>
+                          setProfileDraft((d) => ({
+                            ...d,
+                            listingAcceptsMedicalAid: e.target.checked,
+                          }))
+                        }
+                      />
+                      Accepts medical aid
+                    </label>
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-[#65758b]">
+                    {practice.publicListing?.published
+                      ? 'This clinic is published on the marketplace.'
+                      : 'Listing is not published yet.'}
+                  </p>
                 )}
               </section>
 

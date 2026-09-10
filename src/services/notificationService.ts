@@ -1,6 +1,5 @@
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { USERS_COLLECTION } from '../shared/constants';
+import { isDjangoApiEnabled } from '../lib/runtimeConfig';
+import { djangoCreateNotification } from './djangoApiService';
 
 export type PatientNotificationType =
   | 'booking_confirmed'
@@ -24,29 +23,26 @@ export interface PatientNotificationPayload {
 }
 
 /**
- * Writes a notification record to the patient's notifications subcollection.
- * Uses a deterministic id so reconnects and dual writers do not duplicate.
+ * Writes a notification record for the patient.
+ * Django path persists via the notifications API; the Firestore path has been removed.
  */
 export const sendPatientNotification = async (
   patientId: string,
-  payload: PatientNotificationPayload
+  payload: PatientNotificationPayload,
 ): Promise<void> => {
   if (!patientId || patientId === 'manual' || patientId === 'unknown') return;
-  const notificationId = `${payload.appointmentId}_${payload.type}`;
-  const notifRef = doc(
-    db,
-    USERS_COLLECTION,
-    patientId,
-    'notifications',
-    notificationId
-  );
-  await setDoc(
-    notifRef,
-    {
-      ...payload,
-      read: false,
-      createdAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+
+  if (isDjangoApiEnabled()) {
+    await djangoCreateNotification({
+      type: payload.type,
+      title: payload.title,
+      body: payload.body,
+      appointmentId: payload.appointmentId,
+      userId: patientId,
+    });
+    return;
+  }
+
+  // Firestore path removed. No-op until migration.
+  return;
 };

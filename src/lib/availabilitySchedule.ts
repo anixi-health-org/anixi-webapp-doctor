@@ -134,12 +134,12 @@ export const summarizeWeek = (
     available.length === 5 && weekdaySet.every((d) => available.includes(d as DayOfWeek));
 
   const rangeLabel = (day: DayOfWeek) =>
-    byDay[day].map((b) => `${formatClock(b.startTime)}–${formatClock(b.endTime)}`).join(', ');
+    byDay[day].map((b) => `${formatClock(b.startTime)}-${formatClock(b.endTime)}`).join(', ');
 
   if (isWeekdays) {
     const first = rangeLabel(1);
     const same = weekdaySet.every((d) => rangeLabel(d as DayOfWeek) === first);
-    if (same) return `Monday–Friday · ${first}`;
+    if (same) return `Monday-Friday · ${first}`;
   }
 
   return available

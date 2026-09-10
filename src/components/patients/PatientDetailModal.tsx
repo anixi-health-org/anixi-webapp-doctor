@@ -116,7 +116,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                 </svg>
                 Medical Information
               </h3>
-              <p className="mt-1 text-xs text-gray-500">View only — patient manages this data in the app.</p>
+              <p className="mt-1 text-xs text-gray-500">View only, patient manages this data in the app.</p>
             </div>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">

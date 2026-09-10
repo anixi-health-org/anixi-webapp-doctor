@@ -23,6 +23,7 @@ interface Props {
   onChanged: () => void;
   /** When set, manage blocks for this doctor (clinic admin). Defaults to signed-in user. */
   doctorId?: string;
+  readOnly?: boolean;
 }
 
 interface SoftForm {
@@ -57,6 +58,7 @@ export const SoftBlocksEditor: React.FC<Props> = ({
   softBlocks,
   onChanged,
   doctorId: doctorIdProp,
+  readOnly = false,
 }) => {
   const { user } = useAuth();
   const doctorId = doctorIdProp || user?.id || '';
@@ -127,20 +129,26 @@ export const SoftBlocksEditor: React.FC<Props> = ({
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Soft Blocks</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            {readOnly ? 'Blocked time' : 'Soft Blocks'}
+          </h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            Non-bookable time - never visible to patients
+            {readOnly
+              ? 'Time blocked by your clinic administrator'
+              : 'Non-bookable time - never visible to patients'}
           </p>
         </div>
-        <button
-          onClick={() => setShowForm((s) => !s)}
-          className="px-4 py-2.5 text-sm bg-[#516059] text-white rounded-lg hover:bg-[#45524D] transition-colors w-full sm:w-auto"
-        >
-          {showForm ? 'Cancel' : '+ Add Soft Block'}
-        </button>
+        {!readOnly && (
+          <button
+            onClick={() => setShowForm((s) => !s)}
+            className="px-4 py-2.5 text-sm bg-[#516059] text-white rounded-lg hover:bg-[#45524D] transition-colors w-full sm:w-auto"
+          >
+            {showForm ? 'Cancel' : '+ Add Soft Block'}
+          </button>
+        )}
       </div>
 
-      {showForm && (
+      {!readOnly && showForm && (
         <div className="border border-[#C6CFCA] rounded-lg p-4 bg-[#EEF2F0] space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="col-span-2">
@@ -271,12 +279,14 @@ export const SoftBlocksEditor: React.FC<Props> = ({
                       )}
                     </p>
                   </div>
-                  <button
-                    onClick={() => handleDelete(sb.id)}
-                    className="text-sm text-red-500 hover:text-red-700 transition-colors self-start sm:self-auto px-2 py-1"
-                  >
-                    Delete
-                  </button>
+                  {!readOnly && (
+                    <button
+                      onClick={() => handleDelete(sb.id)}
+                      className="text-sm text-red-500 hover:text-red-700 transition-colors self-start sm:self-auto px-2 py-1"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               );
             })}

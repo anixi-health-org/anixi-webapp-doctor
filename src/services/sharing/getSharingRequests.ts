@@ -1,101 +1,94 @@
-import {
-  collection,
-  getDocs,
-  onSnapshot,
-  query,
-  Unsubscribe,
-  where,
-} from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import { USERS_COLLECTION } from '../../shared/constants';
-import { INCOMING_SHARING_REQUESTS_SUBCOLLECTION, SHARING_REQUESTS_SUBCOLLECTION } from '../../shared/firestorePaths';
-import { sharingTimestampToDate } from './searchDoctors';
+import { djangoListSharingRequests } from '../../services/djangoApiService';
 import { IncomingSharingRequest, PatientSharingRequest } from './types';
 
+export type Unsubscribe = () => void;
+
 export const getPatientSharingRequests = async (
-  patientId: string
+  patientId: string,
 ): Promise<PatientSharingRequest[]> => {
   if (!patientId) return [];
-  const ref = collection(db, USERS_COLLECTION, patientId, SHARING_REQUESTS_SUBCOLLECTION);
-  const snapshot = await getDocs(ref);
-  return snapshot.docs.map(mapPatientSharingRequest);
+  const rows = await djangoListSharingRequests('patient');
+  return rows.map((row) => ({
+    id: String(row.id),
+    doctorId: String(row.clinicianId ?? row.doctorId ?? ''),
+    doctorName: String(row.clinicianName ?? row.doctorName ?? 'Doctor'),
+    doctorSpecialty: row.doctorSpecialty as string | undefined,
+    doctorCity: row.doctorCity as string | undefined,
+    doctorYearsInPractice: row.doctorYearsInPractice as number | undefined,
+    status: (row.status as PatientSharingRequest['status']) || 'pending',
+    createdAt: row.createdAt ? new Date(String(row.createdAt)) : new Date(),
+    approvedAt: row.approvedAt ? new Date(String(row.approvedAt)) : undefined,
+  }));
 };
 
 export const getIncomingSharingRequests = async (
-  doctorId: string
+  doctorId: string,
 ): Promise<IncomingSharingRequest[]> => {
   if (!doctorId) return [];
-  const ref = collection(db, USERS_COLLECTION, doctorId, INCOMING_SHARING_REQUESTS_SUBCOLLECTION);
-  const q = query(ref, where('status', '==', 'pending'));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(mapIncomingSharingRequest);
+  const rows = await djangoListSharingRequests('clinician');
+  return rows.map((row) => ({
+    id: String(row.id),
+    patientId: String(row.patientId ?? ''),
+    patientName: String(row.patientName ?? 'Patient'),
+    status: (row.status as IncomingSharingRequest['status']) || 'pending',
+    createdAt: row.createdAt ? new Date(String(row.createdAt)) : new Date(),
+    approvedAt: row.approvedAt ? new Date(String(row.approvedAt)) : undefined,
+  }));
 };
+
+function pollSharingRequests<T>(
+  load: () => Promise<T[]>,
+  onUpdate: (rows: T[]) => void,
+  onError: (error: Error) => void,
+  intervalMs = 30_000,
+): Unsubscribe {
+  let cancelled = false;
+  const poll = async () => {
+    try {
+      const rows = await load();
+      if (!cancelled) onUpdate(rows);
+    } catch (err) {
+      if (!cancelled) {
+        onError(err instanceof Error ? err : new Error('Failed to load requests'));
+      }
+    }
+  };
+  void poll();
+  const timer = setInterval(poll, intervalMs);
+  return () => {
+    cancelled = true;
+    clearInterval(timer);
+  };
+}
 
 export const listenToIncomingSharingRequests = (
   doctorId: string,
   onUpdate: (requests: IncomingSharingRequest[]) => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
 ): Unsubscribe => {
   if (!doctorId) {
     onError(new Error('Doctor ID is required'));
     return () => {};
   }
-
-  const ref = collection(db, USERS_COLLECTION, doctorId, INCOMING_SHARING_REQUESTS_SUBCOLLECTION);
-  const q = query(ref, where('status', '==', 'pending'));
-
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      onUpdate(snapshot.docs.map(mapIncomingSharingRequest));
-    },
-    (err) => onError(err instanceof Error ? err : new Error('Failed to load requests'))
+  return pollSharingRequests(
+    () => getIncomingSharingRequests(doctorId),
+    onUpdate,
+    onError,
   );
 };
 
 export const listenToPatientSharingRequests = (
   patientId: string,
   onUpdate: (requests: PatientSharingRequest[]) => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
 ): Unsubscribe => {
   if (!patientId) {
     onError(new Error('Patient ID is required'));
     return () => {};
   }
-
-  const ref = collection(db, USERS_COLLECTION, patientId, SHARING_REQUESTS_SUBCOLLECTION);
-  return onSnapshot(
-    ref,
-    (snapshot) => {
-      onUpdate(snapshot.docs.map(mapPatientSharingRequest));
-    },
-    (err) => onError(err instanceof Error ? err : new Error('Failed to load requests'))
+  return pollSharingRequests(
+    () => getPatientSharingRequests(patientId),
+    onUpdate,
+    onError,
   );
 };
-
-function mapPatientSharingRequest(docSnap: { id: string; data: () => Record<string, unknown> }): PatientSharingRequest {
-  const data = docSnap.data();
-  return {
-    id: docSnap.id,
-    doctorId: String(data.doctorId ?? ''),
-    doctorName: String(data.doctorName ?? 'Doctor'),
-    doctorSpecialty: data.doctorSpecialty as string | undefined,
-    doctorCity: data.doctorCity as string | undefined,
-    doctorYearsInPractice: data.doctorYearsInPractice as number | undefined,
-    status: (data.status as PatientSharingRequest['status']) || 'pending',
-    createdAt: sharingTimestampToDate(data.createdAt),
-    approvedAt: data.approvedAt ? sharingTimestampToDate(data.approvedAt) : undefined,
-  };
-}
-
-function mapIncomingSharingRequest(docSnap: { id: string; data: () => Record<string, unknown> }): IncomingSharingRequest {
-  const data = docSnap.data();
-  return {
-    id: docSnap.id,
-    patientId: String(data.patientId ?? ''),
-    patientName: String(data.patientName ?? 'Patient'),
-    status: (data.status as IncomingSharingRequest['status']) || 'pending',
-    createdAt: sharingTimestampToDate(data.createdAt),
-    approvedAt: data.approvedAt ? sharingTimestampToDate(data.approvedAt) : undefined,
-  };
-}

@@ -1,4 +1,4 @@
-/** Practice letterhead lives in these Storage prefixes — never use them as a face photo. */
+/** Practice letterhead lives in these Storage prefixes, never use them as a face photo. */
 function decodedStoragePath(url: string): string {
   try {
     return decodeURIComponent(url);
@@ -12,8 +12,9 @@ export function isPracticeLetterheadUrl(url: string | null | undefined): boolean
   if (!raw) return false;
   const decoded = decodedStoragePath(raw);
   if (/doctors\/[^/]+\/branding\//.test(decoded)) return true;
+  if (/profile-images\/[^/?#]+\//i.test(decoded)) return false;
   if (!decoded.includes('doctor-logos/')) return false;
-  // Headshots are stored as doctor-logos/{id}/profile.jpg
+  // Legacy headshots: doctor-logos/{id}/profile.jpg
   if (/doctor-logos\/[^/?#]+\/profile\./i.test(decoded)) return false;
   return true;
 }

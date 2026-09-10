@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { asDate } from './calendar/calendarDateUtils';
 import { formatTimestamp, getDateString, getTimeSlot } from '../utils/dateFormatter';
 import { getDailyAdherence, getDoctorDailyAdherence } from '../services/adherenceService';
 import { DailyAdherenceSkeleton } from './ui/Skeleton';
@@ -62,8 +63,8 @@ export const DailyAdherenceView: React.FC<DailyAdherenceViewProps> = ({
         };
 
         result.medications.forEach((data) => {
-          const scheduledTime = data.scheduledTime?.toDate?.() || data.scheduledTime || null;
-          const takenTime = data.takenTime?.toDate?.() || data.takenTime || null;
+          const scheduledTime = asDate(data.scheduledTime);
+          const takenTime = asDate(data.takenTime);
           const timeSlot = getTimeSlot(scheduledTime);
           medicationsByTimeSlot[timeSlot].push({
             medicationName: data.medicationName || 'Unknown',

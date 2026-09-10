@@ -10,6 +10,7 @@ import {
   HeartIcon,
   HomeIcon,
   QuestionMarkCircleIcon,
+  SparklesIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
   XMarkIcon,
@@ -18,6 +19,7 @@ import clsx from 'clsx';
 import React from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { usePermissions } from '../hooks/usePermissions';
 import { useIncomingRecordShares } from '../hooks/useIncomingRecordShares';
 import { useIncomingSharingRequests } from '../hooks/useIncomingSharingRequests';
 import { usePendingAppointmentsCount } from '../hooks/usePendingAppointments';
@@ -29,6 +31,8 @@ import { NotificationBell } from './notifications/NotificationBell';
 import { GlobalPatientSearch } from './ui/GlobalPatientSearch';
 import { UserProfileMenu } from './page-layout/UserProfileMenu';
 import { AnixiLogo } from './brand/AnixiLogo';
+import { AskAnixiProvider } from '../context/AskAnixiContext';
+import { AyahChatProvider } from '../context/AyahChatContext';
 
 type NavItem = {
   name: string;
@@ -84,8 +88,9 @@ function NavLink({
   );
 }
 
-export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
+const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+  const { isClinicEmployedClinician } = usePermissions();
   const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const { requests: sharingRequests } = useIncomingSharingRequests(user?.id);
@@ -118,6 +123,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
   }
 
   const isActive = (path: string) => {
+    if (path === '/ayah') return location.pathname === '/ayah';
     if (path === '/dashboard') return location.pathname === '/dashboard';
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
@@ -126,6 +132,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
   const firstName = user?.displayName?.split(' ')[0] || 'Doctor';
 
   const primaryNav: NavItem[] = [
+    { name: 'Ayah', href: '/ayah', icon: SparklesIcon },
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
     {
       name: 'Patients',
@@ -160,7 +167,11 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
   const practiceNav: NavItem[] = [
     { name: 'Invoices', href: '/invoices', icon: CurrencyDollarIcon },
     { name: 'Practice Calendar', href: '/practice-calendar', icon: CalendarDaysIcon },
-    { name: 'Settings', href: '/practice-settings', icon: WrenchScrewdriverIcon },
+    {
+      name: isClinicEmployedClinician ? 'My schedule' : 'Settings',
+      href: '/practice-settings',
+      icon: WrenchScrewdriverIcon,
+    },
   ];
 
   const supportNav: NavItem = {
@@ -199,8 +210,9 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
         {sidebarNav()}
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col md:pl-64">
-        <header className="sticky top-0 z-30 border-b border-[#e1e7ef] bg-white">
+      <div className="flex min-w-0 flex-1 md:pl-64">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-30 border-b border-[#e1e7ef] bg-white">
           <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <button
@@ -239,7 +251,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
             />
             <div className="absolute left-0 top-0 flex h-full w-[min(280px,88vw)] flex-col bg-anixi-green shadow-2xl">
               <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
-                <AnixiLogo variant="sidebar" linkTo="/dashboard" onClick={closeMobile} />
+                <AnixiLogo variant="sidebar" linkTo="/ayah" onClick={closeMobile} />
                 <button
                   type="button"
                   onClick={closeMobile}
@@ -259,8 +271,19 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto">{children || <Outlet />}</main>
+          <main className={`flex-1 ${location.pathname === '/ayah' || location.pathname === '/dashboard' ? 'min-h-0 overflow-hidden' : 'overflow-y-auto'}`}>
+            {children || <Outlet />}
+          </main>
+        </div>
       </div>
     </div>
   );
 };
+
+export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => (
+  <AskAnixiProvider>
+    <AyahChatProvider>
+      <DoctorShell>{children}</DoctorShell>
+    </AyahChatProvider>
+  </AskAnixiProvider>
+);

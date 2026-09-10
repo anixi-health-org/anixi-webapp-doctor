@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { getDoctorAppointments } from '../services/appointmentService';
 import {
   getBookableBlocks,
@@ -41,6 +42,7 @@ const overlapsDay = (block: SoftBlock, day: Date) => {
 
 const PracticeCalendarPage: React.FC = () => {
   const { practiceSession, user } = useAuth();
+  const { isClinicEmployedClinician } = usePermissions();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('day');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -344,7 +346,11 @@ const PracticeCalendarPage: React.FC = () => {
                   isLoading={loadingApts || loadingHours}
                   onSelectAppointment={handleSelectAppointment}
                   onQuickAdd={() => setShowCreateModal(true)}
-                  onManageHours={() => navigate('/practice-settings?tab=availability')}
+                  onManageHours={
+                    isClinicEmployedClinician
+                      ? undefined
+                      : () => navigate('/practice-settings?tab=availability')
+                  }
                 />
               </div>
             )}

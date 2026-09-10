@@ -4,6 +4,8 @@ import { Building2, Heart, Stethoscope, UserRound } from 'lucide-react';
 import clsx from 'clsx';
 import { AuthLayout } from '../components/auth/AuthLayout';
 import { SignInPrompt } from '../components/auth/AuthLinks';
+import { JoinPathSelectionHint } from '../components/auth/RegisterPathPreview';
+import { getJoinPathConfig } from '../lib/joinPathConfig';
 import type { JoinPath } from '../types/auth';
 
 const PATHS: {
@@ -13,16 +15,16 @@ const PATHS: {
   Icon: typeof Stethoscope;
 }[] = [
   {
-    path: 'solo_doctor',
-    label: 'Private practitioner',
-    description: 'I run my own practice and manage my own patients & diary',
-    Icon: Stethoscope,
-  },
-  {
     path: 'clinic',
     label: 'Clinic / group practice',
     description: 'Set up your clinic, upload doctors & patients',
     Icon: Building2,
+  },
+  {
+    path: 'solo_doctor',
+    label: 'Private practitioner',
+    description: 'I run my own practice and manage my own patients & diary',
+    Icon: Stethoscope,
   },
   {
     path: 'invite',
@@ -59,12 +61,15 @@ export const Join: React.FC = () => {
     navigate('/register?role=caregiver&path=caregiver');
   };
 
+  const heroSlides = selected ? getJoinPathConfig(selected).heroSlides : undefined;
+
   return (
     <AuthLayout
       title="Join Anixi Health"
       subtitle="Set up in minutes, whether you practise alone or run a clinic."
       maxWidth="2xl"
       compact
+      heroSlides={heroSlides}
     >
       <div className="rounded-2xl border border-gray-100 bg-white px-5 py-5 shadow-lg sm:px-6 sm:py-6">
         <div className="mb-4 text-center">
@@ -111,6 +116,8 @@ export const Join: React.FC = () => {
             );
           })}
         </div>
+
+        {selected ? <JoinPathSelectionHint joinPath={selected} /> : null}
 
         <button
           type="button"

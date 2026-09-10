@@ -49,6 +49,69 @@
   .btn-outline {
     @apply inline-flex w-full items-center justify-center rounded-[10px] border border-[#e1e7ef] bg-white px-3 py-2 text-sm font-medium text-[#344256] transition-all duration-200 hover:border-[#427160] hover:bg-[#eef4f1] hover:text-[#427160] hover:shadow-sm active:scale-[0.98];
   }
+
+  .ayah-pill {
+    @apply transition-all duration-200 ease-out motion-reduce:transition-none;
+  }
+
+  .ayah-pill:hover:not(:disabled) {
+    @apply -translate-y-0.5 border-[#427160]/20 shadow-[0_4px_14px_rgba(66,113,96,0.1)] motion-reduce:translate-y-0;
+  }
+
+  .ayah-pill:active:not(:disabled) {
+    @apply translate-y-0 scale-[0.98];
+  }
+
+  .ayah-typing-dot {
+    animation: ayah-typing 1.2s ease-in-out infinite;
+  }
+
+  .ayah-typing-dot:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .ayah-typing-dot:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  .ayah-typewriter-cursor {
+    animation: ayah-cursor-blink 0.85s step-end infinite;
+  }
+}
+
+@keyframes ayah-typing {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes ayah-cursor-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ayah-typing-dot {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .ayah-typewriter-cursor {
+    animation: none !important;
+    opacity: 0.6 !important;
+  }
 }
 
 code {
@@ -89,4 +152,10 @@ code {
   --destructive-foreground: 0 0% 100%;
   --muted: 0 0% 12%;
   --muted-foreground: 0 0% 63%;
+}
+
+.ayah-grid-bg {
+  background-color: #111916;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 18px 18px;
 }

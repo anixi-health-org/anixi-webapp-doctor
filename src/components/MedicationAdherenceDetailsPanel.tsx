@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { asDate } from './calendar/calendarDateUtils';
 import { getDateString, getTimeSlot } from '../utils/dateFormatter';
 import { getDailyAdherence, getDoctorDailyAdherence } from '../services/adherenceService';
 import { ListRowsSkeleton } from './ui/Skeleton';
@@ -110,8 +111,8 @@ export const MedicationAdherenceDetailsPanel: React.FC<MedicationAdherenceDetail
           : await getDailyAdherence(patientId, selectedDateStr);
 
         const medicationRecords: MedicationRecord[] = dailyData.medications.map((record, idx) => {
-          const scheduledTime = record.scheduledTime?.toDate?.() || record.scheduledTime || null;
-          const takenTime = record.takenTime?.toDate?.() || record.takenTime || null;
+          const scheduledTime = asDate(record.scheduledTime);
+          const takenTime = asDate(record.takenTime);
           const timeSlot = getTimeSlot(scheduledTime) as 'morning' | 'afternoon' | 'evening';
 
           return {

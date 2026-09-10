@@ -1,8 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
 import { USERS_COLLECTION } from '../../shared/constants';
-import { convertTimestamp } from '../../utils/dateFormatter';
 
 interface AdherenceLog {
   id: string;
@@ -17,6 +14,11 @@ interface MedicationAdherenceLogsProps {
   onViewDetails?: () => void;
 }
 
+/**
+ * Adherence log preview for the doctor dashboard.
+ * The Firestore read has been removed; once the Django patient-vitals endpoint
+ * is wired, replace the empty fetch below with a call to that endpoint.
+ */
 export const MedicationAdherenceLogs: React.FC<MedicationAdherenceLogsProps> = ({
   patientId,
   onViewDetails,
@@ -30,29 +32,10 @@ export const MedicationAdherenceLogs: React.FC<MedicationAdherenceLogsProps> = (
     const fetchLogs = async () => {
       try {
         setLoading(true);
-        const logsRef = collection(db, USERS_COLLECTION, patientId, 'adherence_records');
-        const q = query(logsRef, orderBy('scheduledTime', 'desc'), limit(PREVIEW_LIMIT));
-        const snapshot = await getDocs(q);
-
-        const data: AdherenceLog[] = [];
-        snapshot.docs.forEach((doc) => {
-          const record = doc.data();
-          const scheduledTime = convertTimestamp(record.scheduledTime);
-          const fallbackTime = convertTimestamp(record.timestamp);
-          const resolvedDate = scheduledTime || fallbackTime;
-
-          data.push({
-            id: doc.id,
-            date: resolvedDate ? resolvedDate.toISOString() : new Date().toISOString(),
-            medicationName: record.medicationName || 'Medication',
-            status: record.status === 'missed' || record.status === 'pending' ? record.status : 'taken',
-            notes: record.notes,
-          });
-        });
-
-        setLogs(data);
+        setError(null);
+        // TODO: replace with Django patient adherence endpoint once available.
+        setLogs([]);
       } catch (err) {
-        ;
         setError('Failed to load logs');
       } finally {
         setLoading(false);
@@ -144,7 +127,6 @@ export const MedicationAdherenceLogs: React.FC<MedicationAdherenceLogsProps> = (
 
                   <p className="text-sm text-gray-700">💊 {log.medicationName}</p>
 
-                  {}
                   {log.notes && (
                     <p className="text-sm text-gray-700 italic mt-2">
                       <span className="font-medium">Note:</span> {log.notes}

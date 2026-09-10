@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, ImageIcon } from 'lucide-react';
+import { usePermissions } from '../../hooks/usePermissions';
 import { getDoctorProfile } from '../../services/doctorService';
 import type { Doctor } from '../../types';
 
@@ -17,7 +18,7 @@ export const LETTERHEAD_FIELDS = [
 
 export type LetterheadFieldKey = (typeof LETTERHEAD_FIELDS)[number]['key'];
 
-/** Marked optional on the professional profile form — should not block letterhead setup. */
+/** Marked optional on the professional profile form, should not block letterhead setup. */
 const OPTIONAL_LETTERHEAD_FIELD_KEYS = new Set<LetterheadFieldKey>([
   'practiceNumberBhf',
   'vatNumber',
@@ -78,6 +79,7 @@ export const LetterheadSetupBanner: React.FC<LetterheadSetupBannerProps> = ({
   compact = false,
 }) => {
   const navigate = useNavigate();
+  const { isClinicEmployedClinician } = usePermissions();
   const [dismissed, setDismissed] = useState(false);
   const [resolvedDoctor, setResolvedDoctor] = useState<Doctor | null | undefined>(doctor);
 
@@ -107,7 +109,12 @@ export const LetterheadSetupBanner: React.FC<LetterheadSetupBannerProps> = ({
   );
   const missingLogo = missingLetterhead.some(({ key }) => key === 'logoUrl');
 
-  if (!doctor || missingLetterhead.length === 0 || dismissed) {
+  if (
+    isClinicEmployedClinician ||
+    !doctor ||
+    missingLetterhead.length === 0 ||
+    dismissed
+  ) {
     return null;
   }
 

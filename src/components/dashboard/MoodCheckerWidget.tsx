@@ -1,8 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import { USERS_COLLECTION } from '../../shared/constants';
-import { convertTimestamp } from '../../utils/dateFormatter';
 
 interface MoodEntry {
   date: string;
@@ -15,6 +11,11 @@ interface MoodCheckerWidgetProps {
   onViewDetails?: () => void;
 }
 
+/**
+ * Mood checker widget for the doctor dashboard.
+ * The Firestore read has been removed; once the Django patient-vitals endpoint
+ * is wired, replace the empty fetch below with a call to that endpoint.
+ */
 export const MoodCheckerWidget: React.FC<MoodCheckerWidgetProps> = ({ patientId, onViewDetails }) => {
   const [latestMood, setLatestMood] = useState<MoodEntry | null>(null);
   const [loading, setLoading] = useState(true);
@@ -24,23 +25,10 @@ export const MoodCheckerWidget: React.FC<MoodCheckerWidgetProps> = ({ patientId,
     const fetchLatestMood = async () => {
       try {
         setLoading(true);
-        const moodRef = collection(db, USERS_COLLECTION, patientId, 'mood_entries');
-        const q = query(moodRef, orderBy('date', 'desc'), limit(1));
-        const snapshot = await getDocs(q);
-
-        if (!snapshot.empty) {
-          const data = snapshot.docs[0].data();
-          const dateObj = convertTimestamp(data.date);
-          setLatestMood({
-            date: dateObj
-              ? dateObj.toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
-              : typeof data.date === 'string' ? data.date : '',
-            mood: data.mood,
-            notes: data.notes,
-          });
-        }
+        setError(null);
+        // TODO: replace with Django patient mood endpoint once available.
+        setLatestMood(null);
       } catch (err) {
-        ;
         setError('Failed to load mood data');
       } finally {
         setLoading(false);

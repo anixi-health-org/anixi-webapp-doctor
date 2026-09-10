@@ -398,8 +398,7 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
       });
     });
 
-    // `when` can fall back to the appointment date itself, which may be upcoming —
-    // an activity feed should only look backwards.
+    // `when` can fall back to the appointment date itself, which may be upcoming, // an activity feed should only look backwards.
     const now = Date.now();
     const cutoff = now - ACTIVITY_WINDOW_MS;
 
@@ -561,7 +560,7 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
                 ? patientGrowth.changePct === null
                   ? `+${patientGrowth.addedThisMonth}`
                   : `${patientGrowth.changePct > 0 ? '+' : ''}${patientGrowth.changePct}%`
-                : '—'
+                : '-'
             }
             valueClass="text-[#21c45d]"
             hint={
@@ -860,7 +859,7 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
               {patients.length > 0 && (
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e1e7ef] px-3 py-3">
                   <p className="text-sm text-[#65758b]">
-                    Showing {patientsPage * PATIENTS_PAGE_SIZE + 1}–
+                    Showing {patientsPage * PATIENTS_PAGE_SIZE + 1}-
                     {Math.min(
                       patients.length,
                       (patientsPage + 1) * PATIENTS_PAGE_SIZE

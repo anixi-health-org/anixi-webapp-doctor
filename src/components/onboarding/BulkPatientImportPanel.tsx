@@ -1,11 +1,12 @@
 import React, { useRef, useState } from 'react';
-import { Download, FileSpreadsheet, Loader2, Upload, Users, X } from 'lucide-react';
+import { Download, FileSpreadsheet, Loader2, Upload, Users, X, Copy, Check } from 'lucide-react';
 import {
   downloadPatientImportTemplate,
   importPracticePatientsBulk,
   parsePatientBulkCsv,
   PATIENT_IMPORT_CSV_HEADERS,
   type BulkPatientRow,
+  type BulkPatientResult,
 } from '../../services/bulkPatientImportService';
 
 type BulkPatientImportPanelProps = {
@@ -26,12 +27,15 @@ export const BulkPatientImportPanel: React.FC<BulkPatientImportPanelProps> = ({
   const [rows, setRows] = useState<BulkPatientRow[]>([]);
   const [parseIssues, setParseIssues] = useState<{ line: number; message: string }[]>([]);
   const [saving, setSaving] = useState(false);
-  const [summary, setSummary] = useState<{ imported: number; failed: number } | null>(null);
+  const [summary, setSummary] = useState<{ imported: number; failed: number; needsActivation: number } | null>(null);
+  const [results, setResults] = useState<BulkPatientResult[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+  const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
   const handleFile = async (file: File) => {
     setSummary(null);
     setErrors([]);
+    setResults([]);
     const text = await file.text();
     const parsed = parsePatientBulkCsv(text);
     setFileName(file.name);
@@ -44,30 +48,34 @@ export const BulkPatientImportPanel: React.FC<BulkPatientImportPanelProps> = ({
     setRows([]);
     setParseIssues([]);
     setSummary(null);
+    setResults([]);
     setErrors([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleImport = async () => {
     if (rows.length === 0) {
-      setErrors(['Upload a filled CSV with at least one patient (name and email required).']);
+      setErrors(['Upload a filled CSV with at least one patient (name + email, phone, or MRN/chart ID).']);
       return;
     }
 
     setSaving(true);
     setErrors([]);
     setSummary(null);
+    setResults([]);
     try {
-      const results = await importPracticePatientsBulk({
+      const importResults = await importPracticePatientsBulk({
         doctorId,
         practiceId,
         practiceName,
         rows,
         sendAppInvites: true,
       });
-      const imported = results.filter((r) => r.success).length;
-      const failed = results.filter((r) => !r.success);
-      setSummary({ imported, failed: failed.length });
+      setResults(importResults);
+      const imported = importResults.filter((r) => r.success).length;
+      const failed = importResults.filter((r) => !r.success);
+      const needsActivation = importResults.filter((r) => r.success && r.activationCode).length;
+      setSummary({ imported, failed: failed.length, needsActivation });
       if (failed.length) {
         setErrors(failed.map((f) => `${f.displayName}: ${f.error}`));
       }
@@ -79,6 +87,20 @@ export const BulkPatientImportPanel: React.FC<BulkPatientImportPanelProps> = ({
     }
   };
 
+  const copySignupLink = async (link: string) => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiedLink(link);
+      setTimeout(() => setCopiedLink(null), 2000);
+    } catch { /* clipboard not available */ }
+  };
+
+  const emailCount = rows.filter((r) => r.email?.trim()).length;
+  const phoneOnlyCount = rows.filter((r) => !r.email?.trim() && r.phoneNumber?.trim()).length;
+  const identifierOnlyCount = rows.filter(
+    (r) => !r.email?.trim() && !r.phoneNumber?.trim() && (r.mrn?.trim() || r.chartId?.trim()),
+  ).length;
+
   return (
     <div className="rounded-2xl border border-[#e1e7ef] bg-white shadow-sm">
       <div className="border-b border-[#eef2f6] px-5 py-4 sm:px-6">
@@ -89,9 +111,9 @@ export const BulkPatientImportPanel: React.FC<BulkPatientImportPanelProps> = ({
           <div>
             <p className="text-sm font-semibold text-[#344256]">Import your patients</p>
             <p className="text-xs text-[#65758b]">
-              Download the template, fill in your roster, then upload. Each patient receives an
-              app invite email with download links (they create their own password when they
-              sign up).
+              Download the template, fill in your roster, then upload. Each patient gets a
+              pre-created account. Share their activation code so they claim it in the app
+              instead of registering as a new user.
             </p>
           </div>
         </div>
@@ -107,8 +129,8 @@ export const BulkPatientImportPanel: React.FC<BulkPatientImportPanelProps> = ({
               <div>
                 <p className="text-sm font-semibold text-[#344256]">1. Download CSV template</p>
                 <p className="mt-0.5 text-xs leading-relaxed text-[#65758b]">
-                  Columns: {PATIENT_IMPORT_CSV_HEADERS.join(', ')}. Email is required for login
-                  invites.
+                  Columns: {PATIENT_IMPORT_CSV_HEADERS.join(', ')}. Email and phone are optional
+                  if MRN or chart ID is present. Every patient receives an activation code.
                 </p>
               </div>
             </div>
@@ -125,6 +147,10 @@ export const BulkPatientImportPanel: React.FC<BulkPatientImportPanelProps> = ({
 
         <div>
           <p className="mb-2 text-sm font-semibold text-[#344256]">2. Upload filled CSV</p>
+          <p className="mb-3 text-xs text-[#65758b]">
+            Supports Anixi template <em>and</em> practice management exports (columns like Patient Last Name,
+            Patient First Name, Chart ID, Patient MRN are auto-detected).
+          </p>
           <input
             ref={fileInputRef}
             type="file"
@@ -154,6 +180,9 @@ export const BulkPatientImportPanel: React.FC<BulkPatientImportPanelProps> = ({
                   <p className="truncate text-sm font-medium text-[#344256]">{fileName}</p>
                   <p className="text-xs text-[#65758b]">
                     {rows.length} patient{rows.length !== 1 ? 's' : ''} ready to import
+                    {emailCount > 0 && ` · ${emailCount} with email`}
+                    {phoneOnlyCount > 0 && ` · ${phoneOnlyCount} phone-only`}
+                    {identifierOnlyCount > 0 && ` · ${identifierOnlyCount} MRN/chart only`}
                   </p>
                 </div>
               </div>
@@ -178,19 +207,48 @@ export const BulkPatientImportPanel: React.FC<BulkPatientImportPanelProps> = ({
                     <th className="px-4 py-2.5">Name</th>
                     <th className="px-4 py-2.5">Email</th>
                     <th className="px-4 py-2.5">Phone</th>
+                    <th className="px-4 py-2.5">DOB</th>
+                    <th className="px-4 py-2.5">Gender</th>
+                    <th className="px-4 py-2.5">Chart / MRN</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#eef2f6]">
-                  {rows.map((row) => (
-                    <tr key={`${row.email}-${row.displayName}`} className="text-[#344256]">
+                  {rows.slice(0, 50).map((row, i) => (
+                    <tr key={`${row.email || row.phoneNumber}-${i}`} className="text-[#344256]">
                       <td className="px-4 py-2.5">{row.displayName}</td>
-                      <td className="px-4 py-2.5 font-mono text-xs">{row.email}</td>
-                      <td className="px-4 py-2.5 text-[#65758b]">{row.phoneNumber || '—'}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs">{row.email || <span className="text-amber-600">-</span>}</td>
+                      <td className="px-4 py-2.5 text-[#65758b]">{row.phoneNumber || '-'}</td>
+                      <td className="px-4 py-2.5 text-[#65758b]">{row.dateOfBirth || '-'}</td>
+                      <td className="px-4 py-2.5 text-[#65758b]">{row.gender || '-'}</td>
+                      <td className="px-4 py-2.5 text-[#65758b]">
+                        {[row.chartId, row.mrn].filter(Boolean).join(' / ') || '-'}
+                      </td>
                     </tr>
                   ))}
+                  {rows.length > 50 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-2.5 text-center text-xs text-[#65758b]">
+                        …and {rows.length - 50} more
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {(phoneOnlyCount > 0 || identifierOnlyCount > 0) && rows.length > 0 && !summary && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <p className="font-medium">
+              {phoneOnlyCount + identifierOnlyCount} patient
+              {phoneOnlyCount + identifierOnlyCount !== 1 ? 's' : ''} without email
+            </p>
+            <p className="mt-1 text-xs leading-relaxed">
+              After import, share each patient&apos;s activation code in clinic. In the Anixi app
+              they choose &quot;Activate clinic account&quot; — not &quot;Create account&quot; — so
+              they connect to the roster entry you uploaded.
+            </p>
           </div>
         )}
 
@@ -208,12 +266,57 @@ export const BulkPatientImportPanel: React.FC<BulkPatientImportPanelProps> = ({
         )}
 
         {summary && (
-          <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            {summary.imported} patient{summary.imported !== 1 ? 's' : ''} imported with login
-            emails sent
-            {summary.failed > 0 ? `, ${summary.failed} failed` : ''}.
-          </p>
+          <div className="space-y-3">
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              ✅ {summary.imported} patient{summary.imported !== 1 ? 's' : ''} imported
+              {summary.needsActivation > 0 &&
+                ` · ${summary.needsActivation} activation code${summary.needsActivation !== 1 ? 's' : ''} ready to share`}
+              {summary.failed > 0 ? ` · ${summary.failed} failed` : ''}.
+            </p>
+
+            {results.filter((r) => r.success && r.activationCode).length > 0 && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                <p className="text-sm font-medium text-blue-900">
+                  Activation codes — share with patients in clinic
+                </p>
+                <p className="mt-1 text-xs text-blue-700">
+                  Patients enter this code in the Anixi app under &quot;Activate clinic account&quot;.
+                </p>
+                {results
+                  .filter((r) => r.success && r.activationCode)
+                  .slice(0, 10)
+                  .map((r) => (
+                    <div
+                      key={r.patientId}
+                      className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 ring-1 ring-blue-100"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-[#344256]">
+                          {r.displayName}
+                        </p>
+                        <p className="font-mono text-xs text-blue-600">
+                          Code: {r.activationCode}
+                          {r.email ? ` · ${r.email}` : ''}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                        onClick={() => void copySignupLink(r.activationCode!)}
+                      >
+                        {copiedLink === r.activationCode ? (
+                          <><Check className="h-3.5 w-3.5" /> Copied</>
+                        ) : (
+                          <><Copy className="h-3.5 w-3.5" /> Copy code</>
+                        )}
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
         )}
+
         {errors.length > 0 && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
             <ul className="list-disc space-y-0.5 pl-4">

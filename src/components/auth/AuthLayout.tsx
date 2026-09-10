@@ -3,6 +3,13 @@ import { Link } from 'react-router-dom';
 import { UsersIcon, SparklesIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import { AnixiLogo } from '../brand/AnixiLogo';
 
+export type AuthHeroSlide = {
+  heading: string;
+  description: string;
+  caption: string;
+  image: string;
+};
+
 interface AuthLayoutProps {
   children: React.ReactNode;
   title: string;
@@ -11,6 +18,8 @@ interface AuthLayoutProps {
   maxWidth?: 'md' | 'lg' | 'xl' | '2xl';
   /** Denser spacing so join / auth steps fit a single viewport */
   compact?: boolean;
+  /** Override default marketing slides for path-specific onboarding */
+  heroSlides?: AuthHeroSlide[];
 }
 
 const HERO_SLIDES = [
@@ -43,19 +52,23 @@ const HERO_STATS = [
   { icon: ShieldCheckIcon, value: 'POPIA', label: 'Secure & compliant' },
 ];
 
-const AuthHero: React.FC = () => {
+const AuthHero: React.FC<{ slides?: AuthHeroSlide[] }> = ({ slides = HERO_SLIDES }) => {
   const [active, setActive] = useState(0);
 
   useEffect(() => {
+    setActive(0);
+  }, [slides]);
+
+  useEffect(() => {
     const id = setInterval(() => {
-      setActive((prev) => (prev + 1) % HERO_SLIDES.length);
+      setActive((prev) => (prev + 1) % slides.length);
     }, 6000);
     return () => clearInterval(id);
-  }, []);
+  }, [slides]);
 
   return (
     <div className="relative hidden h-full min-h-0 overflow-hidden bg-[#0d1310] lg:flex lg:flex-col lg:p-7 xl:p-9">
-      {HERO_SLIDES.map((slide, index) => (
+      {slides.map((slide, index) => (
         <div
           key={slide.image}
           aria-hidden
@@ -77,7 +90,7 @@ const AuthHero: React.FC = () => {
       <div aria-hidden className="absolute inset-0 bg-[#132018]/15" />
 
       <div className="relative z-10 flex min-h-0 flex-1 items-center">
-        {HERO_SLIDES.map((slide, index) => (
+        {slides.map((slide, index) => (
           <div
             key={slide.heading}
             className={`absolute inset-x-0 flex flex-col transition-all duration-700 ease-out ${
@@ -114,10 +127,10 @@ const AuthHero: React.FC = () => {
 
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium tracking-wide text-[#e7ce8f] [text-shadow:0_1px_8px_rgba(0,0,0,0.5)]">
-            {HERO_SLIDES[active].caption}
+            {slides[active].caption}
           </span>
           <div className="flex items-center gap-2">
-            {HERO_SLIDES.map((slide, index) => (
+            {slides.map((slide, index) => (
               <button
                 key={slide.heading}
                 type="button"
@@ -142,6 +155,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
   titleClassName = 'font-heading',
   maxWidth = 'md',
   compact = false,
+  heroSlides,
 }) => {
   const widthClass = {
     md: 'max-w-md',
@@ -197,7 +211,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
         </div>
       </div>
 
-      <AuthHero />
+      <AuthHero slides={heroSlides} />
     </div>
   );
 };

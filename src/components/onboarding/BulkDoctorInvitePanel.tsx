@@ -188,11 +188,11 @@ export const BulkDoctorInvitePanel: React.FC<BulkDoctorInvitePanelProps> = ({
                 <tbody className="divide-y divide-[#eef2f6]">
                   {rows.map((row) => (
                     <tr key={row.email} className="text-[#344256]">
-                      <td className="px-4 py-2.5">{row.displayName || '—'}</td>
+                      <td className="px-4 py-2.5">{row.displayName || '-'}</td>
                       <td className="px-4 py-2.5 font-mono text-xs">{row.email}</td>
                       <td className="px-4 py-2.5">{ROLE_LABELS[row.role]}</td>
-                      <td className="px-4 py-2.5 text-[#65758b]">{row.phone || '—'}</td>
-                      <td className="px-4 py-2.5 text-[#65758b]">{row.hpcsaNumber || '—'}</td>
+                      <td className="px-4 py-2.5 text-[#65758b]">{row.phone || '-'}</td>
+                      <td className="px-4 py-2.5 text-[#65758b]">{row.hpcsaNumber || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -217,8 +217,9 @@ export const BulkDoctorInvitePanel: React.FC<BulkDoctorInvitePanelProps> = ({
 
         {summary && (
           <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            {summary.sent} invitation{summary.sent !== 1 ? 's' : ''} sent
-            {summary.failed > 0 ? `, ${summary.failed} failed` : ''}.
+            {summary.sent} activation email{summary.sent !== 1 ? 's' : ''} sent — each doctor
+            receives a link to create their login and join {practiceName}.
+            {summary.failed > 0 ? ` ${summary.failed} could not be sent.` : ''}
           </p>
         )}
         {errors.length > 0 && (

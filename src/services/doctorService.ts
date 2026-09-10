@@ -1,89 +1,27 @@
-import { collection, deleteField, doc, getDoc, getDocs, setDoc, serverTimestamp } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { db, storage } from '../lib/firebase';
-import { DOCTORS_COLLECTION, USERS_COLLECTION } from '../shared/constants';
+import { normalizeImageFile } from '../lib/imageUpload';
+import { isDjangoApiEnabled } from '../lib/runtimeConfig';
+import {
+  djangoGetMe,
+  djangoMediaUrlToStorageKey,
+  djangoPatchDoctorProfile,
+  djangoResolveMediaUrl,
+  djangoUploadDocument,
+  enrichDoctorMediaUrls,
+} from './djangoApiService';
+import { mapDjangoMeToDoctor } from './djangoUserMapper';
 import { queueDoctorOnboardingSubmittedEmail } from './onboardingEmailService';
 import { DashboardStats, Doctor, Patient } from '../types';
-import { formDataToFirestore, firestoreToFormData } from '../lib/doctorProfileMapper';
 import type { ProfessionalProfileFormData } from '../types/doctorProfile';
-import {
-  derivePatientRosterStatus,
-  resolveRosteredPatient,
-} from './patientManagementService';
-import {
-    isPracticeLetterheadUrl,
-    resolveDoctorProfilePhotoUrl,
-    resolvePracticeLogoUrl,
-} from '../lib/doctorAvatar';
-
-function mapDoctorDoc(id: string, doctorData: Record<string, unknown>): Doctor {
-    return {
-        id,
-        email: String(doctorData.email ?? ''),
-        displayName:
-            (doctorData.displayName as string) ||
-            (doctorData.fullName as string) ||
-            undefined,
-        role: 'doctor',
-        specialty:
-            (doctorData.specialty as string) ||
-            (doctorData.medicalSpecialty as string) ||
-            undefined,
-        licenseNumber:
-            (doctorData.licenseNumber as string) ||
-            (doctorData.hpcsaRegistrationNumber as string) ||
-            undefined,
-        phoneNumber: doctorData.phoneNumber as string | undefined,
-        officeAddress:
-            (doctorData.officeAddress as string) ||
-            (doctorData.practiceAddress as string) ||
-            undefined,
-        practiceName: doctorData.practiceName as string | undefined,
-        logoUrl: resolvePracticeLogoUrl(
-            doctorData.logoUrl as string | undefined,
-            doctorData.profileImageUrl as string | undefined,
-        ),
-        profileImageUrl: resolveDoctorProfilePhotoUrl(
-            doctorData.profileImageUrl as string | undefined,
-            doctorData.logoUrl as string | undefined,
-        ),
-        practiceNumberBhf:
-            (doctorData.practiceNumberBhf as string) ||
-            (doctorData.practiceNumber as string) ||
-            undefined,
-        vatNumber: doctorData.vatNumber as string | undefined,
-        country: doctorData.country as string | undefined,
-        currency: doctorData.currency as string | undefined,
-        nationality: doctorData.nationality as string | undefined,
-        verificationStatus: doctorData.verificationStatus as Doctor['verificationStatus'],
-        accountKind: doctorData.accountKind as Doctor['accountKind'],
-        requiresClinicalVerification:
-          doctorData.requiresClinicalVerification === undefined
-            ? undefined
-            : Boolean(doctorData.requiresClinicalVerification),
-        applicationComplete: Boolean(doctorData.applicationComplete),
-        applicationSubmittedAt:
-            (doctorData.applicationSubmittedAt as { toDate?: () => Date })?.toDate?.() ||
-            undefined,
-        verifiedAt:
-            (doctorData.verifiedAt as { toDate?: () => Date })?.toDate?.() || undefined,
-        rejectionReason:
-            (doctorData.rejectionReason as string) ||
-            (doctorData.suspensionReason as string) ||
-            undefined,
-        createdAt:
-            (doctorData.createdAt as { toDate?: () => Date })?.toDate?.() || new Date(),
-        updatedAt:
-            (doctorData.updatedAt as { toDate?: () => Date })?.toDate?.() || new Date(),
-    };
-}
+import { resolveDoctorProfilePhotoUrl } from '../lib/doctorAvatar';
 
 export const getDoctorProfile = async (doctorId: string): Promise<Doctor | null> => {
     try {
-        const doctorDoc = await getDoc(doc(db, DOCTORS_COLLECTION, doctorId));
-        if (doctorDoc.exists()) {
-            return mapDoctorDoc(doctorDoc.id, doctorDoc.data());
+        if (isDjangoApiEnabled()) {
+            const me = await djangoGetMe();
+            if (!me || String(me.id) !== doctorId) return null;
+            return enrichDoctorMediaUrls(mapDjangoMeToDoctor(me));
         }
+        // Firestore path removed.
         return null;
     } catch (error) {
         throw error;
@@ -91,86 +29,32 @@ export const getDoctorProfile = async (doctorId: string): Promise<Doctor | null>
 };
 
 export const getDoctorProfileFormData = async (
-    doctorId: string
+    _doctorId: string
 ): Promise<ProfessionalProfileFormData | null> => {
-    const doctorDoc = await getDoc(doc(db, DOCTORS_COLLECTION, doctorId));
-    if (!doctorDoc.exists()) {
-        return null;
-    }
-    return firestoreToFormData(doctorDoc.data());
+    // TODO: replace with a Django doctor-profile endpoint once available.
+    return null;
 };
 
 export async function uploadPracticeLogo(doctorId: string, file: File): Promise<string> {
-    const storageRef = ref(storage, `doctor-logos/${doctorId}/logo.jpg`);
-    const snapshot = await uploadBytes(storageRef, file, {
-        contentType: file.type || 'image/jpeg',
-    });
-    const logoUrl = await getDownloadURL(snapshot.ref);
-    const now = serverTimestamp();
-    const doctorRef = doc(db, DOCTORS_COLLECTION, doctorId);
-    const existingDoctor = await getDoc(doctorRef);
-    const existingPhoto = existingDoctor.data()?.profileImageUrl;
-    const doctorUpdates: Record<string, unknown> = { logoUrl, updatedAt: now };
-
-    if (
-        typeof existingPhoto === 'string' &&
-        existingPhoto.trim() &&
-        !resolveDoctorProfilePhotoUrl(existingPhoto, logoUrl)
-    ) {
-        doctorUpdates.profileImageUrl = deleteField();
+    const prepared = await normalizeImageFile(file, 'practice-logo.jpg');
+    if (isDjangoApiEnabled()) {
+        const uploaded = await djangoUploadDocument(prepared, 'practice-logo', 'logo.jpg');
+        await djangoPatchDoctorProfile({ logo_url: uploaded.storageKey });
+        return (await djangoResolveMediaUrl(uploaded.url)) ?? uploaded.url;
     }
-
-    await setDoc(doctorRef, doctorUpdates, { merge: true });
-
-    const userRef = doc(db, USERS_COLLECTION, doctorId);
-    const existingUser = await getDoc(userRef);
-    const existingBranding =
-        (existingUser.data()?.practiceBranding as Record<string, unknown> | undefined) ?? {};
-    const existingUserPhoto =
-        typeof existingUser.data()?.photoURL === 'string'
-            ? String(existingUser.data()?.photoURL)
-            : '';
-
-    const userUpdates: Record<string, unknown> = {
-        practiceBranding: {
-            ...existingBranding,
-            logoUrl,
-            updatedAt: now,
-        },
-        updatedAt: now,
-    };
-    if (existingUserPhoto && isPracticeLetterheadUrl(existingUserPhoto)) {
-        userUpdates.photoURL = deleteField();
-    }
-
-    await setDoc(userRef, userUpdates, { merge: true });
-
-    return logoUrl;
+    // Firestore + Storage path removed.
+    throw new Error('Profile logo upload is not available. Set REACT_APP_ANIXI_API_URL to enable the Django document endpoint.');
 }
 
 export async function uploadDoctorProfilePhoto(doctorId: string, file: File): Promise<string> {
-    // Use the existing doctor-logos prefix — production Storage rules already
-    // allow image writes there. Headshots are stored as profile.jpg, not logo.jpg.
-    const storageRef = ref(storage, `doctor-logos/${doctorId}/profile.jpg`);
-    const snapshot = await uploadBytes(storageRef, file, {
-        contentType: 'image/jpeg',
-    });
-    const profileImageUrl = await getDownloadURL(snapshot.ref);
-    const now = serverTimestamp();
-
-    await setDoc(
-        doc(db, DOCTORS_COLLECTION, doctorId),
-        { profileImageUrl, updatedAt: now },
-        { merge: true }
-    );
-
-    await setDoc(
-        doc(db, USERS_COLLECTION, doctorId),
-        { photoURL: profileImageUrl, updatedAt: now },
-        { merge: true }
-    );
-
-    return profileImageUrl;
+    const prepared = await normalizeImageFile(file, 'profile.jpg');
+    if (isDjangoApiEnabled()) {
+        const uploaded = await djangoUploadDocument(prepared, 'doctor-profile', 'avatar.jpg');
+        await djangoPatchDoctorProfile({ profile_image_url: uploaded.storageKey });
+        return (await djangoResolveMediaUrl(uploaded.url)) ?? uploaded.url;
+    }
+    // Firestore + Storage path removed.
+    throw new Error('Profile photo upload is not available. Set REACT_APP_ANIXI_API_URL to enable the Django document endpoint.');
 }
 
 export const saveDoctorProfileForm = async (
@@ -179,190 +63,68 @@ export const saveDoctorProfileForm = async (
     logoUrl?: string,
     options?: { submitForReview?: boolean }
 ): Promise<void> => {
-    const doctorRef = doc(db, DOCTORS_COLLECTION, doctorId);
-    const payload = formDataToFirestore(form, logoUrl);
-    const resolvedLogo = (logoUrl ?? form.logoUrl).trim();
-    const resolvedPhoto = resolveDoctorProfilePhotoUrl(
-        form.profileImageUrl,
-        resolvedLogo
-    );
-    if (!resolvedPhoto) {
-        payload.profileImageUrl = deleteField();
-    }
-    const reviewFields = options?.submitForReview
-        ? {
-              applicationComplete: true,
-              applicationSubmittedAt: serverTimestamp(),
-              verificationStatus: 'pending',
-              verifiedAt: null,
-              verifiedBy: null,
-          }
-        : {};
-
-    await setDoc(
-        doctorRef,
-        {
-            ...payload,
-            ...reviewFields,
-            updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-    );
-
-    try {
-        const photoURL = resolvedPhoto;
-        const userRef = doc(db, USERS_COLLECTION, doctorId);
-        const existingUser = await getDoc(userRef);
-        const existingBranding =
-            (existingUser.data()?.practiceBranding as Record<string, unknown> | undefined) ??
-            {};
-        const existingUserPhoto =
-            typeof existingUser.data()?.photoURL === 'string'
-                ? String(existingUser.data()?.photoURL)
-                : '';
-
-        const userMirror: Record<string, unknown> = {
-            displayName: form.fullName,
-            email: form.emailAddress,
-            phoneNumber: form.phoneNumber,
-            accountType: 'doctor',
-            updatedAt: serverTimestamp(),
-        };
-
-        if (photoURL) {
-            userMirror.photoURL = photoURL;
-        } else if (existingUserPhoto && isPracticeLetterheadUrl(existingUserPhoto)) {
-            userMirror.photoURL = deleteField();
-        }
-
-        if (resolvedLogo) {
-            userMirror.practiceBranding = {
-                ...existingBranding,
-                logoUrl: resolvedLogo,
-                updatedAt: serverTimestamp(),
-            };
-        }
-
-        await setDoc(userRef, userMirror, { merge: true });
-    } catch (error) {
-        console.warn('[saveDoctorProfileForm] Users account mirror skipped', error);
-    }
-
-    if (options?.submitForReview) {
-        const userSnap = await getDoc(doc(db, USERS_COLLECTION, doctorId));
-        const doctorEmail =
-            (userSnap.exists() ? String(userSnap.data()?.email ?? '') : '') ||
-            String(form.emailAddress ?? '').trim();
-        if (doctorEmail) {
-            await queueDoctorOnboardingSubmittedEmail({
-                to: doctorEmail,
-                displayName: form.fullName,
-            });
-        }
-    }
-};
-
-export const updateDoctorProfile = async (doctorId: string, updates: Partial<Doctor>): Promise<void> => {
-    try {
-        const doctorRef = doc(db, DOCTORS_COLLECTION, doctorId);
-        await setDoc(
-            doctorRef,
-            {
-                ...updates,
-                updatedAt: serverTimestamp(),
-            },
-            { merge: true }
+    if (isDjangoApiEnabled()) {
+        const resolvedLogo = djangoMediaUrlToStorageKey((logoUrl ?? form.logoUrl).trim());
+        const resolvedPhoto = djangoMediaUrlToStorageKey(
+            resolveDoctorProfilePhotoUrl(form.profileImageUrl, resolvedLogo),
         );
-    } catch (error) {
-        throw error;
-    }
-};
-export const diagnosticCheck = async () => {
-    try {
-        const collectionsToCheck = ['Users', 'patients', 'doctors', 'caregivers'];
-        for (const collName of collectionsToCheck) {
-            const snapshot = await getDocs(collection(db, collName));
-            if (snapshot.size > 0) {
-                let count = 0;
-                snapshot.forEach((doc) => {
-                    if (count < 3) { 
-                    }
-                    count++;
+        await djangoPatchDoctorProfile({
+            display_name: form.fullName,
+            phone_number: form.phoneNumber,
+            specialty: form.medicalSpecialty,
+            medical_specialty: form.medicalSpecialty,
+            hpcsa_registration_number: form.hpcsaRegistrationNumber,
+            practice_name: form.practiceName,
+            practice_type: form.practiceType,
+            practice_facility: form.practiceFacility,
+            province: form.province,
+            city: form.city,
+            office_address: form.practiceAddress,
+            nationality: form.nationality,
+            title: form.title,
+            gender: form.gender,
+            id_or_passport: form.idOrPassport,
+            practice_number_bhf: form.practiceNumber,
+            vat_number: form.vatNumber,
+            ...(resolvedLogo ? { logo_url: resolvedLogo } : {}),
+            ...(resolvedPhoto ? { profile_image_url: resolvedPhoto } : {}),
+            ...(options?.submitForReview ? { submit_for_review: true } : {}),
+        });
+        if (options?.submitForReview) {
+            const doctorEmail = String(form.emailAddress ?? '').trim();
+            if (doctorEmail) {
+                await queueDoctorOnboardingSubmittedEmail({
+                    to: doctorEmail,
+                    displayName: form.fullName,
                 });
             }
         }
-    } catch (error) {
-        ;
+        return;
     }
+
+    // Firestore path removed.
+    throw new Error('Doctor profile save is not available. Set REACT_APP_ANIXI_API_URL to enable the Django profile endpoint.');
 };
-export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> => {
-    try {
-        const approvedPatientsRef = collection(db, 'Users', doctorId, 'approved_patients');
-        const approvedSnapshot = await getDocs(approvedPatientsRef);
-        if (approvedSnapshot.size === 0) {
-            return [];
-        }
-        const patients: Patient[] = [];
-        const patientFetches = approvedSnapshot.docs.map(async (rosterDoc) => {
-            try {
-                patients.push(
-                    await resolveRosteredPatient(
-                        doctorId,
-                        rosterDoc.data().patientId || rosterDoc.id,
-                        rosterDoc.data()
-                    )
-                );
-            } catch {
-                // Skip patients the doctor cannot read
-            }
-        });
-        await Promise.all(patientFetches);
-        return patients;
-    } catch (error) {
-        ;
-        return [];
-    }
+
+export const updateDoctorProfile = async (_doctorId: string, _updates: Partial<Doctor>): Promise<void> => {
+    // TODO: persist via Django endpoint once available.
 };
-export const getDashboardStats = async (doctorId: string): Promise<DashboardStats> => {
-    try {
-        const patients = await getDoctorPatients(doctorId);
-        const totalPatients = patients.length;
-        if (totalPatients === 0) {
-            return {
-                totalPatients: 0,
-                warningPatients: 0,
-                stablePatients: 0,
-                inactivePatients: 0,
-                upcomingAppointments: 0,
-            };
-        }
-        let warningCount = 0;
-        let stableCount = 0;
-        let inactiveCount = 0;
-        patients.forEach((patient) => {
-            const status = derivePatientRosterStatus(patient);
-            if (status === 'inactive') inactiveCount += 1;
-            else if (status === 'stable') stableCount += 1;
-            else warningCount += 1;
-        });
-        if (warningCount > 0) {
-        }
-        const stats = {
-            totalPatients,
-            warningPatients: warningCount,
-            stablePatients: stableCount,
-            inactivePatients: inactiveCount,
-            upcomingAppointments: 0, 
-        };
-        return stats;
-    } catch (error) {
-        ;
-        return {
-            totalPatients: 0,
-            warningPatients: 0,
-            stablePatients: 0,
-            inactivePatients: 0,
-            upcomingAppointments: 0,
-        };
-    }
+
+export const diagnosticCheck = async () => {
+    // No-op until a Django diagnostics endpoint exists.
+};
+
+export const getDoctorPatients = async (_doctorId: string): Promise<Patient[]> => {
+    // TODO: replace with a Django patient-panel endpoint once available.
+    return [];
+};
+
+export const getDashboardStats = async (_doctorId: string): Promise<DashboardStats> => {
+    return {
+        totalPatients: 0,
+        warningPatients: 0,
+        stablePatients: 0,
+        inactivePatients: 0,
+        upcomingAppointments: 0,
+    };
 };

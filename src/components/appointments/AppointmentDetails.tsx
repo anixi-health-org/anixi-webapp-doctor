@@ -15,6 +15,7 @@ import {
   updateScheduledAppointmentStatus,
   validateSlot,
 } from '../../services/schedulingService';
+import { getPatientForDoctorView } from '../../services/patientManagementService';
 import { createInvoiceRecord, invoiceOptionsFromDoctor } from '../../services/invoiceService';
 import { CreateAppointmentModal } from './CreateAppointmentModal';
 import { InvoiceModal } from './InvoiceModal';
@@ -22,9 +23,13 @@ import { sendPatientNotification } from '../../services/notificationService';
 import {
   canDoctorStartVideoCall,
   formatAppointmentTypeLabel,
-  isWhatsAppComingSoon,
+  isPhoneConsult,
+  isWhatsAppConsult,
+  phoneDeepLink,
+  whatsAppDeepLink,
 } from '../../utils/teleconsult';
 import { formatAppointmentStatusLabel, needsDoctorConfirmation } from '../../services/appointmentCanonical';
+import { useAskAnixi } from '../../context/AskAnixiContext';
 
 interface AppointmentDetailsProps {
   appointment: Appointment;
@@ -116,7 +121,9 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   const [rescheduleDate, setRescheduleDate] = useState(safeDate.toISOString().split('T')[0]);
   const [rescheduleTime, setRescheduleTime] = useState(convertTo24Hour(appointment.time));
   const [isProcessing, setIsProcessing] = useState(false);
+  const [patientPhone, setPatientPhone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { openAskAnixi } = useAskAnixi();
   const appointmentDate = convertTimestamp(appointment.date) || new Date();
   const fullDateFormatted = appointmentDate.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -166,6 +173,17 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   useEffect(() => {
     setDocuments(appointment.documents ?? []);
   }, [appointment.id, appointment.documents]);
+
+  useEffect(() => {
+    if (!isWhatsAppConsult(appointment) && !isPhoneConsult(appointment)) return;
+    if (!appointment.patientId || appointment.patientId === 'unknown') return;
+    void getPatientForDoctorView(appointment.doctorId, appointment.patientId, {
+      patientName: appointment.patientName,
+      patientEmail: appointment.patientEmail,
+    })
+      .then((patient) => setPatientPhone(patient?.phoneNumber || null))
+      .catch(() => setPatientPhone(null));
+  }, [appointment]);
 
   useEffect(() => {
     return () => {
@@ -270,7 +288,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
         lineItems,
         notes,
         doctorProfile?.currency || 'ZAR',
-        invoiceOptionsFromDoctor(doctorProfile, appointment.id)
+        invoiceOptionsFromDoctor(doctorProfile, appointment.id, appointment.practiceId)
       );
 
       // Mark appointment as completed
@@ -428,6 +446,19 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
     }
   };
 
+  const handleOpenPreVisit = () => {
+    if (appointment.isManual) return;
+    openAskAnixi({
+      autoSend: true,
+      context: {
+        patientId: appointment.patientId,
+        appointmentId: appointment.id,
+        patientName,
+      },
+      prompt: `Generate a pre-visit briefing for ${patientName} (patientId: ${appointment.patientId}, appointmentId: ${appointment.id}). Use generate-pre-visit-briefing.`,
+    });
+  };
+
   const resetScanState = () => {
     setScanTitle('');
     setScanFile(null);
@@ -567,7 +598,23 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               </div>
             </div>
           </div>
-          {}
+          {!appointment.isManual ? (
+            <div className="rounded-lg border border-[#dbeafe] bg-[#f8fbff] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-[#1a4d4d]">Ayah, pre-visit briefing</h2>
+                <button
+                  type="button"
+                  onClick={handleOpenPreVisit}
+                  className="rounded-lg bg-[#1a4d4d] px-3 py-1.5 text-xs font-semibold text-white"
+                >
+                  Open in Ayah
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-[#65758b]">
+                Pull medications, conditions, and recent visit context before the consult, powered by your practice partner.
+              </p>
+            </div>
+          ) : null}
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               📅 Appointment Information
@@ -711,13 +758,33 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
 
               {/* Secondary Actions */}
               <div className="space-y-3">
-                {isWhatsAppComingSoon(appointment) && (
-                  <div className="w-full rounded-xl border-2 border-amber-200 bg-amber-50 py-3 px-4 text-sm font-medium text-amber-900">
-                    WhatsApp consult - Coming soon
+                {(isWhatsAppConsult(appointment) || isPhoneConsult(appointment)) && patientPhone ? (
+                  <div className="flex flex-col gap-2">
+                    {isWhatsAppConsult(appointment) ? (
+                      <a
+                        href={whatsAppDeepLink(
+                          patientPhone,
+                          `Hi ${patientName}, this is your doctor regarding your Anixi appointment.`,
+                        )}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-full rounded-xl border-2 border-emerald-200 bg-emerald-50 py-3 px-4 text-center text-sm font-semibold text-emerald-900"
+                      >
+                        Open WhatsApp
+                      </a>
+                    ) : null}
+                    {isPhoneConsult(appointment) ? (
+                      <a
+                        href={phoneDeepLink(patientPhone)}
+                        className="w-full rounded-xl border-2 border-blue-200 bg-blue-50 py-3 px-4 text-center text-sm font-semibold text-blue-900"
+                      >
+                        Call patient
+                      </a>
+                    ) : null}
                   </div>
-                )}
+                ) : null}
 
-                {!isWhatsAppComingSoon(appointment) && canDoctorStartVideoCall(appointment) && (
+                {canDoctorStartVideoCall(appointment) && (
                   <button
                     onClick={handleOpenPostConsult}
                     disabled={isProcessing}

@@ -38,7 +38,7 @@ export const sendReferralInvitationCallable = functions.https.onCall(
     const subject = `You're invited to join Anixi`;
     const html = `
       <p>Hello,</p>
-      <p>${refData?.doctorName || 'A doctor'} invited you to join Anixi — a care coordination app.</p>
+      <p>${refData?.doctorName || 'A doctor'} invited you to join Anixi, a care coordination app.</p>
       <p>Sign up on the web: <a href="${referralLink}">${referralLink}</a></p>
       <p>Or download the app:</p>
       <ul>
@@ -46,7 +46,7 @@ export const sendReferralInvitationCallable = functions.https.onCall(
         <li><a href="${ANDROID_LINK}">Get it on Google Play</a></li>
       </ul>
       <p>If you have any trouble, reply to this email.</p>
-      <p>— The Anixi team</p>
+      <p>Best,<br/>The Anixi team</p>
     `;
 
     try {
@@ -81,7 +81,7 @@ export const sendReferralInvitation = functions.firestore
     const subject = `You're invited to join Anixi`;
     const html = `
       <p>Hello,</p>
-      <p>${refData?.doctorName || 'A doctor'} invited you to join Anixi — a care coordination app.</p>
+      <p>${refData?.doctorName || 'A doctor'} invited you to join Anixi, a care coordination app.</p>
       <p>Sign up on the web: <a href="${inviteUrl}">${inviteUrl}</a></p>
       <p>Or download the app:</p>
       <ul>
@@ -89,7 +89,7 @@ export const sendReferralInvitation = functions.firestore
         <li><a href="${ANDROID_LINK}">Get it on Google Play</a></li>
       </ul>
       <p>If you have any trouble, reply to this email.</p>
-      <p>— The Anixi team</p>
+      <p>Best,<br/>The Anixi team</p>
     `;
 
     try {

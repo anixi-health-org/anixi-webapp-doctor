@@ -13,6 +13,7 @@ import {
   resendPracticeInvite,
   revokePracticeInvite,
 } from '../../services/practiceInviteService';
+import { logClinicAuditEvent } from '../../services/clinicAuditService';
 import {
   deactivatePracticeMember,
   listPracticeMembers,
@@ -26,9 +27,9 @@ import type { PracticeInvite, PracticeMember, PracticeRole } from '../../types';
 
 type PracticeMembersPanelProps = {
   /**
-   * full — header + invite + list (solo/practice settings)
-   * clinic — invite + list without duplicate marketing header (clinic team page)
-   * listOnly — members/invites only
+   * full, header + invite + list (solo/practice settings)
+   * clinic, invite + list without duplicate marketing header (clinic team page)
+   * listOnly, members/invites only
    */
   variant?: 'full' | 'clinic' | 'listOnly';
   /** Bump to force reload after bulk invite */
@@ -154,10 +155,23 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
 
   const onChangeRole = async (uid: string, role: PracticeRole) => {
     if (uid === practice.ownerId) return;
+    const member = members.find((m) => m.uid === uid);
     await updatePracticeMember(practice.id, uid, {
       role,
       permissions: permissionsForRole(role),
     });
+    if (user?.id) {
+      await logClinicAuditEvent({
+        practiceId: practice.id,
+        action: 'member.role_changed',
+        actorUid: user.id,
+        actorName: user.displayName,
+        targetType: 'member',
+        targetId: uid,
+        summary: `Changed ${member?.displayName ?? member?.email ?? uid} to ${ROLE_LABELS[role]}`,
+        metadata: { previousRole: member?.role, nextRole: role },
+      });
+    }
     await reload();
   };
 
@@ -309,6 +323,9 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
                           [
                             'practice_manager',
                             'doctor',
+                            'nurse',
+                            'allied_health',
+                            'locum',
                             'receptionist',
                             'billing_clerk',
                             'delegate',

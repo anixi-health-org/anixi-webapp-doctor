@@ -64,7 +64,7 @@ const PRESET_DAYS: Record<AccessDurationPreset, number | null> = {
   custom: null,
 };
 
-/** Mirrors mobile `medical-record-shares/lib/duration.ts` — access starts at approval. */
+/** Mirrors mobile `medical-record-shares/lib/duration.ts`, access starts at approval. */
 export function computeShareExpiresAt(
   preset: AccessDurationPreset,
   from: Date,

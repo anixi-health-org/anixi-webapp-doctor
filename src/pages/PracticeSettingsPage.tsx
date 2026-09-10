@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Building2,
@@ -14,6 +14,7 @@ import { useAuth } from '../hooks/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { usePracticeSettings } from '../hooks/usePracticeSettings';
 import { BookableBlocksEditor } from '../components/practice/BookableBlocksEditor';
+import { ClinicManagedNotice } from '../components/practice/ClinicManagedNotice';
 import { SoftBlocksEditor } from '../components/practice/SoftBlocksEditor';
 import { BookingPoliciesForm } from '../components/practice/BookingPoliciesForm';
 import { PracticePermissionsPanel } from '../components/practice/PracticePermissionsPanel';
@@ -56,13 +57,26 @@ const PracticeSettingsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, practiceSession, refreshPracticeSession, isLoading: authLoading } = useAuth();
   const doctor = user?.role === 'doctor' ? (user as Doctor) : null;
-  const { can, isOwner, role } = usePermissions();
+  const { can, isOwner, role, isClinicEmployedClinician } = usePermissions();
   const { bookableBlocks, softBlocks, bookingPolicy, isLoading, error, reload } =
     usePracticeSettings();
   const tabParam = searchParams.get('tab');
+  const defaultTab: Tab = isClinicEmployedClinician ? 'availability' : 'overview';
   const [activeTab, setActiveTab] = useState<Tab>(
-    isValidTab(tabParam) ? tabParam : 'overview'
+    isValidTab(tabParam) ? tabParam : defaultTab
   );
+
+  const visibleTabs = useMemo(() => {
+    if (isClinicEmployedClinician) {
+      return TAB_CONFIG.filter((tab) => tab.id === 'availability' || tab.id === 'policies');
+    }
+    return TAB_CONFIG;
+  }, [isClinicEmployedClinician]);
+
+  const selectTab = (tab: Tab) => {
+    setActiveTab(tab);
+    setSearchParams(tab === 'overview' ? {} : { tab }, { replace: true });
+  };
 
   useEffect(() => {
     if (isValidTab(tabParam) && tabParam !== activeTab) {
@@ -70,10 +84,13 @@ const PracticeSettingsPage: React.FC = () => {
     }
   }, [tabParam, activeTab]);
 
-  const selectTab = (tab: Tab) => {
-    setActiveTab(tab);
-    setSearchParams(tab === 'overview' ? {} : { tab }, { replace: true });
-  };
+  useEffect(() => {
+    if (!visibleTabs.some((tab) => tab.id === activeTab)) {
+      const next = visibleTabs[0]?.id ?? 'availability';
+      setActiveTab(next);
+      setSearchParams(next === 'overview' ? {} : { tab: next }, { replace: true });
+    }
+  }, [visibleTabs, activeTab, setSearchParams]);
 
   const [newLocName, setNewLocName] = useState('');
   const [newLocType, setNewLocType] = useState<PracticeLocation['type']>('clinic');
@@ -259,21 +276,33 @@ const PracticeSettingsPage: React.FC = () => {
 
       <div className="mb-5">
         <div className="flex flex-wrap items-center gap-2.5">
-          <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">Practice settings</h1>
+          <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">
+            {isClinicEmployedClinician ? 'My schedule' : 'Practice settings'}
+          </h1>
           <span
             className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-              isOwner ? 'bg-anixi-green text-white' : 'bg-[#eef4f1] text-[#427160]'
+              isClinicEmployedClinician
+                ? 'bg-[#eef4f1] text-[#427160]'
+                : isOwner
+                  ? 'bg-anixi-green text-white'
+                  : 'bg-[#eef4f1] text-[#427160]'
             }`}
           >
-            {isOwner ? 'Owner' : 'Delegate'}
+            {isClinicEmployedClinician ? 'Clinic team' : isOwner ? 'Owner' : 'Delegate'}
           </span>
         </div>
         <p className="mt-1 text-[13px] text-[#65758b]">
-          Hours, visit types, branding, and who can book with you.
+          {isClinicEmployedClinician
+            ? 'View the hours and booking rules your clinic administrator has assigned to you.'
+            : 'Hours, visit types, branding, and who can book with you.'}
         </p>
       </div>
 
-      {activeTab === 'overview' && (
+      {isClinicEmployedClinician && (
+        <ClinicManagedNotice practiceName={practice.name} className="mb-5" />
+      )}
+
+      {!isClinicEmployedClinician && activeTab === 'overview' && (
         <LetterheadSetupBanner doctor={doctor} className="mb-5" />
       )}
 
@@ -281,7 +310,7 @@ const PracticeSettingsPage: React.FC = () => {
         className="mb-6 flex gap-1 overflow-x-auto rounded-2xl bg-[#e8f0ec] p-1.5"
         aria-label="Practice settings sections"
       >
-        {TAB_CONFIG.map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
           return (
@@ -516,7 +545,7 @@ const PracticeSettingsPage: React.FC = () => {
           )}
 
           {activeTab === 'availability' &&
-            (can('manageAppointments') ? (
+            (isClinicEmployedClinician || isOwner || can('manageAppointments') ? (
               <div className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
                 <BookableBlocksEditor
                   practiceId={practice.id}
@@ -526,6 +555,7 @@ const PracticeSettingsPage: React.FC = () => {
                   practiceConsultTypes={practice.consultTypes}
                   onChanged={reload}
                   onPracticeUpdated={() => void refreshPracticeSession()}
+                  readOnly={isClinicEmployedClinician}
                 />
               </div>
             ) : (
@@ -533,7 +563,9 @@ const PracticeSettingsPage: React.FC = () => {
             ))}
 
           {activeTab === 'soft-blocks' &&
-            (can('manageSoftBlocks') ? (
+            (isClinicEmployedClinician ? (
+              <PermissionDenied message="Blocked time is managed by your clinic administrator." />
+            ) : isOwner || can('manageSoftBlocks') ? (
               <div className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
                 <SoftBlocksEditor
                   practiceId={practice.id}
@@ -547,11 +579,16 @@ const PracticeSettingsPage: React.FC = () => {
 
           {activeTab === 'policies' && bookingPolicy && (
             <div className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
+              {isClinicEmployedClinician && (
+                <p className="mb-4 text-[13px] text-[#65758b]">
+                  These rules are set by your clinic administrator and apply to all bookings.
+                </p>
+              )}
               <BookingPoliciesForm
                 practiceId={practice.id}
                 policy={bookingPolicy}
                 onSaved={reload}
-                readOnly={!can('editBookingPolicies')}
+                readOnly={isClinicEmployedClinician || !can('editBookingPolicies')}
               />
             </div>
           )}

@@ -41,7 +41,7 @@ export function parseAppointmentStatus(
   status: unknown
 ): CanonicalAppointmentStatus | null {
   if (status == null || status === '') {
-    console.error('[appointment.status] missing status — not coercing to pending');
+    console.error('[appointment.status] missing status, not coercing to pending');
     return null;
   }
 
@@ -49,7 +49,7 @@ export function parseAppointmentStatus(
   const parsed = STATUS_ALIASES[key];
   if (!parsed) {
     console.error(
-      '[appointment.status] unknown status — not coercing to pending',
+      '[appointment.status] unknown status, not coercing to pending',
       status
     );
     return null;

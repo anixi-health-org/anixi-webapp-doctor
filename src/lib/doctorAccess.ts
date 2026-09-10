@@ -2,7 +2,7 @@ import type { Doctor, PracticeSession, ProfessionalUser } from '../types';
 import type { JoinPath } from '../types/auth';
 import type { ProfessionalProfileFormData } from '../types/doctorProfile';
 
-/** Practice owner for a clinic org (portal admin — not the same as an invited clinician). */
+/** Practice owner for a clinic org (portal admin, not the same as an invited clinician). */
 export function isClinicOwner(session: PracticeSession | null): boolean {
   return (
     session?.practice?.orgType === 'clinic' && session?.member?.role === 'owner'
@@ -18,6 +18,48 @@ export function usesClinicAdminPortal(session: PracticeSession | null): boolean 
     return session.member?.isClinician !== true;
   }
   return false;
+}
+
+/** Owner and practice manager can switch clinic ops ↔ clinical workspace. */
+export function canSwitchWorkspaces(session: PracticeSession | null): boolean {
+  if (session?.practice?.orgType !== 'clinic') return false;
+  const role = session.member?.role;
+  return role === 'owner' || role === 'practice_manager';
+}
+
+/**
+ * Invited clinicians at a hospital/clinic — bookings, branding, and rules are
+ * managed by clinic admin staff, not the individual doctor or nurse.
+ */
+export function isClinicEmployedClinician(session: PracticeSession | null): boolean {
+  if (session?.practice?.orgType !== 'clinic') return false;
+  if (session.member?.isClinician !== true) return false;
+  return !canSwitchWorkspaces(session);
+}
+
+/** Who may edit operational settings (hours, blocks, branding, booking rules). */
+export function canManageOperationalSettings(session: PracticeSession | null): boolean {
+  if (!session?.practice) return false;
+  if (session.practice.orgType !== 'clinic') {
+    const role = session.member?.role;
+    if (role === 'owner') return true;
+    const permissions = session.member?.permissions;
+    return Boolean(
+      permissions?.manageAppointments ||
+        permissions?.editBookingPolicies ||
+        permissions?.manageMembers
+    );
+  }
+  if (canSwitchWorkspaces(session)) return true;
+  if (session.member?.isClinician === true) return false;
+  const role = session.member?.role;
+  if (role === 'receptionist' || role === 'billing_clerk') return true;
+  const permissions = session.member?.permissions;
+  return Boolean(
+    permissions?.manageAppointments ||
+      permissions?.editBookingPolicies ||
+      permissions?.manageMembers
+  );
 }
 
 export function clinicAdminHomePath(): string {
@@ -130,7 +172,7 @@ export function doctorHomePath(doctor: Doctor): string {
     case 'suspended':
       return '/account-review';
     default:
-      return '/dashboard';
+      return '/ayah';
   }
 }
 
@@ -138,7 +180,7 @@ export type HomePathOptions = {
   joinIntent?: JoinPath | string | null;
   hasPractice?: boolean;
   clinicOnboardingComplete?: boolean;
-  /** Owner of a clinic org — uses clinic-setup, not doctor HPCSA onboarding */
+  /** Owner of a clinic org, uses clinic-setup, not doctor HPCSA onboarding */
   isClinicOwner?: boolean;
   /** Practice session for clinic-admin portal routing */
   practiceSession?: PracticeSession | null;

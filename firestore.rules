@@ -98,11 +98,23 @@ service cloud.firestore {
     function isNominatedCaregiverEmail() {
       return isSignedIn()
         && resource.data.hasCaregiver == true
-        && resource.data.caregiverEmail == request.auth.token.email;
+        && (
+          resource.data.caregiverEmail == request.auth.token.email
+          || (
+            resource.data.caregiverEmails is list
+            && request.auth.token.email in resource.data.caregiverEmails
+          )
+        );
     }
 
     function canReadPatientHealthData(patientId) {
       return canDoctorReadPatientHealthData(patientId) || isLinkedCaregiverForPatient(patientId);
+    }
+
+    function isPublishedProfessionalCaregiverUser() {
+      return resource.data.caregiverTier == 'professional'
+        && resource.data.professionalCaregiverProfile is map
+        && resource.data.professionalCaregiverProfile.published == true;
     }
 
     function isPracticeOwner(practiceId) {
@@ -120,24 +132,51 @@ service cloud.firestore {
         && getMember(practiceId).status == 'active';
     }
 
+    function isPracticeStaff(practiceId) {
+      return isMember(practiceId) || isPracticeOwner(practiceId);
+    }
+
     function isOwner(practiceId) {
-      return isMember(practiceId) && (
-        getMember(practiceId).role == 'owner' ||
-        getMember(practiceId).role == 'practice_manager'
+      return isPracticeOwner(practiceId) || (
+        isMember(practiceId) && (
+          getMember(practiceId).role == 'owner' ||
+          getMember(practiceId).role == 'practice_manager'
+        )
       );
     }
 
     function hasPerm(practiceId, perm) {
-      return isMember(practiceId) && getMember(practiceId).permissions[perm] == true;
+      return isMember(practiceId)
+        && getMember(practiceId).keys().hasAll(['permissions'])
+        && getMember(practiceId).permissions is map
+        && getMember(practiceId).permissions[perm] == true;
     }
 
     function canManagePracticePatients(practiceId) {
-      return isMember(practiceId) && (
-        hasPerm(practiceId, 'managePatients') ||
-        getMember(practiceId).role == 'owner' ||
-        getMember(practiceId).role == 'practice_manager' ||
-        getMember(practiceId).role == 'doctor' ||
-        getMember(practiceId).role == 'receptionist'
+      return isPracticeOwner(practiceId) || (
+        isMember(practiceId) && (
+          getMember(practiceId).role == 'owner' ||
+          getMember(practiceId).role == 'practice_manager' ||
+          getMember(practiceId).role == 'doctor' ||
+          getMember(practiceId).role == 'nurse' ||
+          getMember(practiceId).role == 'allied_health' ||
+          getMember(practiceId).role == 'locum' ||
+          getMember(practiceId).role == 'receptionist' ||
+          hasPerm(practiceId, 'managePatients')
+        )
+      );
+    }
+
+    function canViewPracticeBilling(practiceId) {
+      return practiceId is string && (
+        isPracticeOwner(practiceId) || (
+          isMember(practiceId) && (
+            getMember(practiceId).role == 'owner' ||
+            getMember(practiceId).role == 'practice_manager' ||
+            getMember(practiceId).role == 'billing_clerk' ||
+            hasPerm(practiceId, 'viewBilling')
+          )
+        )
       );
     }
 
@@ -151,6 +190,39 @@ service cloud.firestore {
     match /Users/{userId}/mood_entries/{entryId} {
       allow read: if isSignedIn() && (uid() == userId || canReadPatientHealthData(userId));
       allow write: if isSignedIn() && uid() == userId;
+    }
+
+    match /Users/{userId}/ayah_symptoms/{entryId} {
+      allow read: if isSignedIn() && (uid() == userId || canReadPatientHealthData(userId));
+      allow write: if isSignedIn() && uid() == userId;
+    }
+
+    match /Users/{userId}/ayah_memories/{entryId} {
+      allow read, write: if isSignedIn() && uid() == userId;
+    }
+
+    match /Users/{userId}/ayah_goals/{entryId} {
+      allow read, write: if isSignedIn() && uid() == userId;
+    }
+
+    match /Users/{userId}/ayah_escalations/{entryId} {
+      allow read, write: if isSignedIn() && uid() == userId;
+    }
+
+    match /Users/{userId}/ayah_monitoring_plans/{planId} {
+      allow read, write: if isSignedIn() && uid() == userId;
+      match /checkins/{checkInId} {
+        allow read, write: if isSignedIn() && uid() == userId;
+      }
+    }
+
+    match /Users/{userId}/ayah_attachments/{attachmentId} {
+      allow read, write: if isSignedIn() && uid() == userId;
+    }
+
+    match /Users/{doctorId}/ayah_clinician_guidance/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && uid() == doctorId;
     }
 
     match /Users/{userId}/vitals_records/{recordId} {
@@ -204,7 +276,8 @@ service cloud.firestore {
 
     // Caregiver portal: patients linked to a caregiver account
     match /Users/{caregiverId}/linked_patients/{patientId} {
-      allow read, write: if isSignedIn() && uid() == caregiverId;
+      allow read: if isSignedIn() && (uid() == caregiverId || uid() == patientId);
+      allow create, update, delete: if isSignedIn() && (uid() == caregiverId || uid() == patientId);
     }
 
     // ─── Sharing requests (mobile parity) ─────────────────────────────────────
@@ -307,7 +380,15 @@ service cloud.firestore {
 
     // User profile root document (admin portal reads/updates account metadata).
     match /Users/{userId} {
-      allow read: if isSignedIn() && (uid() == userId || isAdmin());
+      allow read: if isSignedIn() && (
+        uid() == userId ||
+        isAdmin() ||
+        (
+          resource.data.primaryPracticeId is string &&
+          isPracticeStaff(resource.data.primaryPracticeId)
+        ) ||
+        isPublishedProfessionalCaregiverUser()
+      );
       allow create: if isSignedIn() && uid() == userId;
       allow update: if isSignedIn() && (uid() == userId || isAdmin());
     }
@@ -343,6 +424,7 @@ service cloud.firestore {
       allow read: if isSignedIn() &&
         (resource.data.doctorId == uid() ||
          resource.data.patientId == uid() ||
+         isLinkedCaregiverForPatient(resource.data.patientId) ||
          hasMedicalRecordScope(resource.data.patientId, 'consultations'));
       // Patients book from the mobile app and write the same shared record the
       // portal reads, so either party may create it for themselves.
@@ -352,7 +434,22 @@ service cloud.firestore {
          request.resource.data.doctorId is string)
       );
       allow update: if isSignedIn() &&
-        (resource.data.doctorId == uid() || resource.data.patientId == uid());
+        (
+          resource.data.doctorId == uid() ||
+          resource.data.patientId == uid() ||
+          (
+            resource.data.practiceId is string &&
+            hasPerm(resource.data.practiceId, 'manageAppointments') &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['arrivalStatus', 'checkedInAt', 'checkedInBy', 'roomId', 'updatedAt'])
+          ) ||
+          (
+            resource.data.patientId == uid() &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['arrivalStatus', 'checkedInAt', 'updatedAt']) &&
+            request.resource.data.arrivalStatus == 'checked_in'
+          )
+        );
     }
 
     // Patient-uploaded documents (x-rays, blood tests, notes). Owned by the
@@ -371,13 +468,183 @@ service cloud.firestore {
 
     match /invoices/{invoiceId} {
       allow read: if isSignedIn() &&
-        (resource.data.doctorId == uid() || resource.data.patientId == uid());
+        (resource.data.doctorId == uid() ||
+         resource.data.patientId == uid() ||
+         canViewPracticeBilling(resource.data.practiceId));
       allow create: if isSignedIn()
         && request.resource.data.doctorId == uid()
         && request.resource.data.patientId is string
         && request.resource.data.appointmentId is string;
-      allow update: if isSignedIn() && resource.data.doctorId == uid();
+      allow update: if isSignedIn() && (
+        resource.data.doctorId == uid() ||
+        canViewPracticeBilling(resource.data.practiceId)
+      );
       allow delete: if isSignedIn() && resource.data.doctorId == uid();
+    }
+
+    match /doctor_reviews/{reviewId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.patientId == uid()
+        && request.resource.data.doctorId is string
+        && request.resource.data.appointmentId is string
+        && request.resource.data.rating is number
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5;
+      allow update, delete: if isSignedIn() && resource.data.patientId == uid();
+    }
+
+    match /appointment_waitlist/{waitlistId} {
+      allow read: if isSignedIn() && (
+        resource.data.patientId == uid() ||
+        resource.data.requestedByUserId == uid() ||
+        resource.data.doctorId == uid() ||
+        (
+          resource.data.practiceId is string &&
+          canManagePracticePatients(resource.data.practiceId)
+        )
+      );
+      allow create, update, delete: if false;
+    }
+
+    match /invoice_payments/{paymentId} {
+      allow read: if isSignedIn() && (
+        resource.data.patientId == uid() ||
+        resource.data.doctorId == uid() ||
+        (
+          resource.data.practiceId is string &&
+          canViewPracticeBilling(resource.data.practiceId)
+        )
+      );
+      allow create, update, delete: if false;
+    }
+
+    match /medical_aid_claims/{claimId} {
+      allow read: if isSignedIn() && (
+        resource.data.doctorId == uid() ||
+        resource.data.patientId == uid() ||
+        (
+          resource.data.practiceId is string &&
+          canViewPracticeBilling(resource.data.practiceId)
+        )
+      );
+      allow create, update: if isSignedIn() && (
+        resource.data.doctorId == uid() ||
+        (
+          resource.data.practiceId is string &&
+          canViewPracticeBilling(resource.data.practiceId)
+        )
+      );
+      allow delete: if isSignedIn() && resource.data.doctorId == uid();
+    }
+
+    match /pharmacy_orders/{orderId} {
+      allow read: if isSignedIn() && (
+        resource.data.doctorId == uid() ||
+        resource.data.patientId == uid()
+      );
+      allow create, update, delete: if false;
+    }
+
+    match /wellness_providers/{providerId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.published == true
+      );
+      allow create, update: if isSignedIn() && isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /pharmacies/{pharmacyId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.published == true
+      );
+      allow create, update: if isSignedIn() && isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Patient marketplace: published professional caregiver directory.
+    match /professional_caregivers/{caregiverId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.published == true
+      );
+      allow create, update: if isSignedIn() && (
+        uid() == caregiverId || isAdmin()
+      );
+      allow delete: if isSignedIn() && (uid() == caregiverId || isAdmin());
+    }
+
+    match /copilot_suggestions/{suggestionId} {
+      allow read: if isSignedIn() && resource.data.doctorId == uid();
+      allow create: if false;
+      allow update, delete: if false;
+    }
+
+    // Agent workforce: drafts (booking, clinical notes) and audit runs
+    match /agent_action_drafts/{draftId} {
+      allow read: if isSignedIn() && (
+        resource.data.patientId == uid() ||
+        resource.data.doctorId == uid() ||
+        isAdmin()
+      );
+      allow create, update, delete: if false;
+    }
+
+    match /agent_runs/{runId} {
+      allow read: if isSignedIn() && (
+        resource.data.uid == uid() ||
+        isAdmin()
+      );
+      allow create, update, delete: if false;
+    }
+
+    match /employers/{employerId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        exists(/databases/$(database)/documents/employers/$(employerId)/members/$(uid()))
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        get(/databases/$(database)/documents/employers/$(employerId)).data.ownerId == uid()
+      );
+
+      match /members/{memberId} {
+        allow read: if isSignedIn() && (
+          uid() == memberId ||
+          isAdmin() ||
+          get(/databases/$(database)/documents/employers/$(employerId)).data.ownerId == uid()
+        );
+        allow create: if isSignedIn() && (
+          isAdmin() ||
+          (
+            uid() == memberId &&
+            get(/databases/$(database)/documents/employers/$(employerId)).data.ownerId == uid()
+          ) ||
+          (
+            uid() == memberId &&
+            request.resource.data.status == 'active'
+          )
+        );
+        allow update: if isSignedIn() && (
+          isAdmin() ||
+          get(/databases/$(database)/documents/employers/$(employerId)).data.ownerId == uid()
+        );
+      }
+
+      match /enrollments/{enrollmentId} {
+        allow read: if isSignedIn() && (
+          isAdmin() ||
+          exists(/databases/$(database)/documents/employers/$(employerId)/members/$(uid()))
+        );
+        allow create, update: if isSignedIn() && (
+          isAdmin() ||
+          exists(/databases/$(database)/documents/employers/$(employerId)/members/$(uid()))
+        );
+        allow delete: if isAdmin();
+      }
     }
 
     match /doctors/{doctorId} {
@@ -561,6 +828,12 @@ service cloud.firestore {
       allow update: if isSignedIn() && (
         uid() == patientId ||
         (
+          resource.data.practiceId is string &&
+          canManagePracticePatients(resource.data.practiceId) &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['assignedDoctorId', 'updatedAt'])
+        ) ||
+        (
           resource.data.isManual == true &&
           (
             resource.data.assignedDoctorId == uid() ||
@@ -572,7 +845,8 @@ service cloud.firestore {
         ) ||
         (
           isNominatedCaregiverEmail() &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['caregiverId', 'updatedAt'])
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['caregiverId', 'caregiverIds', 'caregiverConnections', 'updatedAt'])
         )
       );
       allow delete: if isSignedIn()
@@ -628,7 +902,12 @@ service cloud.firestore {
 
     match /practices/{practiceId} {
       // Anixi admins first so admin portal can list all establishments.
-      allow read: if isSignedIn() && (isAdmin() || isMember(practiceId) || isPracticeOwner(practiceId));
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        isMember(practiceId) ||
+        isPracticeOwner(practiceId) ||
+        (resource.data.publicListing.published == true)
+      );
       // Only owners can create or update practice metadata
       allow create: if isSignedIn();   // owner auto-provisioned on first login
       allow update: if isSignedIn() && (isOwner(practiceId) || isPracticeOwner(practiceId));
@@ -636,9 +915,10 @@ service cloud.firestore {
       // ─── Members ──────────────────────────────────────────────────────────────
 
       match /members/{memberId} {
-        // Members can read their own record; owners/managers/Anixi admins can read all
+        // Any active staff (or the practice owner) can list the team.
+        // uid() == memberId alone cannot authorize a collection query.
         allow read: if isSignedIn() &&
-          (uid() == memberId || isOwner(practiceId) || hasPerm(practiceId, 'manageMembers') || isAdmin());
+          (uid() == memberId || isPracticeStaff(practiceId) || isAdmin());
         // Owner bootstrap + invited member self-activate + managers inviting
         allow create: if isSignedIn() && (
           isOwner(practiceId) ||
@@ -681,7 +961,7 @@ service cloud.firestore {
       // Slot availability is served as derived AvailableSlot objects.
 
       match /bookableBlocks/{blockId} {
-        allow read: if isSignedIn() && isMember(practiceId);
+        allow read: if isSignedIn() && isPracticeStaff(practiceId);
         allow create, update, delete: if isSignedIn() &&
           hasPerm(practiceId, 'manageAppointments');
       }
@@ -702,7 +982,7 @@ service cloud.firestore {
 
       match /appointments/{appointmentId} {
         allow read: if isSignedIn() &&
-          (isMember(practiceId) ||
+          (isPracticeStaff(practiceId) ||
            resource.data.patientId == uid());
 
         allow create: if isSignedIn() &&
@@ -742,6 +1022,16 @@ service cloud.firestore {
       match /dailySchedule/{dateId} {
         allow read: if isSignedIn() && isMember(practiceId);
         allow write: if isSignedIn() && isMember(practiceId);
+      }
+
+      // ─── Clinic audit log (append-only) ───────────────────────────────────────
+
+      match /audit_logs/{logId} {
+        allow read: if isSignedIn() && isMember(practiceId);
+        allow create: if isSignedIn() && isMember(practiceId) &&
+          request.resource.data.actorUid == uid() &&
+          request.resource.data.practiceId == practiceId;
+        allow update, delete: if false;
       }
     }
 

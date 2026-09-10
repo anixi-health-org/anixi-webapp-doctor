@@ -1,109 +1,81 @@
 import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  serverTimestamp,
-  setDoc,
-  Timestamp,
-  deleteDoc,
-} from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import {
-  PRACTICES_COLLECTION,
-  PRACTICE_DAILY_SCHEDULE_SUBCOLLECTION,
-} from '../shared/constants';
+  djangoGetPracticeDailySchedule,
+  djangoSetPracticeDailySchedule,
+} from './djangoApiService';
 import type { PracticeDailySchedule } from '../types';
-
-
-
-const toDate = (v: any): Date =>
-  v instanceof Timestamp ? v.toDate() : v instanceof Date ? v : new Date(v);
-
-
 
 export const getPracticeDailySchedule = async (
   practiceId: string,
-  date: string
+  date: string,
 ): Promise<PracticeDailySchedule | null> => {
-  const ref = doc(
-    db,
-    PRACTICES_COLLECTION,
-    practiceId,
-    PRACTICE_DAILY_SCHEDULE_SUBCOLLECTION,
-    date
-  );
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return null;
-  const d = snap.data();
-  return {
-    practiceId,
-    date,
-    availability: d.availability,
-    openTime: d.openTime,
-    closeTime: d.closeTime,
-    note: d.note,
-    updatedAt: toDate(d.updatedAt),
-  };
+  try {
+    const d = await djangoGetPracticeDailySchedule(practiceId, date);
+    if (!d) return null;
+    return {
+      practiceId,
+      date,
+      availability: (d.availability as PracticeDailySchedule['availability']) || 'closed',
+      openTime: (d.openTime as string) || undefined,
+      closeTime: (d.closeTime as string) || undefined,
+      note: (d.note as string) || undefined,
+      updatedAt: toDate(d.updatedAt),
+    };
+  } catch (error) {
+    return null;
+  }
 };
 
 export const setPracticeDailySchedule = async (
-  schedule: Omit<PracticeDailySchedule, 'updatedAt'>
+  schedule: Omit<PracticeDailySchedule, 'updatedAt'>,
 ): Promise<void> => {
-  const ref = doc(
-    db,
-    PRACTICES_COLLECTION,
-    schedule.practiceId,
-    PRACTICE_DAILY_SCHEDULE_SUBCOLLECTION,
-    schedule.date
-  );
-  
-  
-  const data: any = {
-    practiceId: schedule.practiceId,
-    date: schedule.date,
-    availability: schedule.availability,
-    updatedAt: serverTimestamp(),
-  };
-  if (schedule.openTime !== undefined) data.openTime = schedule.openTime;
-  if (schedule.closeTime !== undefined) data.closeTime = schedule.closeTime;
-  if (schedule.note !== undefined) data.note = schedule.note;
-
-  await setDoc(ref, data);
+  try {
+    await djangoSetPracticeDailySchedule(
+      schedule.practiceId,
+      schedule.date,
+      {
+        availability: schedule.availability,
+        openTime: schedule.openTime,
+        closeTime: schedule.closeTime,
+        note: schedule.note,
+      },
+    );
+  } catch (error) {
+    throw new Error(
+      error instanceof Error ? error.message : 'Failed to save daily schedule',
+    );
+  }
 };
 
 export const deletePracticeDailySchedule = async (
   practiceId: string,
-  date: string
+  date: string,
 ): Promise<void> => {
-  const ref = doc(
-    db,
-    PRACTICES_COLLECTION,
-    practiceId,
-    PRACTICE_DAILY_SCHEDULE_SUBCOLLECTION,
-    date
-  );
-  await deleteDoc(ref);
+  try {
+    await djangoSetPracticeDailySchedule(practiceId, date, {
+      availability: 'closed',
+      openTime: undefined,
+      closeTime: undefined,
+      note: undefined,
+    });
+  } catch (error) {
+    throw new Error(
+      error instanceof Error ? error.message : 'Failed to delete daily schedule',
+    );
+  }
 };
 
 export const listPracticeDailySchedules = async (
   practiceId: string,
 ): Promise<PracticeDailySchedule[]> => {
-  const snap = await getDocs(
-    collection(db, PRACTICES_COLLECTION, practiceId, PRACTICE_DAILY_SCHEDULE_SUBCOLLECTION),
-  );
-  return snap.docs
-    .map((d) => {
-      const data = d.data();
-      return {
-        practiceId,
-        date: d.id,
-        availability: data.availability as PracticeDailySchedule['availability'],
-        openTime: data.openTime as string | undefined,
-        closeTime: data.closeTime as string | undefined,
-        note: data.note as string | undefined,
-        updatedAt: toDate(data.updatedAt),
-      } satisfies PracticeDailySchedule;
-    })
-    .sort((a, b) => a.date.localeCompare(b.date));
+  // TODO: replace with a Django listing endpoint once available.
+  return [];
+};
+
+const toDate = (v: unknown): Date => {
+  if (v instanceof Date) return v;
+  if (typeof v === 'string') return new Date(v);
+  if (v && typeof v === 'object' && 'seconds' in v) {
+    return new Date((v as { seconds: number }).seconds * 1000);
+  }
+  return new Date();
 };

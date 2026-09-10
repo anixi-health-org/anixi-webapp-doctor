@@ -1,11 +1,8 @@
 import jsPDF from 'jspdf';
-import { doc, getDoc } from 'firebase/firestore';
-import { getBytes, getDownloadURL, ref } from 'firebase/storage';
 import { Invoice } from '../types';
 import { SA_VAT_RATE, computeVatBreakdown } from '../lib/southAfrica';
 import { resolvePracticeLogoUrl } from '../lib/doctorAvatar';
-import { db, storage } from '../lib/firebase';
-import { DOCTORS_COLLECTION, USERS_COLLECTION } from '../shared/constants';
+import { djangoFetchDocumentUrl, djangoGetMe } from './djangoApiService';
 
 export interface DoctorLetterheadData {
   doctorId?: string;
@@ -18,12 +15,12 @@ export interface DoctorLetterheadData {
   email?: string;
   officeAddress?: string;
   logoUrl?: string;
-  /** Face photo — only used for letterhead when it is actually a stored practice logo. */
+  /** Face photo, only used for letterhead when it is actually a stored practice logo. */
   profileImageUrl?: string;
   practiceName?: string;
   /**
    * Optional pre-encoded logo (data:image/...;base64,...). When set, PDF skips
-   * network logo loading — use this when the UI already has the logo on screen.
+   * network logo loading, use this when the UI already has the logo on screen.
    */
   logoDataUrl?: string;
 }
@@ -43,7 +40,7 @@ function fmtZAR(n: number): string {
 }
 
 function fmtDate(d?: Date): string {
-  if (!d) return '—';
+  if (!d) return '-';
   return new Date(d).toLocaleDateString('en-ZA', {
     day: '2-digit',
     month: 'short',
@@ -72,21 +69,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
       }
     );
   });
-}
-
-/** Pull the Storage object path out of a Firebase download URL. */
-function storagePathFromDownloadUrl(url: string): string | null {
-  try {
-    const marker = '/o/';
-    const idx = url.indexOf(marker);
-    if (idx < 0) return null;
-    const rest = url.slice(idx + marker.length);
-    const encoded = rest.split('?')[0] || '';
-    const path = decodeURIComponent(encoded);
-    return path || null;
-  } catch {
-    return null;
-  }
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -118,7 +100,7 @@ async function logoFromArrayBuffer(buffer: ArrayBuffer): Promise<LogoImage | nul
   const mime = format === 'PNG' ? 'image/png' : 'image/jpeg';
   const dataUrl = `data:${mime};base64,${arrayBufferToBase64(buffer)}`;
 
-  // Decode dimensions from a local blob — no CORS (bytes already in memory).
+  // Decode dimensions from a local blob, no CORS (bytes already in memory).
   try {
     const bitmap = await createImageBitmap(new Blob([new Uint8Array(buffer)], { type: mime }));
     const width = bitmap.width || 1;
@@ -147,8 +129,10 @@ async function logoFromDataUrl(dataUrl: string): Promise<LogoImage | null> {
   }
 }
 
-async function logoFromStoragePath(path: string): Promise<LogoImage | null> {
-  const buffer = await withTimeout(getBytes(ref(storage, path)), 8000, `getBytes ${path}`);
+async function logoFromUrl(url: string): Promise<LogoImage | null> {
+  const res = await withTimeout(fetch(url), 8000, `fetch logo ${url}`);
+  if (!res.ok) return null;
+  const buffer = await res.arrayBuffer();
   return logoFromArrayBuffer(buffer);
 }
 
@@ -167,25 +151,22 @@ async function loadPracticeLogoForPdf(
       if (fromData) return fromData;
     }
 
-    const paths: string[] = [];
-    if (logoUrl) {
-      const fromUrl = storagePathFromDownloadUrl(logoUrl);
-      if (fromUrl) paths.push(fromUrl);
-    }
+    const urls: string[] = [];
+    if (logoUrl) urls.push(logoUrl);
     if (doctorId) {
-      paths.push(`doctor-logos/${doctorId}/logo.jpg`);
-      paths.push(`doctor-logos/${doctorId}/logo.png`);
+      const djangoLogo = await djangoFetchDocumentUrl(`doctor-logos/${doctorId}/logo.jpg`);
+      if (djangoLogo) urls.push(djangoLogo);
     }
 
     const tried = new Set<string>();
-    for (const path of paths) {
-      if (!path || tried.has(path)) continue;
-      tried.add(path);
+    for (const url of urls) {
+      if (!url || tried.has(url)) continue;
+      tried.add(url);
       try {
-        const logo = await logoFromStoragePath(path);
+        const logo = await logoFromUrl(url);
         if (logo) return logo;
       } catch (error) {
-        console.warn('[invoicePdf] storage logo miss:', path, error);
+        console.warn('[invoicePdf] logo fetch miss:', url, error);
       }
     }
 
@@ -260,10 +241,7 @@ export function buildDoctorLetterheadFromUser(doctor: {
   };
 }
 
-/**
- * Refresh letterhead from Firestore + Storage so PDF generation isn't stuck
- * with a stale auth session missing logoUrl.
- */
+/** Refresh letterhead from Django profile so PDF generation has current branding. */
 async function enrichLetterhead(
   doctor: DoctorLetterheadData
 ): Promise<DoctorLetterheadData> {
@@ -283,74 +261,36 @@ async function enrichLetterhead(
   let profileImageUrl = doctor.profileImageUrl;
 
   try {
-    const [doctorSnap, userSnap] = await withTimeout(
-      Promise.all([
-        getDoc(doc(db, DOCTORS_COLLECTION, doctorId)),
-        getDoc(doc(db, USERS_COLLECTION, doctorId)),
-      ]),
-      5000,
-      'letterhead enrich'
-    );
-    const doctorData = doctorSnap.exists() ? doctorSnap.data() : {};
-    const userData = userSnap.exists() ? userSnap.data() : {};
-    const branding =
-      (userData.practiceBranding as Record<string, unknown> | undefined) ?? {};
-
+    const me = await withTimeout(djangoGetMe(), 5000, 'letterhead enrich');
+    const profile = (me?.doctorProfile as Record<string, unknown> | undefined) ?? {};
     logoUrl = resolvePracticeLogoUrl(
-      (doctorData.logoUrl as string | undefined) ||
-        (branding.logoUrl as string | undefined) ||
-        logoUrl,
-      (doctorData.profileImageUrl as string | undefined) || profileImageUrl
+      (profile.logoUrl as string | undefined) || logoUrl,
+      (profile.profileImageUrl as string | undefined) || profileImageUrl,
     );
-    practiceName =
-      (doctorData.practiceName as string | undefined) ||
-      (branding.practiceName as string | undefined) ||
-      practiceName;
+    practiceName = (profile.practiceName as string | undefined) || practiceName;
     specialty =
-      (doctorData.specialty as string | undefined) ||
-      (doctorData.medicalSpecialty as string | undefined) ||
+      (profile.specialty as string | undefined) ||
+      (profile.medicalSpecialty as string | undefined) ||
       specialty;
     licenseNumber =
-      (doctorData.licenseNumber as string | undefined) ||
-      (doctorData.hpcsaRegistrationNumber as string | undefined) ||
+      (profile.licenseNumber as string | undefined) ||
+      (profile.hpcsaRegistrationNumber as string | undefined) ||
       licenseNumber;
     practiceNumberBhf =
-      (doctorData.practiceNumberBhf as string | undefined) ||
-      (doctorData.practiceNumber as string | undefined) ||
+      (profile.practiceNumberBhf as string | undefined) ||
+      (profile.practiceNumber as string | undefined) ||
       practiceNumberBhf;
-    vatNumber = (doctorData.vatNumber as string | undefined) || vatNumber;
-    phoneNumber =
-      (doctorData.phoneNumber as string | undefined) ||
-      (userData.phoneNumber as string | undefined) ||
-      phoneNumber;
-    email =
-      (doctorData.email as string | undefined) ||
-      (userData.email as string | undefined) ||
-      email;
+    vatNumber = (profile.vatNumber as string | undefined) || vatNumber;
+    phoneNumber = (me?.phoneNumber as string | undefined) || phoneNumber;
+    email = (me?.email as string | undefined) || email;
     officeAddress =
-      (doctorData.officeAddress as string | undefined) ||
-      (doctorData.practiceAddress as string | undefined) ||
+      (profile.officeAddress as string | undefined) ||
+      (profile.practiceAddress as string | undefined) ||
       officeAddress;
-    displayName =
-      (doctorData.displayName as string | undefined) ||
-      (doctorData.fullName as string | undefined) ||
-      displayName;
-    profileImageUrl =
-      (doctorData.profileImageUrl as string | undefined) || profileImageUrl;
+    displayName = (me?.displayName as string | undefined) || displayName;
+    profileImageUrl = (profile.profileImageUrl as string | undefined) || profileImageUrl;
   } catch (error) {
     console.warn('[invoicePdf] enrich letterhead failed', error);
-  }
-
-  if (!logoUrl) {
-    try {
-      logoUrl = await withTimeout(
-        getDownloadURL(ref(storage, `doctor-logos/${doctorId}/logo.jpg`)),
-        4000,
-        'logo download URL'
-      );
-    } catch {
-      // no uploaded logo
-    }
   }
 
   return {
@@ -540,7 +480,7 @@ export async function generateInvoicePDF(
     const primary = item.description || 'Service';
     const icd = item.icd10Code
       ? item.icd10Description
-        ? `ICD-10: ${item.icd10Code} — ${item.icd10Description}`
+        ? `ICD-10: ${item.icd10Code}, ${item.icd10Description}`
         : `ICD-10: ${item.icd10Code}`
       : '';
 
@@ -591,7 +531,7 @@ export async function generateInvoicePDF(
 
   y += 8;
 
-  // ── Totals (two clear columns — no overlap) ───────────────────────────────
+  // ── Totals (two clear columns, no overlap) ───────────────────────────────
   const vatRate = invoice.vatRate ?? SA_VAT_RATE;
   const subtotalExVat =
     invoice.subtotalExVat ??
@@ -628,7 +568,7 @@ export async function generateInvoicePDF(
   drawTotalRow('Subtotal (ex VAT)', fmtZAR(subtotalExVat));
   drawTotalRow(`VAT (${vatPctLabel})`, fmtZAR(vatAmount));
 
-  // Separator sits between VAT and Total — keep clear of text baselines.
+  // Separator sits between VAT and Total, keep clear of text baselines.
   y += 1;
   doc.setDrawColor(...BRAND_RGB);
   doc.setLineWidth(0.55);

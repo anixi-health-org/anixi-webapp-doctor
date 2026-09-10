@@ -55,11 +55,16 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
   doctorLabel,
   showDoctor = false,
 }) => {
-  const appointmentDate = convertTimestamp(appointment.date) || new Date();
+  const appointmentDate =
+    appointment.scheduledAt ||
+    convertTimestamp(appointment.date) ||
+    new Date();
+  const timeZone = appointment.timezone || 'Africa/Johannesburg';
   const dateShort = appointmentDate.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
+    timeZone,
   });
   const timeDisplay = typeof appointment.time === 'string' ? appointment.time : '-';
   const typeLabel = formatAppointmentTypeLabel(appointment);

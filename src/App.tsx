@@ -1,15 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
-import { db } from './lib/firebase';
-import { auth } from './lib/firebase';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import AppointmentsPage from './pages/AppointmentsPage';
-import AppointmentDebug from './pages/AppointmentDebug';
-import FirestoreInspector from './pages/FirestoreInspector';
 import { Dashboard } from './pages/Dashboard';
+import AyahPage from './pages/AyahPage';
 import AppointmentSummary from './pages/AppointmentSummary';
 import TeleconsultPage from './pages/TeleconsultPage';
 import { Login } from './pages/Login';
@@ -39,6 +35,7 @@ import { DoctorOnboardingPage } from './pages/DoctorOnboardingPage';
 import { AccountUnderReviewPage } from './pages/AccountUnderReviewPage';
 import ClinicSetupPage from './pages/ClinicSetupPage';
 import InviteAcceptPage from './pages/InviteAcceptPage';
+import CaregiverOnboardingPage from './pages/CaregiverOnboardingPage';
 import { ClinicAdminLayout } from './components/ClinicAdminLayout';
 import { ClinicAdminRoute } from './components/ClinicAdminRoute';
 import ClinicAdminDashboard from './pages/clinic/ClinicAdminDashboard';
@@ -46,6 +43,14 @@ import ClinicAdminTeamPage from './pages/clinic/ClinicAdminTeamPage';
 import ClinicAdminPatientsPage from './pages/clinic/ClinicAdminPatientsPage';
 import ClinicAdminSettingsPage from './pages/clinic/ClinicAdminSettingsPage';
 import ClinicAdminSchedulePage from './pages/clinic/ClinicAdminSchedulePage';
+import ClinicAdminInvoicesPage from './pages/clinic/ClinicAdminInvoicesPage';
+import ClinicAdminClaimsPage from './pages/clinic/ClinicAdminClaimsPage';
+import ClinicAdminQueuePage from './pages/clinic/ClinicAdminQueuePage';
+import ClinicAdminRoomsPage from './pages/clinic/ClinicAdminRoomsPage';
+import ClinicAdminReportsPage from './pages/clinic/ClinicAdminReportsPage';
+import ClinicAdminAuditLogPage from './pages/clinic/ClinicAdminAuditLogPage';
+import EmployerDashboardPage from './pages/employer/EmployerDashboardPage';
+import { EmployerRoute } from './components/EmployerRoute';
 import {
   AnalyticsPage,
   HealthMonitorPage,
@@ -75,107 +80,6 @@ const SignUpRedirect: React.FC = () => {
   return <Navigate to={target} replace />;
 };
 
-const checkPatientFields = async () => {
-  try {
-
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      return;
-    }
-
-    const doctorId = currentUser.uid;
-
-    const approvedRef = collection(db, 'Users', doctorId, 'approved_patients');
-    const approvedSnapshot = await getDocs(approvedRef);
-
-
-    for (const approvedDoc of approvedSnapshot.docs) {
-      const approvedData = approvedDoc.data();
-      const patientId = approvedData.patientId || approvedDoc.id;
-
-      const patientRef = doc(db, 'patients', patientId);
-      const patientSnap = await getDoc(patientRef);
-
-      if (patientSnap.exists()) {
-      } else {
-      }
-    }
-
-  } catch (error) {
-    ;
-  }
-};
-
-if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-  (window as any).checkPatientFields = checkPatientFields;
-}
-
-const debugSharingRequests = async () => {
-  try {
-
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      return;
-    }
-
-    const doctorId = currentUser.uid;
-
-    const sharingRef = collection(db, 'Users', doctorId, 'incoming_sharing_requests');
-    const sharingSnapshot = await getDocs(sharingRef);
-
-    sharingSnapshot.docs.forEach((doc, idx) => {
-    });
-
-    const patientsRef = collection(db, 'patients');
-    const patientsSnapshot = await getDocs(patientsRef);
-
-    patientsSnapshot.docs.forEach((doc, idx) => {
-    });
-
-    const patientIdsFromRequests = sharingSnapshot.docs.map(doc => doc.data().patientId);
-    const patientIdsFromPatients = patientsSnapshot.docs.map(doc => doc.id);
-
-    patientIdsFromRequests.forEach(requestPatientId => {
-      const exists = patientIdsFromPatients.includes(requestPatientId);
-      
-      if (exists) {
-        const patientDoc = patientsSnapshot.docs.find(doc => doc.id === requestPatientId);
-        if (patientDoc) {
-        }
-      } else {
-      }
-    });
-
-  } catch (error) {
-    ;
-  }
-};
-
-const debugSharingRequestsData = async () => {
-  try {
-
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      return;
-    }
-
-    const doctorId = currentUser.uid;
-
-    const { getIncomingSharingRequests } = await import('./services/sharing');
-    const requests = await getIncomingSharingRequests(doctorId);
-    requests.forEach(() => {});
-
-  } catch (error) {
-    ;
-  }
-};
-
-if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-  (window as any).checkPatientFields = checkPatientFields;
-  (window as any).debugSharingRequests = debugSharingRequests;
-  (window as any).debugSharingRequestsData = debugSharingRequestsData;
-}
-
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -185,6 +89,10 @@ function App() {
           <Route path="/join/invite" element={<InviteAcceptPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route
+            path="/register/caregiver"
+            element={<Navigate to="/register?role=caregiver&path=caregiver" replace />}
+          />
           <Route path="/sign-up" element={<SignUpRedirect />} />
           <Route path="/delegate/accept" element={<DelegateAccept />} />
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
@@ -227,6 +135,12 @@ function App() {
             <Route path="team" element={<ClinicAdminTeamPage />} />
             <Route path="patients" element={<ClinicAdminPatientsPage />} />
             <Route path="schedule" element={<ClinicAdminSchedulePage />} />
+            <Route path="invoices" element={<ClinicAdminInvoicesPage />} />
+            <Route path="claims" element={<ClinicAdminClaimsPage />} />
+            <Route path="queue" element={<ClinicAdminQueuePage />} />
+            <Route path="rooms" element={<ClinicAdminRoomsPage />} />
+            <Route path="reports" element={<ClinicAdminReportsPage />} />
+            <Route path="audit" element={<ClinicAdminAuditLogPage />} />
             <Route path="appointments" element={<Navigate to="/clinic/schedule" replace />} />
             <Route path="calendar" element={<Navigate to="/clinic/schedule" replace />} />
             <Route path="settings" element={<ClinicAdminSettingsPage />} />
@@ -234,6 +148,22 @@ function App() {
             <Route path="change-password" element={<ChangePassword />} />
             <Route path="delete-account" element={<DeleteAccount />} />
           </Route>
+          <Route
+            path="/employer"
+            element={
+              <EmployerRoute>
+                <EmployerDashboardPage />
+              </EmployerRoute>
+            }
+          />
+          <Route
+            path="/caregiver/onboarding"
+            element={
+              <CaregiverRoute skipOnboardingCheck>
+                <CaregiverOnboardingPage />
+              </CaregiverRoute>
+            }
+          />
           <Route
             path="/caregiver"
             element={
@@ -259,6 +189,7 @@ function App() {
                   <Routes>
                     <Route path="/onboarding" element={<DoctorOnboardingPage />} />
                     <Route path="/account-review" element={<AccountUnderReviewPage />} />
+                    <Route path="/ayah" element={<AyahPage />} />
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/patient-list" element={<Navigate to="/patients" replace />} />
                     <Route path="/patient-profile/:patientId" element={<PatientProfile />} />
@@ -283,12 +214,6 @@ function App() {
                     <Route path="/invoices/new/:appointmentId" element={<InvoiceCreate />} />
                     <Route path="/invoices/:invoiceId" element={<InvoiceDetails />} />
                     <Route path="/appointments/:appointmentId/print-docs" element={<PrintDocumentsPage />} />
-                    {process.env.NODE_ENV === 'development' && (
-                      <>
-                        <Route path="/debug/appointments" element={<AppointmentDebug />} />
-                        <Route path="/debug/firestore" element={<FirestoreInspector />} />
-                      </>
-                    )}
                     <Route path="/professional-profile" element={<ProfessionalProfile />} />
                     <Route path="/practice-settings" element={<PracticeSettingsPage />} />
                     <Route path="/practice-calendar" element={<PracticeCalendarPage />} />

@@ -1,13 +1,5 @@
-import {
-  collection,
-  doc,
-  setDoc,
-  getDoc,
-  serverTimestamp,
-  increment,
-} from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import { buildPatientSignupLink } from '../lib/referralLinks';
+
 export interface Referral {
   id: string;
   doctorId: string;
@@ -18,6 +10,7 @@ export interface Referral {
   invitationsAccepted: number;
   lastInvitedAt?: Date;
 }
+
 export interface Invitation {
   id: string;
   referralId: string;
@@ -27,33 +20,12 @@ export interface Invitation {
   createdAt: Date;
   acceptedAt?: Date;
 }
+
 export const getDoctorReferral = async (doctorId: string): Promise<Referral | null> => {
   try {
-    const docRef = doc(db, 'referrals', doctorId);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      return {
-        id: docSnap.id,
-        doctorId,
-        referralCode: data.referralCode,
-        referralLink: data.referralLink,
-        createdAt: data.createdAt?.toDate?.() || new Date(),
-        invitationsSent: data.invitationsSent || 0,
-        invitationsAccepted: data.invitationsAccepted || 0,
-        lastInvitedAt: data.lastInvitedAt?.toDate?.(),
-      };
-    }
+    // TODO: replace with a Django referral endpoint once available.
     const referralCode = generateReferralCode(doctorId);
     const referralLink = generateReferralLink(referralCode);
-    await setDoc(docRef, {
-      doctorId,
-      referralCode,
-      referralLink,
-      createdAt: serverTimestamp(),
-      invitationsSent: 0,
-      invitationsAccepted: 0,
-    });
     return {
       id: doctorId,
       doctorId,
@@ -64,7 +36,6 @@ export const getDoctorReferral = async (doctorId: string): Promise<Referral | nu
       invitationsAccepted: 0,
     };
   } catch (error) {
-    ;
     const referralCode = generateReferralCode(doctorId);
     const referralLink = generateReferralLink(referralCode);
     return {
@@ -87,60 +58,16 @@ function generateReferralLink(referralCode: string): string {
   return buildPatientSignupLink(referralCode);
 }
 export const logInvitation = async (
-  doctorId: string,
-  targetEmail?: string,
-  method: 'link' | 'email' = 'link'
+  _doctorId: string,
+  _targetEmail?: string,
+  _method: 'link' | 'email' = 'link',
 ): Promise<string> => {
-  try {
-    const ref = doc(db, 'referrals', doctorId);
-    const referralDoc = await getDoc(ref);
-
-    if (!referralDoc.exists()) {
-      const referralCode = generateReferralCode(doctorId);
-      await setDoc(ref, {
-        doctorId,
-        referralCode,
-        referralLink: generateReferralLink(referralCode),
-        createdAt: serverTimestamp(),
-        invitationsSent: 1,
-        invitationsAccepted: 0,
-        lastInvitedAt: serverTimestamp(),
-      }, { merge: true });
-    } else {
-      await setDoc(ref, {
-        invitationsSent: increment(1),
-        lastInvitedAt: serverTimestamp(),
-      }, { merge: true });
-    }
-
-    const invitationRef = doc(collection(db, 'referrals', doctorId, 'invitations'));
-    await setDoc(invitationRef, {
-      doctorId,
-      targetEmail: targetEmail || 'direct_link',
-      method,
-      status: 'pending',
-      createdAt: serverTimestamp(),
-    });
-    return invitationRef.id;
-  } catch (error) {
-    ;
-    throw error;
-  }
+  // TODO: persist via Django referral endpoint once available.
+  return `invitation-${Date.now()}`;
 };
 export const getReferralStats = async (
-  doctorId: string
+  _doctorId: string,
 ): Promise<{ sent: number; accepted: number }> => {
-  try {
-    const referral = await getDoctorReferral(doctorId);
-    if (!referral) {
-      return { sent: 0, accepted: 0 };
-    }
-    return {
-      sent: referral.invitationsSent,
-      accepted: referral.invitationsAccepted,
-    };
-  } catch (error) {
-    ;
-    return { sent: 0, accepted: 0 };
-  }
+  // TODO: replace with a Django referral-stats endpoint once available.
+  return { sent: 0, accepted: 0 };
 };

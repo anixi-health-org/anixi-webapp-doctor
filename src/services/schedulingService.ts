@@ -1,22 +1,9 @@
-import {
-  addDoc,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  serverTimestamp,
-  setDoc,
-  Timestamp,
-  updateDoc,
-  where,
-} from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import {
-  PRACTICES_COLLECTION,
-  PRACTICE_APPOINTMENTS_SUBCOLLECTION,
-} from '../shared/constants';
 import { getBookableBlocks, getAllSoftBlocks, getPractice } from './practiceSettingsService';
+import {
+  djangoBookAppointment,
+  djangoListAppointments,
+  djangoPatchAppointment,
+} from './djangoApiService';
 import { getPracticeDailySchedule } from './practiceCalendarService';
 import { getDoctorAppointments } from './appointmentService';
 import {
@@ -512,7 +499,7 @@ export interface ScheduledAppointmentData {
   consultType: ConsultType;
   locationId: string;
   startAt: Date;
-  /** Optional — server recomputes from appointment type when validating. */
+  /** Optional, server recomputes from appointment type when validating. */
   endAt?: Date;
   notes?: string;
   status?: Appointment['status'];
@@ -573,144 +560,62 @@ export const createScheduledAppointment = async (
     }
   }
 
-  const payload = {
+  if (data.appointmentId) {
+    await djangoPatchAppointment(data.appointmentId, {
+      notes: data.notes ?? '',
+      status: data.status ?? 'pending',
+    });
+    return data.appointmentId;
+  }
+
+  const booked = await djangoBookAppointment({
     doctorId: data.doctorId,
     patientId: data.patientId,
     patientName: data.patientName,
     patientEmail: data.patientEmail,
     consultType: data.consultType,
-    appointmentTypeName: setting.name,
     locationId: data.locationId,
-    startAt: Timestamp.fromDate(data.startAt),
-    endAt: Timestamp.fromDate(authoritativeEnd),
+    startAt: data.startAt.toISOString(),
     durationMinutes: setting.durationMinutes,
-    bufferMinutes: setting.bufferMinutes,
-    notes: data.notes ?? '',
     status: data.status ?? 'pending',
-    requestedByRole: data.requestedByRole,
-    overrideApplied: data.overrideApplied,
-    conflictMeta: data.conflictMeta ?? null,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
-
-  if (data.appointmentId) {
-    const scheduledRef = doc(
-      db,
-      PRACTICES_COLLECTION,
-      data.practiceId,
-      PRACTICE_APPOINTMENTS_SUBCOLLECTION,
-      data.appointmentId
-    );
-    await setDoc(scheduledRef, payload, { merge: true });
-    return data.appointmentId;
-  }
-
-  const ref = collection(
-    db,
-    PRACTICES_COLLECTION,
-    data.practiceId,
-    PRACTICE_APPOINTMENTS_SUBCOLLECTION
-  );
-  const docRef = await addDoc(ref, payload);
-  return docRef.id;
+  });
+  return booked.appointmentId;
 };
 
 export const updateScheduledAppointmentStatus = async (
-  practiceId: string,
+  _practiceId: string,
   appointmentId: string,
   status: Appointment['status'],
-  options?: { doctorId?: string; patientId?: string; startAt?: Date }
+  _options?: { doctorId?: string; patientId?: string; startAt?: Date },
 ): Promise<void> => {
-  const targetRef = doc(
-    db,
-    PRACTICES_COLLECTION,
-    practiceId,
-    PRACTICE_APPOINTMENTS_SUBCOLLECTION,
-    appointmentId
-  );
-  const targetSnap = await getDoc(targetRef);
-
-  if (targetSnap.exists()) {
-    await updateDoc(targetRef, { status, updatedAt: serverTimestamp() });
-    return;
-  }
-
-  // Fallback for legacy records where practice appointment ID differs from global appointment ID.
-  if (!options?.doctorId) return;
-
-  const ref = collection(
-    db,
-    PRACTICES_COLLECTION,
-    practiceId,
-    PRACTICE_APPOINTMENTS_SUBCOLLECTION
-  );
-  const snap = await getDocs(query(ref, where('doctorId', '==', options.doctorId)));
-
-  const candidates = snap.docs.filter((d) => {
-    const data = d.data();
-    if (options.patientId && data.patientId !== options.patientId) return false;
-    return true;
-  });
-
-  if (candidates.length === 0) return;
-
-  let bestMatch = candidates[0];
-  if (options.startAt) {
-    const targetTime = options.startAt.getTime();
-    bestMatch = candidates.reduce((best, current) => {
-      const bestTime = best.data().startAt instanceof Timestamp ? best.data().startAt.toDate().getTime() : 0;
-      const currentTime =
-        current.data().startAt instanceof Timestamp ? current.data().startAt.toDate().getTime() : 0;
-      return Math.abs(currentTime - targetTime) < Math.abs(bestTime - targetTime) ? current : best;
-    }, candidates[0]);
-  }
-
-  await updateDoc(bestMatch.ref, { status, updatedAt: serverTimestamp() });
+  await djangoPatchAppointment(appointmentId, { status });
 };
 
-export const getAllPracticeAppointments = async (practiceId: string): Promise<any[]> => {
-  const ref = collection(
-    db,
-    PRACTICES_COLLECTION,
-    practiceId,
-    PRACTICE_APPOINTMENTS_SUBCOLLECTION
-  );
-  const snap = await getDocs(ref);
-  return snap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      ...data,
-      startAt: data.startAt instanceof Timestamp ? data.startAt.toDate() : data.startAt,
-      endAt: data.endAt instanceof Timestamp ? data.endAt.toDate() : data.endAt,
-      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
-      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
-      date: data.startAt instanceof Timestamp ? data.startAt.toDate() : data.date,
-    };
-  });
+const mapDjangoAppointment = (row: Record<string, unknown>) => {
+  const startAt = row.startAt ? new Date(String(row.startAt)) : undefined;
+  const endAt = row.endAt ? new Date(String(row.endAt)) : undefined;
+  return {
+    id: String(row.id),
+    ...row,
+    startAt,
+    endAt,
+    date: startAt,
+    createdAt: row.createdAt ? new Date(String(row.createdAt)) : undefined,
+    updatedAt: row.updatedAt ? new Date(String(row.updatedAt)) : undefined,
+  };
+};
+
+export const getAllPracticeAppointments = async (_practiceId: string): Promise<any[]> => {
+  const rows = await djangoListAppointments('doctor');
+  return rows.map((row) => mapDjangoAppointment(row as Record<string, unknown>));
 };
 
 export const getPracticeAppointments = async (
-  practiceId: string,
-  doctorId: string
+  _practiceId: string,
+  doctorId: string,
 ): Promise<any[]> => {
-  const ref = collection(
-    db,
-    PRACTICES_COLLECTION,
-    practiceId,
-    PRACTICE_APPOINTMENTS_SUBCOLLECTION
-  );
-  const snap = await getDocs(query(ref, where('doctorId', '==', doctorId)));
-  return snap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      ...data,
-      startAt: data.startAt instanceof Timestamp ? data.startAt.toDate() : data.startAt,
-      endAt: data.endAt instanceof Timestamp ? data.endAt.toDate() : data.endAt,
-      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
-      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
-    };
-  });
+  const rows = await djangoListAppointments('doctor');
+  return rows
+    .filter((row) => String((row as Record<string, unknown>).doctorId) === doctorId)
+    .map((row) => mapDjangoAppointment(row as Record<string, unknown>));
 };

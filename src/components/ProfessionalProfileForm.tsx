@@ -15,6 +15,13 @@ import { PageHeaderSkeleton, Skeleton } from './ui/Skeleton';
 import { isOnboardingFormComplete } from '../lib/doctorAccess';
 import { detectBrowserTimezone, timezoneSelectOptions } from '../lib/timezones';
 import { SA_PROVINCES, validateSouthAfricanId } from '../lib/southAfrica';
+import {
+  ACCEPTED_IMAGE_INPUT,
+  describeImageUploadError,
+  normalizeImageFile,
+  shouldSkipCrop,
+  validateImageFile,
+} from '../lib/imageUpload';
 
 const ProfileFormSkeleton: React.FC = () => (
   <>
@@ -52,30 +59,6 @@ const btnPrimaryClass =
 const btnSecondaryClass =
   'inline-flex h-10 items-center justify-center rounded-[10px] border border-[#e1e7ef] bg-white px-4 text-sm font-medium text-[#344256] transition-colors hover:border-[#427160]/40 hover:text-[#427160]';
 
-function describeImageUploadError(err: unknown, kind: 'photo' | 'logo'): string {
-  const code = typeof err === 'object' && err && 'code' in err
-    ? String((err as { code?: string }).code)
-    : '';
-  const message = err instanceof Error ? err.message : String(err ?? '');
-
-  if (code === 'storage/unauthorized' || code === 'storage/unauthenticated') {
-    return `Could not save the ${kind}. Please sign in again and retry.`;
-  }
-  if (
-    code === 'storage/quota-exceeded' ||
-    /too large|5 mb|maximum size/i.test(message)
-  ) {
-    return `That ${kind} is too large. Please use a PNG or JPG under 5 MB.`;
-  }
-  if (code === 'storage/canceled') {
-    return `The ${kind} upload was cancelled. Please try again.`;
-  }
-  if (code === 'storage/retry-limit-exceeded' || /network/i.test(message)) {
-    return `Network issue while uploading the ${kind}. Check your connection and try again.`;
-  }
-  return `Could not upload the ${kind}. Please try a PNG or JPG.`;
-}
-
 interface ProfessionalProfileFormProps {
   mode?: 'settings' | 'onboarding';
   onSubmitted?: () => void | Promise<void>;
@@ -107,6 +90,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
   const [cropKind, setCropKind] = useState<'logo' | 'photo'>('logo');
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [pendingOriginalFile, setPendingOriginalFile] = useState<File | null>(null);
   const [idOrPassportError, setIdOrPassportError] = useState('');
 
   const [formData, setFormData] = useState<ProfessionalProfileFormData>({
@@ -229,6 +213,80 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
   const handleIdOrPassportBlur = () => {
     const error = validateIdOrPassport(formData.idOrPassport, formData.nationality);
     setIdOrPassportError(error ?? '');
+  };
+
+  const uploadPhotoFile = async (file: File) => {
+    if (!doctor?.id) return;
+    if (photoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(photoPreview);
+    }
+    setPhotoUploading(true);
+    setMessage('');
+    try {
+      const url = await uploadDoctorProfilePhoto(doctor.id, file);
+      setFormData((prev) => ({ ...prev, profileImageUrl: url }));
+      setPhotoPreview(url);
+      setPhotoFile(null);
+      await refreshUser();
+    } catch (err) {
+      console.error('[ProfessionalProfileForm] photo upload failed:', err);
+      setMessage(describeImageUploadError(err, 'photo'));
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
+  const uploadLogoFile = async (file: File) => {
+    if (!doctor?.id) return;
+    if (logoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(logoPreview);
+    }
+    setLogoUploading(true);
+    setMessage('');
+    try {
+      const url = await uploadPracticeLogo(doctor.id, file);
+      setFormData((prev) => ({ ...prev, logoUrl: url }));
+      setLogoPreview(url);
+      setLogoFile(null);
+      await refreshUser();
+    } catch (err) {
+      console.error('[ProfessionalProfileForm] logo upload failed:', err);
+      setMessage(describeImageUploadError(err, 'logo'));
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
+  const handleImageFileSelected = async (file: File, kind: 'photo' | 'logo') => {
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      setMessage(validationError);
+      return;
+    }
+    setMessage('');
+    setCropKind(kind);
+    setPendingOriginalFile(file);
+
+    if (shouldSkipCrop(file)) {
+      const prepared = await normalizeImageFile(
+        file,
+        kind === 'photo' ? 'profile.jpg' : 'practice-logo.jpg',
+      );
+      const previewUrl = URL.createObjectURL(prepared);
+      if (kind === 'photo') {
+        setPhotoPreview(previewUrl);
+        await uploadPhotoFile(prepared);
+      } else {
+        setLogoPreview(previewUrl);
+        await uploadLogoFile(prepared);
+      }
+      setPendingOriginalFile(null);
+      return;
+    }
+
+    const src = URL.createObjectURL(file);
+    setCropImageSrc(src);
+    setCropModalOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -385,18 +443,13 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
           </span>
           <input
             type="file"
-            accept="image/png,image/jpeg,image/jpg"
+            accept={ACCEPTED_IMAGE_INPUT}
             className="hidden"
             aria-label="Upload profile photo"
             onChange={(e) => {
               const file = e.target.files?.[0] ?? null;
               e.target.value = '';
-              if (file) {
-                const src = URL.createObjectURL(file);
-                setCropKind('photo');
-                setCropImageSrc(src);
-                setCropModalOpen(true);
-              }
+              if (file) void handleImageFileSelected(file, 'photo');
             }}
           />
         </label>
@@ -865,22 +918,18 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
                       : 'Upload logo (PNG or JPG)'}
                 </span>
                 <span className="mt-1 text-xs text-[#94a3b8]">
-                  Square crop recommended · Min 200×200 px
+                  PNG or JPG · Used on invoices & letterheads · Up to 5 MB
                 </span>
               </div>
               <input
                 type="file"
-                accept="image/png,image/jpeg,image/jpg"
+                accept={ACCEPTED_IMAGE_INPUT}
                 className="hidden"
+                aria-label="Upload practice logo"
                 onChange={(e) => {
                   const file = e.target.files?.[0] ?? null;
                   e.target.value = '';
-                  if (file) {
-                    const src = URL.createObjectURL(file);
-                    setCropKind('logo');
-                    setCropImageSrc(src);
-                    setCropModalOpen(true);
-                  }
+                  if (file) void handleImageFileSelected(file, 'logo');
                 }}
               />
             </label>
@@ -992,52 +1041,44 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
             setCropModalOpen(false);
             URL.revokeObjectURL(cropImageSrc);
             setCropImageSrc(null);
+            setPendingOriginalFile(null);
           }}
+          onUseOriginal={
+            pendingOriginalFile
+              ? () => {
+                  const original = pendingOriginalFile;
+                  setCropModalOpen(false);
+                  if (cropImageSrc) URL.revokeObjectURL(cropImageSrc);
+                  setCropImageSrc(null);
+                  setPendingOriginalFile(null);
+                  void (async () => {
+                    const prepared = await normalizeImageFile(
+                      original,
+                      cropKind === 'photo' ? 'profile.jpg' : 'practice-logo.jpg',
+                    );
+                    const previewUrl = URL.createObjectURL(prepared);
+                    if (cropKind === 'photo') {
+                      setPhotoPreview(previewUrl);
+                      await uploadPhotoFile(prepared);
+                    } else {
+                      setLogoPreview(previewUrl);
+                      await uploadLogoFile(prepared);
+                    }
+                  })();
+                }
+              : undefined
+          }
           onCropComplete={(file, previewUrl) => {
             URL.revokeObjectURL(cropImageSrc);
             setCropImageSrc(null);
-            if (!doctor?.id) return;
-
+            setPendingOriginalFile(null);
             if (cropKind === 'photo') {
-              if (photoPreview.startsWith('blob:')) {
-                URL.revokeObjectURL(photoPreview);
-              }
-              setPhotoFile(file);
               setPhotoPreview(previewUrl);
-              setPhotoUploading(true);
-              void uploadDoctorProfilePhoto(doctor.id, file)
-                .then(async (url) => {
-                  setFormData((prev) => ({ ...prev, profileImageUrl: url }));
-                  setPhotoPreview(url);
-                  setPhotoFile(null);
-                  await refreshUser();
-                })
-                .catch((err) => {
-                  console.error('[ProfessionalProfileForm] photo upload failed:', err);
-                  setMessage(describeImageUploadError(err, 'photo'));
-                })
-                .finally(() => setPhotoUploading(false));
+              void uploadPhotoFile(file);
               return;
             }
-
-            if (logoPreview.startsWith('blob:')) {
-              URL.revokeObjectURL(logoPreview);
-            }
-            setLogoFile(file);
             setLogoPreview(previewUrl);
-            setLogoUploading(true);
-            void uploadPracticeLogo(doctor.id, file)
-              .then(async (url) => {
-                setFormData((prev) => ({ ...prev, logoUrl: url }));
-                setLogoPreview(url);
-                setLogoFile(null);
-                await refreshUser();
-              })
-                .catch((err) => {
-                  console.error('[ProfessionalProfileForm] logo upload failed:', err);
-                  setMessage(describeImageUploadError(err, 'logo'));
-                })
-              .finally(() => setLogoUploading(false));
+            void uploadLogoFile(file);
           }}
         />
       )}

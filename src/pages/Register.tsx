@@ -5,9 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Toast } from '../components/ui';
 import { AuthLayout } from '../components/auth/AuthLayout';
 import { ChangeRoleLink, SignInPrompt } from '../components/auth/AuthLinks';
+import { RegisterPathPreview } from '../components/auth/RegisterPathPreview';
 import { useAuth } from '../hooks/AuthContext';
 import { registerProfessional } from '../services/authService';
-import { AUTH_ROLE_LABELS, parseAuthRole, parseJoinPath } from '../types/auth';
+import { getJoinPathConfig } from '../lib/joinPathConfig';
+import { parseAuthRole, parseJoinPath } from '../types/auth';
 import {
   PRACTICE_COUNTRIES,
   detectDefaultCountryCode,
@@ -19,6 +21,7 @@ export const Register: React.FC = () => {
   const joinPath =
     parseJoinPath(searchParams.get('path')) ||
     (role === 'caregiver' ? 'caregiver' : 'solo_doctor');
+  const pathConfig = getJoinPathConfig(joinPath);
   const navigate = useNavigate();
   const { refreshUser } = useAuth();
 
@@ -55,38 +58,40 @@ export const Register: React.FC = () => {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+    const trimmedEmail = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError('Please enter a valid email address (e.g. name@company.com)');
+      return;
+    }
+
+    if (password.length < 10) {
+      setError('Password must be at least 10 characters');
       return;
     }
 
     setIsLoading(true);
     try {
       await registerProfessional(
-        email,
+        trimmedEmail,
         password,
         displayName,
         role,
-        role === 'doctor' ? country : undefined,
-        joinPath
+        pathConfig.showCountryField ? country : undefined,
+        joinPath,
       );
 
-      // Ensure AuthContext has the new profile before hitting ProtectedRoute
       await refreshUser();
-
-      if (role === 'caregiver') {
-        navigate('/caregiver', { replace: true });
-      } else if (joinPath === 'clinic') {
-        navigate('/clinic-setup', { replace: true });
-      } else {
-        navigate('/onboarding', { replace: true });
-      }
+      navigate(pathConfig.postRegisterPath(joinPath), { replace: true });
     } catch (err: unknown) {
-      const firebaseErr = err as { code?: string; message?: string };
-      if (firebaseErr.code === 'auth/email-already-in-use') {
+      const apiErr = err as { code?: string; message?: string; detail?: string };
+      const message = apiErr.message || apiErr.detail || 'Registration failed';
+      if (
+        apiErr.code === 'auth/email-already-in-use' ||
+        /already exists|already registered|duplicate/i.test(message)
+      ) {
         setError('An account with this email already exists');
       } else {
-        setError(firebaseErr.message || 'Registration failed');
+        setError(message);
       }
     } finally {
       setIsLoading(false);
@@ -95,12 +100,9 @@ export const Register: React.FC = () => {
 
   return (
     <AuthLayout
-      title="Create your account"
-      subtitle={
-        joinPath === 'clinic'
-          ? 'Registering as clinic owner'
-          : `Registering as ${AUTH_ROLE_LABELS[role].toLowerCase()}`
-      }
+      title={pathConfig.layoutTitle}
+      subtitle={pathConfig.layoutSubtitle}
+      heroSlides={pathConfig.heroSlides}
     >
       {toast.visible && (
         <Toast
@@ -111,13 +113,17 @@ export const Register: React.FC = () => {
       )}
       <Card className="!bg-white !shadow-lg border-gray-100">
         <CardHeader>
-          <CardTitle className="text-center">Register</CardTitle>
+          <CardTitle className="text-center">{pathConfig.cardTitle}</CardTitle>
+          <p className="mt-2 text-center text-sm leading-relaxed text-gray-500">
+            {pathConfig.cardDescription}
+          </p>
         </CardHeader>
         <CardContent>
+          <RegisterPathPreview joinPath={joinPath} />
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="displayName" className="block text-sm font-medium text-gray-700">
-                Full name
+                {pathConfig.nameLabel}
               </label>
               <input
                 id="displayName"
@@ -126,7 +132,7 @@ export const Register: React.FC = () => {
                 autoComplete="name"
                 required
                 className="mt-1.5 block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:border-anixi-green focus:outline-none focus:ring-1 focus:ring-anixi-green sm:text-sm"
-                placeholder="Enter your full name"
+                placeholder={pathConfig.namePlaceholder}
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
               />
@@ -142,12 +148,12 @@ export const Register: React.FC = () => {
                 autoComplete="email"
                 required
                 className="mt-1.5 block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:border-anixi-green focus:outline-none focus:ring-1 focus:ring-anixi-green sm:text-sm"
-                placeholder="Enter your email"
+                placeholder={pathConfig.emailPlaceholder}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
-            {role === 'doctor' && (
+            {pathConfig.showCountryField && role === 'doctor' && (
               <div>
                 <label htmlFor="country" className="block text-sm font-medium text-gray-700">
                   Country of practice
@@ -219,11 +225,7 @@ export const Register: React.FC = () => {
               disabled={isLoading}
               className="w-full rounded-lg bg-anixi-green py-2.5 px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-anixi-green focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isLoading
-                ? 'Creating account...'
-                : joinPath === 'clinic'
-                  ? 'Continue to clinic setup'
-                  : 'Create account'}
+              {isLoading ? pathConfig.submitLoadingLabel : pathConfig.submitLabel}
             </button>
           </form>
           <div className="mt-6 space-y-3 pt-2">

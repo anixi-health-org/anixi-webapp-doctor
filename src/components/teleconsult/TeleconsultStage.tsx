@@ -192,7 +192,7 @@ export const TeleconsultStage: React.FC<TeleconsultStageProps> = ({
     };
   }, [room]);
 
-  // Prefer the live participant map — useTracks can lag behind mobile publishes.
+  // Prefer the live participant map, useTracks can lag behind mobile publishes.
   const remoteStage = useMemo(() => {
     for (const participant of remoteParticipants) {
       const fromParticipant = cameraRefForParticipant(participant);
@@ -246,7 +246,7 @@ export const TeleconsultStage: React.FC<TeleconsultStageProps> = ({
     ? 'Waiting for the patient to join…'
     : remoteCameraOff
       ? 'Camera is off'
-      : 'Patient joined — waiting for their camera…';
+      : 'Patient joined, waiting for their camera…';
 
   const connectionNotice =
     connectionState === ConnectionState.Connecting

@@ -328,7 +328,7 @@ export const PatientProfile: React.FC = () => {
             [
               {
                 label: 'Blood group',
-                value: patient.bloodGroup?.trim() || '—',
+                value: patient.bloodGroup?.trim() || '-',
                 accent: 'border-rose-100 bg-gradient-to-b from-rose-50/80 to-white',
               },
               {
@@ -337,7 +337,7 @@ export const PatientProfile: React.FC = () => {
                   ? /kg|lb/i.test(patient.weight)
                     ? patient.weight
                     : `${patient.weight} kg`
-                  : '—',
+                  : '-',
                 accent: 'border-sky-100 bg-gradient-to-b from-sky-50/80 to-white',
               },
               {
@@ -357,7 +357,7 @@ export const PatientProfile: React.FC = () => {
                 value:
                   wearableSummary?.steps != null
                     ? wearableSummary.steps.toLocaleString()
-                    : '—',
+                    : '-',
                 accent: 'border-emerald-100 bg-gradient-to-b from-emerald-50/70 to-white',
               },
               {
@@ -365,7 +365,7 @@ export const PatientProfile: React.FC = () => {
                 value:
                   wearableSummary?.averageHeartRate != null
                     ? `${wearableSummary.averageHeartRate} bpm`
-                    : '—',
+                    : '-',
                 accent: 'border-emerald-100 bg-gradient-to-b from-emerald-50/70 to-white',
               },
             ] as const

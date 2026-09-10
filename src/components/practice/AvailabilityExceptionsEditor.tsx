@@ -79,7 +79,7 @@ export const AvailabilityExceptionsEditor: React.FC<Props> = ({
       <div>
         <h4 className="text-[13px] font-semibold text-[#344256]">Time off</h4>
         <p className="mt-0.5 text-[12px] text-[#65758b]">
-          Block a specific day for leave, holidays, or shorter hours — without changing your usual weekly schedule.
+          Block a specific day for leave, holidays, or shorter hours, without changing your usual weekly schedule.
         </p>
       </div>
 
@@ -201,7 +201,7 @@ export const AvailabilityExceptionsEditor: React.FC<Props> = ({
                   {item.note ? `${item.note} · ` : ''}
                   {item.availability === 'closed'
                     ? 'Unavailable all day'
-                    : `Reduced hours ${item.openTime ?? ''}–${item.closeTime ?? ''}`}
+                    : `Reduced hours ${item.openTime ?? ''}-${item.closeTime ?? ''}`}
                 </p>
               </div>
               <button

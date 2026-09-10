@@ -20,6 +20,18 @@ import { canDoctorStartVideoCall, isWhatsAppComingSoon } from '../utils/telecons
 import { PageShell } from '../components/page-layout';
 import { DetailPageSkeleton } from '../components/ui';
 import { TeleconsultStage } from '../components/teleconsult/TeleconsultStage';
+import { AyahScribePanel } from '../components/teleconsult/AyahScribePanel';
+import {
+  LiveKitScribeController,
+  type LiveKitScribeHandle,
+  type LiveKitScribeState,
+} from '../components/teleconsult/LiveKitScribeController';
+import {
+  AYAH_SCRIBE_ACTION_ID,
+  AYAH_SCRIBE_TITLE,
+  structureConsultTranscript,
+  type ConsultScribeNote,
+} from '../services/consultScribeService';
 
 const CALL_NOTES_TITLE = 'Call notes';
 const CALL_NOTES_ACTION_ID = 'call_notes';
@@ -59,7 +71,7 @@ function mediaPermissionMessage(err: unknown): string {
   return text;
 }
 
-/** Enable mic/camera after the room is connected — never throw into the page overlay. */
+/** Enable mic/camera after the room is connected, never throw into the page overlay. */
 function EnableLocalMedia({ onHint }: { onHint: (hint: string | null) => void }) {
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
@@ -118,6 +130,17 @@ export const TeleconsultPage: React.FC = () => {
   const [notesOpen, setNotesOpen] = useState(true);
   const [notesStatus, setNotesStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [mediaHint, setMediaHint] = useState<string | null>(null);
+  const [scribeEnabled, setScribeEnabled] = useState(false);
+  const [scribeFinalizing, setScribeFinalizing] = useState(false);
+  const scribeRef = useRef<LiveKitScribeHandle>(null);
+  const [scribeState, setScribeState] = useState<LiveKitScribeState>({
+    listening: false,
+    processing: false,
+    transcript: '',
+    segmentCount: 0,
+    audioTrackCount: 0,
+    error: null,
+  });
   const lastSavedRef = useRef('');
   const callNotesRef = useRef('');
   const appointmentRef = useRef<Appointment | null>(null);
@@ -247,6 +270,62 @@ export const TeleconsultPage: React.FC = () => {
     [appointmentId, user?.id]
   );
 
+  const persistAyahScribeNote = useCallback(
+    async (note: ConsultScribeNote, transcriptLength: number) => {
+      if (!user?.id || !appointmentId) return;
+      const apt = appointmentRef.current;
+      if (!apt) return;
+
+      const trimmed = note.fullText.trim();
+      if (!trimmed) return;
+
+      const now = new Date();
+      const existing = apt.postConsultActions ?? [];
+      const scribeAction: PostConsultAction = {
+        id: AYAH_SCRIBE_ACTION_ID,
+        type: 'post_consult_note',
+        title: AYAH_SCRIBE_TITLE,
+        content: trimmed,
+        status: 'draft',
+        metadata: {
+          source: 'ayah_scribe',
+          transcriptLength,
+          summary: note.summary,
+          subjective: note.subjective,
+          objective: note.objective,
+          assessment: note.assessment,
+          plan: note.plan,
+          followUps: note.followUps.join('|'),
+        },
+        createdBy: user.id,
+        createdAt:
+          existing.find((action) => action.id === AYAH_SCRIBE_ACTION_ID)?.createdAt ?? now,
+        updatedAt: now,
+      };
+
+      const nextActions = [
+        ...existing.filter((action) => action.id !== AYAH_SCRIBE_ACTION_ID),
+        scribeAction,
+      ];
+
+      await updateAppointment(user.id, appointmentId, {
+        postConsultActions: nextActions,
+        updatedAt: now,
+      });
+
+      setAppointment((prev) =>
+        prev
+          ? {
+              ...prev,
+              postConsultActions: nextActions,
+              updatedAt: now,
+            }
+          : prev,
+      );
+    },
+    [appointmentId, user?.id],
+  );
+
   // Debounced auto-save while typing
   useEffect(() => {
     if (!appointment || !user?.id) return;
@@ -287,10 +366,37 @@ export const TeleconsultPage: React.FC = () => {
     setEnding(true);
     try {
       await persistCallNotes(callNotesRef.current);
+
+      if (scribeEnabled) {
+        setScribeFinalizing(true);
+        const rawTranscript = (await scribeRef.current?.stop()) ?? '';
+        if (rawTranscript.length > 24 && appointmentRef.current) {
+          try {
+            const structured = await structureConsultTranscript({
+              transcript: rawTranscript,
+              patientName: appointmentRef.current.patientName || 'Patient',
+              appointmentId,
+              context: {
+                patientId: appointmentRef.current.patientId,
+                appointmentId,
+                patientName: appointmentRef.current.patientName,
+              },
+            });
+            if (structured.fullText) {
+              await persistAyahScribeNote(structured, rawTranscript.length);
+            }
+          } catch (err) {
+            console.warn('[TeleconsultPage] Ayah scribe finalize failed', err);
+          }
+        }
+        setScribeFinalizing(false);
+      }
+
       await endTeleconsultSession(user.id, appointmentId);
     } catch (err) {
       console.warn('endTeleconsult failed', err);
     } finally {
+      setScribeFinalizing(false);
       setEnding(false);
       await goPostConsult();
     }
@@ -390,7 +496,7 @@ export const TeleconsultPage: React.FC = () => {
               );
             }}
             onDisconnected={() => {
-              // Refresh / brief network blips disconnect LiveKit — don't kick the
+              // Refresh / brief network blips disconnect LiveKit, don't kick the
               // doctor into wrap-up unless they pressed End call.
               if (endingCallRef.current) {
                 void goPostConsult();
@@ -400,12 +506,21 @@ export const TeleconsultPage: React.FC = () => {
             style={{ height: '100%' }}
           >
             <EnableLocalMedia onHint={setMediaHint} />
+            <LiveKitScribeController
+              ref={scribeRef}
+              enabled={scribeEnabled}
+              onStateChange={setScribeState}
+            />
             <TeleconsultStage
               patientName={appointment?.patientName || 'Patient'}
               doctorName={user?.displayName || 'You'}
               onEndCall={() => void handleEnd()}
-              ending={ending}
-              mediaHint={mediaHint}
+              ending={ending || scribeFinalizing}
+              mediaHint={
+                scribeFinalizing
+                  ? 'Ayah is drafting your consult note…'
+                  : mediaHint
+              }
             />
             <AudioRenderer />
           </Room>
@@ -424,11 +539,23 @@ export const TeleconsultPage: React.FC = () => {
             <button
               type="button"
               onClick={() => void persistCallNotes(callNotes)}
-              disabled={notesStatus === 'saving'}
+              disabled={notesStatus === 'saving' || scribeFinalizing}
               className="rounded-lg border border-white/20 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-50"
             >
               Save
             </button>
+          </div>
+          <div className="border-b border-white/10 px-3 py-3">
+            <AyahScribePanel
+              enabled={scribeEnabled}
+              onEnabledChange={setScribeEnabled}
+              listening={scribeState.listening}
+              processing={scribeState.processing}
+              segmentCount={scribeState.segmentCount}
+              audioTrackCount={scribeState.audioTrackCount}
+              transcriptPreview={scribeState.transcript.slice(-280)}
+              error={scribeState.error}
+            />
           </div>
           <textarea
             value={callNotes}

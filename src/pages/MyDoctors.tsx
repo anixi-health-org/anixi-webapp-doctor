@@ -2,50 +2,12 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { usePatientSharingRequests } from '../hooks/usePatientSharingRequests';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { USERS_COLLECTION } from '../shared/constants';
-import { APPROVED_SHARES_SUBCOLLECTION } from '../shared/firestorePaths';
-import { useEffect, useState } from 'react';
-
-interface ApprovedShare {
-  doctorId: string;
-  doctorName: string;
-  doctorSpecialty?: string;
-}
 
 export const MyDoctors: React.FC = () => {
   const { user } = useAuth();
   const { requests, isLoading, error } = usePatientSharingRequests(user?.id);
-  const [approved, setApproved] = useState<ApprovedShare[]>([]);
-  const [approvedLoading, setApprovedLoading] = useState(true);
 
-  useEffect(() => {
-    const loadApproved = async () => {
-      if (!user?.id) {
-        setApprovedLoading(false);
-        return;
-      }
-      try {
-        const ref = collection(db, USERS_COLLECTION, user.id, APPROVED_SHARES_SUBCOLLECTION);
-        const snap = await getDocs(ref);
-        setApproved(
-          snap.docs.map((d) => {
-            const data = d.data();
-            return {
-              doctorId: d.id,
-              doctorName: String(data.doctorName ?? 'Doctor'),
-              doctorSpecialty: data.doctorSpecialty as string | undefined,
-            };
-          })
-        );
-      } finally {
-        setApprovedLoading(false);
-      }
-    };
-    void loadApproved();
-  }, [user?.id]);
-
+  const approved = requests.filter((r) => r.status === 'approved');
   const pending = requests.filter((r) => r.status === 'pending');
   const revoked = requests.filter((r) => r.status === 'revoked');
 
@@ -73,7 +35,7 @@ export const MyDoctors: React.FC = () => {
 
         <section className="rounded-2xl border border-[#E4EAF2] bg-white p-6">
           <h2 className="text-lg font-semibold text-[#0E2340] mb-4">Approved</h2>
-          {approvedLoading ? (
+          {isLoading ? (
             <p className="text-sm text-gray-500">Loading...</p>
           ) : approved.length === 0 ? (
             <p className="text-sm text-gray-500">No approved doctors yet.</p>
@@ -81,7 +43,7 @@ export const MyDoctors: React.FC = () => {
             <ul className="space-y-3">
               {approved.map((a) => (
                 <li
-                  key={a.doctorId}
+                  key={a.id}
                   className="flex items-center justify-between p-4 border border-[#E4EAF2] rounded-lg"
                 >
                   <div>

@@ -6,7 +6,7 @@ export const RegisterPrompt: React.FC = () => (
   <p className="text-center text-sm text-gray-600">
     Don&apos;t have an account?{' '}
     <Link to="/join" className="font-semibold text-anixi-green hover:underline">
-      Register as a doctor or caregiver
+      Register
     </Link>
   </p>
 );

@@ -15,7 +15,22 @@ import {
 } from 'lucide-react';
 import { Toast, AppointmentsPageSkeleton } from '../components/ui';
 import { PageHeader, PageShell } from '../components/page-layout';
+import { calendarDateKeyInTimeZone } from '../lib/timezones';
+
 type FilterType = Appointment['status'] | 'All' | 'Today';
+
+const DEFAULT_PRACTICE_TZ = 'Africa/Johannesburg';
+
+function isAppointmentOnClinicDay(appointment: Appointment, day: Date = new Date()): boolean {
+  const instant = appointment.scheduledAt || appointment.date;
+  if (!instant) return false;
+  const tz = appointment.timezone || DEFAULT_PRACTICE_TZ;
+  return (
+    calendarDateKeyInTimeZone(new Date(instant), tz) ===
+    calendarDateKeyInTimeZone(day, tz)
+  );
+}
+
 export const AppointmentsPage: React.FC = () => {
   const { user } = useAuth();
   const { can } = usePermissions();
@@ -72,11 +87,6 @@ export const AppointmentsPage: React.FC = () => {
     setSelectedAppointment(apt);
   };
 
-  const isSameCalendarDay = (date: Date, other: Date) =>
-    date.getFullYear() === other.getFullYear() &&
-    date.getMonth() === other.getMonth() &&
-    date.getDate() === other.getDate();
-
   const isPendingStatus = (status: Appointment['status']) =>
     status === 'pending' || status === 'rescheduled';
 
@@ -90,7 +100,7 @@ export const AppointmentsPage: React.FC = () => {
     completed: appointments.filter((a) => a.status === 'completed').length,
     cancelled: appointments.filter((a) => isCancelledStatus(a.status)).length,
     noShow: appointments.filter((a) => a.status === 'no_show').length,
-    today: appointments.filter((a) => isSameCalendarDay(new Date(a.date), new Date())).length,
+    today: appointments.filter((a) => isAppointmentOnClinicDay(a)).length,
   };
 
   const handleCardClick = (card: FilterType) => {
@@ -106,10 +116,7 @@ export const AppointmentsPage: React.FC = () => {
 
   let filteredAppointments: Appointment[] = appointments;
   if (activeFilter === 'Today') {
-    const today = new Date();
-    filteredAppointments = appointments.filter((a) =>
-      isSameCalendarDay(new Date(a.date), today)
-    );
+    filteredAppointments = appointments.filter((a) => isAppointmentOnClinicDay(a));
   } else if (activeFilter === 'pending') {
     filteredAppointments = appointments.filter((a) => isPendingStatus(a.status));
   } else if (activeFilter === 'cancelled') {

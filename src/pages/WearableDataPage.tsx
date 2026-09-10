@@ -35,7 +35,7 @@ function MetricCard({
       </p>
       <div className="mt-2 flex items-baseline gap-2">
         <p className="text-4xl font-bold text-[#0E2340]">
-          {value !== null ? value : '—'}
+          {value !== null ? value : '-'}
         </p>
         {value !== null ? (
           <span className="text-base font-medium text-[#65758b]">{unit}</span>

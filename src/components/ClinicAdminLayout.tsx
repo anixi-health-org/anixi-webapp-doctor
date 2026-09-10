@@ -1,12 +1,18 @@
 import {
   Bars3Icon,
   CalendarDaysIcon,
+  BanknotesIcon,
+  ChartBarIcon,
+  ClipboardDocumentListIcon,
   Cog6ToothIcon,
+  DocumentTextIcon,
   HomeIcon,
   LifebuoyIcon,
+  QueueListIcon,
   UserGroupIcon,
   UsersIcon,
   XMarkIcon,
+  BuildingOffice2Icon,
 } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 import React from 'react';
@@ -20,7 +26,12 @@ type NavItem = {
   name: string;
   href: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-  requires?: 'manageMembers' | 'managePatients' | 'manageAppointments' | 'editBookingPolicies';
+  requires?:
+    | 'manageMembers'
+    | 'managePatients'
+    | 'manageAppointments'
+    | 'editBookingPolicies'
+    | 'viewBilling';
 };
 
 const mainNav: NavItem[] = [
@@ -42,6 +53,41 @@ const mainNav: NavItem[] = [
     href: '/clinic/schedule',
     icon: CalendarDaysIcon,
     requires: 'manageAppointments',
+  },
+  {
+    name: 'Front desk',
+    href: '/clinic/queue',
+    icon: QueueListIcon,
+    requires: 'manageAppointments',
+  },
+  {
+    name: 'Rooms',
+    href: '/clinic/rooms',
+    icon: BuildingOffice2Icon,
+    requires: 'manageAppointments',
+  },
+  {
+    name: 'Reports',
+    href: '/clinic/reports',
+    icon: ChartBarIcon,
+  },
+  {
+    name: 'Audit log',
+    href: '/clinic/audit',
+    icon: DocumentTextIcon,
+    requires: 'manageMembers',
+  },
+  {
+    name: 'Invoices',
+    href: '/clinic/invoices',
+    icon: BanknotesIcon,
+    requires: 'viewBilling',
+  },
+  {
+    name: 'Claims',
+    href: '/clinic/claims',
+    icon: ClipboardDocumentListIcon,
+    requires: 'viewBilling',
   },
   {
     name: 'Clinic settings',
@@ -73,10 +119,10 @@ function NavLink({
       to={item.href}
       onClick={onNavigate}
       className={clsx(
-        'group flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-[14px] font-medium transition-all',
+        'group flex w-full items-center gap-3 rounded-[10px] px-3.5 py-2.5 text-[14px] font-medium leading-snug transition-all duration-200',
         active
-          ? 'bg-white text-[#1a4d4d] shadow-sm'
-          : 'text-white/90 hover:bg-white/15 hover:text-white'
+          ? 'bg-white text-[#344256] shadow-sm'
+          : 'text-white/90 hover:bg-white/15 hover:text-white hover:shadow-sm'
       )}
     >
       <Icon
@@ -103,6 +149,7 @@ export const ClinicAdminLayout: React.FC = () => {
         if (isOwner || isPracticeManager) return true;
         if (item.requires === 'editBookingPolicies' && can('viewBilling')) return true;
         if (item.requires === 'manageAppointments') return can('manageAppointments');
+        if (item.requires === 'viewBilling') return can('viewBilling');
         return can(item.requires);
       }),
     [can, isOwner, isPracticeManager]
@@ -138,14 +185,14 @@ export const ClinicAdminLayout: React.FC = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f0f4f2]">
-      <aside className="hidden md:fixed md:inset-y-0 md:flex md:w-[248px] md:flex-col bg-[#1a4d4d]">
+      <aside className="hidden md:fixed md:inset-y-0 md:flex md:w-64 md:flex-col bg-anixi-green">
         <div className="border-b border-white/10 px-4 py-5">
           <AnixiLogo variant="sidebar" subtitle="CLINIC ADMIN" linkTo="/clinic" />
         </div>
         {sidebarNav()}
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col md:pl-[248px]">
+      <div className="flex min-w-0 flex-1 flex-col md:pl-64">
         <header className="sticky top-0 z-30 border-b border-[#dfe6e1] bg-white shadow-sm shadow-[#1a4d4d]/5">
           <div className="flex h-[4.25rem] items-center gap-4 px-4 sm:px-6 lg:px-8">
             <button
@@ -173,7 +220,7 @@ export const ClinicAdminLayout: React.FC = () => {
               onClick={closeMobile}
               aria-label="Close navigation"
             />
-            <div className="absolute left-0 top-0 flex h-full w-[min(280px,88vw)] flex-col bg-[#1a4d4d] shadow-2xl">
+            <div className="absolute left-0 top-0 flex h-full w-[min(280px,88vw)] flex-col bg-anixi-green shadow-2xl">
               <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
                 <AnixiLogo
                   variant="sidebar"

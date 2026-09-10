@@ -3,26 +3,9 @@ import { Link } from 'react-router-dom';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
-import { auth, db } from '../lib/firebase';
+import { isDjangoAuthOnly } from '../lib/runtimeConfig';
+import { djangoDeleteAccount } from '../services/djangoApiService';
 import { logoutDoctor } from '../services/authService';
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  query,
-  serverTimestamp,
-  where,
-  writeBatch,
-} from 'firebase/firestore';
-import {
-  USERS_COLLECTION,
-  DOCTORS_COLLECTION,
-} from '../shared/constants';
-
-const INVOICES_COLLECTION = 'invoices';
 
 const DeleteAccount: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -40,86 +23,16 @@ const DeleteAccount: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error('No authenticated user');
-
-      const uid = currentUser.uid;
-
-      await addDoc(
-        collection(db, USERS_COLLECTION, uid, 'deletion_requests'),
-        {
-          requestedAt: serverTimestamp(),
-          status: 'completed',
-          scope: 'account',
-        }
-      );
-
-      try {
-        const invoiceQuery = query(
-          collection(db, INVOICES_COLLECTION),
-          where('doctorId', '==', uid)
-        );
-        const invoiceSnap = await getDocs(invoiceQuery);
-        if (!invoiceSnap.empty) {
-          const invoiceBatch = writeBatch(db);
-          invoiceSnap.docs.forEach((invoiceDoc) => {
-            invoiceBatch.delete(invoiceDoc.ref);
-          });
-          await invoiceBatch.commit();
-        }
-      } catch (invoiceErr) {
-        console.warn('[DeleteAccount] invoice cleanup failed:', invoiceErr);
+      if (isDjangoAuthOnly()) {
+        await djangoDeleteAccount();
+        await logoutDoctor();
+        navigate('/login');
+        return;
       }
 
-      try {
-        const appointmentsRef = collection(db, USERS_COLLECTION, uid, 'appointments');
-        const appointmentsSnap = await getDocs(appointmentsRef);
-        if (!appointmentsSnap.empty) {
-          const aptBatch = writeBatch(db);
-          appointmentsSnap.docs.forEach((aptDoc) => {
-            aptBatch.delete(aptDoc.ref);
-          });
-          await aptBatch.commit();
-        }
-      } catch (aptErr) {
-        console.warn('[DeleteAccount] appointment cleanup failed:', aptErr);
-      }
-
-      try {
-        await deleteDoc(doc(db, DOCTORS_COLLECTION, uid, 'settings', 'softBlocks'));
-        await deleteDoc(doc(db, DOCTORS_COLLECTION, uid, 'settings', 'availability'));
-      } catch (settingsErr) {
-        console.warn('[DeleteAccount] doctor settings cleanup failed:', settingsErr);
-      }
-
-      const batch = writeBatch(db);
-      batch.delete(doc(db, USERS_COLLECTION, uid));
-      batch.delete(doc(db, DOCTORS_COLLECTION, uid));
-      await batch.commit();
-
-      const deleteAuthUser = async () => {
-        try {
-          await deleteUser(currentUser);
-        } catch (authErr: unknown) {
-          const code = (authErr as { code?: string })?.code;
-          if (code !== 'auth/requires-recent-login') throw authErr;
-          const email = currentUser.email;
-          const password = window.prompt('To delete your account, please re-enter your password:');
-          if (!password) throw new Error('Re-authentication cancelled');
-          if (!email) throw new Error('No email available for re-authentication');
-          await reauthenticateWithCredential(
-            currentUser,
-            EmailAuthProvider.credential(email, password)
-          );
-          await deleteUser(currentUser);
-        }
-      };
-
-      await deleteAuthUser();
-      await logoutDoctor();
-      navigate('/login');
+      setError('Firebase account deletion is no longer available. Log in via the Django portal to delete your account.');
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to delete. You may need to re-authenticate.';
+      const message = err instanceof Error ? err.message : 'Failed to delete.';
       setError(message);
     } finally {
       setLoading(false);

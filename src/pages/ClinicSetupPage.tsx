@@ -1,17 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Building2, CheckCircle2, Loader2, MapPin, Rocket } from 'lucide-react';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { BulkDoctorInvitePanel } from '../components/onboarding/BulkDoctorInvitePanel';
 import { BulkPatientImportPanel } from '../components/onboarding/BulkPatientImportPanel';
 import { OnboardingShell } from '../components/onboarding/OnboardingShell';
 import { getOnboardingStepMeta } from '../components/onboarding/OnboardingProgress';
 import { AppShellSkeleton } from '../components/ui/Skeleton';
 import { useAuth } from '../hooks/AuthContext';
-import { db } from '../lib/firebase';
 import { detectBrowserTimezone, PRACTICE_TIMEZONES } from '../lib/timezones';
-import { USERS_COLLECTION, DOCTORS_COLLECTION } from '../shared/constants';
 import { notifyPendingInvitesClinicLive } from '../services/practiceInviteService';
+import {
+  djangoPatchDoctorProfile,
+  markClinicOnboardingComplete,
+} from '../services/djangoApiService';
 import {
   createPractice,
   ensureBookingPolicy,
@@ -132,17 +133,7 @@ export const ClinicSetupPage: React.FC = () => {
         await ensureOwnerMembership(existingPractice.id, doctor.id, {
           isClinician: false,
         });
-        await setDoc(
-          doc(db, DOCTORS_COLLECTION, doctor.id),
-          {
-            accountKind: 'clinic_admin',
-            requiresClinicalVerification: false,
-            verificationStatus: 'not_required',
-            applicationComplete: false,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
+        await djangoPatchDoctorProfile({ application_complete: false });
         await refreshPracticeSession();
         setStep(2);
         return;
@@ -162,30 +153,7 @@ export const ClinicSetupPage: React.FC = () => {
         isClinician: false,
       });
       await ensureBookingPolicy(newPracticeId);
-
-      await setDoc(
-        doc(db, DOCTORS_COLLECTION, doctor.id),
-        {
-          accountKind: 'clinic_admin',
-          requiresClinicalVerification: false,
-          verificationStatus: 'not_required',
-          applicationComplete: false,
-          joinIntent: 'clinic',
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      await setDoc(
-        doc(db, USERS_COLLECTION, doctor.id),
-        {
-          joinIntent: null,
-          skipPracticeProvision: false,
-          primaryPracticeId: newPracticeId,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      await djangoPatchDoctorProfile({ application_complete: false });
 
       await refreshPracticeSession();
       await refreshUser();
@@ -207,14 +175,7 @@ export const ClinicSetupPage: React.FC = () => {
           name || existingPractice?.name || 'Your clinic'
         );
       }
-      await setDoc(
-        doc(db, USERS_COLLECTION, doctor.id),
-        {
-          clinicOnboardingComplete: true,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      markClinicOnboardingComplete(doctor.id);
       await refreshUser();
       navigate('/clinic', { replace: true });
     } catch (err: unknown) {

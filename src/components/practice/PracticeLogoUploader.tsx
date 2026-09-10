@@ -1,6 +1,13 @@
 import React, { useRef, useState } from 'react';
 import { LogoCropModal } from '../LogoCropModal';
 import { useAuth } from '../../hooks/useAuth';
+import {
+  ACCEPTED_IMAGE_INPUT,
+  describeImageUploadError,
+  normalizeImageFile,
+  shouldSkipCrop,
+  validateImageFile,
+} from '../../lib/imageUpload';
 import { uploadPracticeLogo } from '../../services/doctorService';
 
 export const PRACTICE_LOGO_INPUT_ID = 'practice-logo-file-input';
@@ -21,6 +28,7 @@ export const PracticeLogoUploader: React.FC<PracticeLogoUploaderProps> = ({
   const [previewUrl, setPreviewUrl] = useState(logoUrl ?? '');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingOriginalFile, setPendingOriginalFile] = useState<File | null>(null);
 
   const currentLogo = previewUrl || logoUrl || '';
 
@@ -42,7 +50,7 @@ export const PracticeLogoUploader: React.FC<PracticeLogoUploaderProps> = ({
       onUploaded?.(uploadedUrl);
     } catch (err) {
       console.error('[PracticeLogoUploader] upload failed:', err);
-      setError('Could not upload the logo. Please try a PNG or JPG under 5 MB.');
+      setError(describeImageUploadError(err, 'logo'));
       URL.revokeObjectURL(nextPreview);
     } finally {
       setUploading(false);
@@ -84,12 +92,26 @@ export const PracticeLogoUploader: React.FC<PracticeLogoUploaderProps> = ({
           id={PRACTICE_LOGO_INPUT_ID}
           ref={inputRef}
           type="file"
-          accept="image/png,image/jpeg,image/jpg"
+          accept={ACCEPTED_IMAGE_INPUT}
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0] ?? null;
             e.target.value = '';
             if (!file) return;
+            const validationError = validateImageFile(file);
+            if (validationError) {
+              setError(validationError);
+              return;
+            }
+            setError(null);
+            setPendingOriginalFile(file);
+            if (shouldSkipCrop(file)) {
+              void (async () => {
+                const prepared = await normalizeImageFile(file, 'practice-logo.jpg');
+                await handleCropped(prepared, URL.createObjectURL(prepared));
+              })();
+              return;
+            }
             const src = URL.createObjectURL(file);
             setCropImageSrc(src);
             setCropOpen(true);
@@ -105,11 +127,28 @@ export const PracticeLogoUploader: React.FC<PracticeLogoUploaderProps> = ({
             setCropOpen(false);
             URL.revokeObjectURL(cropImageSrc);
             setCropImageSrc(null);
+            setPendingOriginalFile(null);
           }}
+          onUseOriginal={
+            pendingOriginalFile
+              ? () => {
+                  const original = pendingOriginalFile;
+                  setCropOpen(false);
+                  if (cropImageSrc) URL.revokeObjectURL(cropImageSrc);
+                  setCropImageSrc(null);
+                  setPendingOriginalFile(null);
+                  void (async () => {
+                    const prepared = await normalizeImageFile(original, 'practice-logo.jpg');
+                    await handleCropped(prepared, URL.createObjectURL(prepared));
+                  })();
+                }
+              : undefined
+          }
           onCropComplete={(file, preview) => {
             setCropOpen(false);
             URL.revokeObjectURL(cropImageSrc);
             setCropImageSrc(null);
+            setPendingOriginalFile(null);
             void handleCropped(file, preview);
           }}
         />

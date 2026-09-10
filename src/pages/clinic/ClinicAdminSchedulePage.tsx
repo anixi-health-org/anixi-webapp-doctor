@@ -419,7 +419,7 @@ export const ClinicAdminSchedulePage: React.FC = () => {
                           {doctorLabelById.get(b.doctorId) || 'Doctor'}:{' '}
                         </span>
                       )}
-                      {b.startTime} – {b.endTime}
+                      {b.startTime}, {b.endTime}
                     </li>
                   ))}
                 </ul>

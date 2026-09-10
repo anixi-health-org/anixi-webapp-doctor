@@ -22,9 +22,9 @@ export interface ProfessionalProfileFormData {
   province: string;
   city: string;
   practiceAddress: string;
-  /** Practice letterhead — invoices only */
+  /** Practice letterhead, invoices only */
   logoUrl: string;
-  /** Doctor headshot — portal header and patient-facing cards */
+  /** Doctor headshot, portal header and patient-facing cards */
   profileImageUrl: string;
 }
 

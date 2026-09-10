@@ -38,7 +38,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const isClinicAdminPath =
     path === CLINIC_ADMIN_PREFIX || path.startsWith(`${CLINIC_ADMIN_PREFIX}/`);
 
-  // Staff (receptionist / billing) — land in clinic admin when membership allows.
+  // Staff (receptionist / billing), land in clinic admin when membership allows.
   if (user?.role === 'staff') {
     if (!practiceSession?.member) {
       return <Navigate to="/join/invite" replace />;
@@ -49,7 +49,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
       }
       return <Navigate to={clinicAdminHomePath()} replace />;
     }
-    return <>{children}</>;
+    return <Navigate to="/join/invite" replace />;
   }
 
   if (user?.role !== 'doctor') {
@@ -95,13 +95,13 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 
   if (access === 'full') {
     if (onGatePage && path !== CLINIC_SETUP_PATH) {
-      return <Navigate to="/dashboard" replace />;
+      return <Navigate to="/ayah" replace />;
     }
     if (path === CLINIC_SETUP_PATH && practiceSession && clinicOnboardingComplete) {
-      return <Navigate to="/dashboard" replace />;
+      return <Navigate to="/ayah" replace />;
     }
     if (isClinicAdminPath) {
-      return <Navigate to="/dashboard" replace />;
+      return <Navigate to="/ayah" replace />;
     }
     return <>{children}</>;
   }

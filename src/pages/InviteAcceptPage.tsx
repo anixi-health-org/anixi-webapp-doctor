@@ -13,8 +13,17 @@ import {
 } from '../services/practiceInviteService';
 import type { PracticeInvite, PracticeRole } from '../types';
 import type { AuthRole } from '../types/auth';
+import { getJoinPathConfig } from '../lib/joinPathConfig';
+import JoinInviteLandingPage from './JoinInviteLandingPage';
 
-const doctorAuthRoles: PracticeRole[] = ['owner', 'doctor', 'practice_manager'];
+const doctorAuthRoles: PracticeRole[] = [
+  'owner',
+  'doctor',
+  'nurse',
+  'allied_health',
+  'locum',
+  'practice_manager',
+];
 const clinicAdminRoles: PracticeRole[] = [
   'practice_manager',
   'receptionist',
@@ -39,14 +48,13 @@ export const InviteAcceptPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const inviteConfig = getJoinPathConfig('invite');
+  const hasInviteParams = Boolean(practiceId && inviteId);
 
   useEffect(() => {
+    if (!hasInviteParams) return;
     let cancelled = false;
     (async () => {
-      if (!practiceId || !inviteId) {
-        setLoadError('This invite link is incomplete. Ask your clinic to resend it.');
-        return;
-      }
       try {
         const data = await getPracticeInvite(practiceId, inviteId);
         if (cancelled) return;
@@ -74,7 +82,11 @@ export const InviteAcceptPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [practiceId, inviteId, token]);
+  }, [practiceId, inviteId, token, hasInviteParams]);
+
+  if (!hasInviteParams) {
+    return <JoinInviteLandingPage />;
+  }
 
   const finishAccept = async (
     uid: string,
@@ -159,6 +171,7 @@ export const InviteAcceptPage: React.FC = () => {
         subtitle="We couldn't open this invite"
         maxWidth="xl"
         compact
+        heroSlides={inviteConfig.heroSlides}
       >
         <div className="rounded-2xl border border-gray-100 bg-white px-8 py-10 text-center shadow-lg sm:px-10">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600">
@@ -183,7 +196,13 @@ export const InviteAcceptPage: React.FC = () => {
 
   if (!invite) {
     return (
-      <AuthLayout title="Invitation" subtitle="Loading your invite…" maxWidth="xl" compact>
+      <AuthLayout
+        title="Invitation"
+        subtitle="Loading your invite…"
+        maxWidth="xl"
+        compact
+        heroSlides={inviteConfig.heroSlides}
+      >
         <div className="rounded-2xl border border-gray-100 bg-white px-8 py-10 text-center text-base text-gray-500 shadow-lg">
           Please wait…
         </div>
@@ -196,6 +215,7 @@ export const InviteAcceptPage: React.FC = () => {
       title="You're invited"
       subtitle={`Join ${invite.practiceName} as ${ROLE_LABELS[invite.role]}`}
       maxWidth="xl"
+      heroSlides={inviteConfig.heroSlides}
     >
       <div className="rounded-2xl border border-gray-100 bg-white px-6 py-7 shadow-lg sm:px-8 sm:py-8">
         <div className="mb-6 rounded-xl bg-[#eef4f1] px-4 py-3 text-sm text-[#344256]">

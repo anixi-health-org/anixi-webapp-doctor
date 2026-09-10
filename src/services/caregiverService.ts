@@ -1,20 +1,6 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  onSnapshot,
-  query,
-  serverTimestamp,
-  updateDoc,
-  where,
-  writeBatch,
-  type Unsubscribe,
-} from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { USERS_COLLECTION } from '../shared/constants';
 import { Patient } from '../types';
 import { getAdherenceStats } from './adherenceService';
+import { djangoListWellnessProviders } from './djangoApiService';
 import { getPatientStatus } from './patientManagementService';
 
 export interface LinkedPatientRecord {
@@ -32,126 +18,49 @@ export interface CaregiverPatientSummary {
   needsAttention: boolean;
 }
 
-const normalizeEmail = (email: string) => email.trim().toLowerCase();
-
-const mapPatientDoc = (patientId: string, data: Record<string, unknown>): Patient => ({
-  id: patientId,
-  email: (data.email as string) || '',
-  displayName: (data.fullName as string) || (data.displayName as string) || 'Patient',
-  role: 'patient',
-  dateOfBirth:
-    (data.dateOfBirth as { toDate?: () => Date })?.toDate?.() ||
-    (data.dateOfBirth as Date | undefined) ||
-    undefined,
-  gender: data.gender as Patient['gender'],
-  phoneNumber: data.phoneNumber as string | undefined,
-  chronicDiseases: (data.chronicDiseases as string[]) || [],
-  allergies: (data.allergies as string[]) || [],
-  emergencyContact: data.emergencyContact as Patient['emergencyContact'],
-  createdAt:
-    (data.createdAt as { toDate?: () => Date })?.toDate?.() || new Date(),
-  updatedAt:
-    (data.updatedAt as { toDate?: () => Date })?.toDate?.() || new Date(),
-});
-
 export const linkCaregiverToNominatedPatients = async (
   caregiverId: string,
-  caregiverEmail: string
+  caregiverEmail: string,
 ): Promise<number> => {
-  const email = normalizeEmail(caregiverEmail);
-  if (!email) return 0;
-
-  const patientsQuery = query(
-    collection(db, 'patients'),
-    where('hasCaregiver', '==', true),
-    where('caregiverEmail', '==', email)
-  );
-
-  const snapshot = await getDocs(patientsQuery);
-  if (snapshot.empty) return 0;
-
-  const batch = writeBatch(db);
-  let linked = 0;
-
-  snapshot.docs.forEach((patientDoc) => {
-    const data = patientDoc.data();
-    const linkRef = doc(db, USERS_COLLECTION, caregiverId, 'linked_patients', patientDoc.id);
-    batch.set(
-      linkRef,
-      {
-        patientId: patientDoc.id,
-        status: 'active',
-        patientDisplayName: data.fullName || data.displayName || 'Patient',
-        patientEmail: data.email || '',
-        linkedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    batch.update(patientDoc.ref, {
-      caregiverId,
-      updatedAt: serverTimestamp(),
-    });
-    linked += 1;
-  });
-
-  await batch.commit();
-  return linked;
+  // Persisted via Django registration; no Firestore side-effect needed.
+  return 0;
 };
 
-export const fetchCaregiverPatient = async (patientId: string): Promise<Patient | null> => {
-  const snap = await getDoc(doc(db, 'patients', patientId));
-  if (!snap.exists()) return null;
-  return mapPatientDoc(snap.id, snap.data() as Record<string, unknown>);
+export const fetchCaregiverPatient = async (
+  patientId: string,
+): Promise<Patient | null> => {
+  // TODO: replace with a Django patient endpoint once available.
+  return null;
 };
+
+export type Unsubscribe = () => void;
 
 export const listenToCaregiverPatients = (
-  caregiverId: string,
+  _caregiverId: string,
   onUpdate: (patients: Patient[]) => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
 ): Unsubscribe => {
-  const linksRef = collection(db, USERS_COLLECTION, caregiverId, 'linked_patients');
+  onUpdate([]);
+  return () => {};
+};
 
-  return onSnapshot(
-    linksRef,
-    async (snapshot) => {
-      try {
-        const activeLinks = snapshot.docs.filter(
-          (d) => (d.data().status as string | undefined) !== 'inactive'
-        );
-
-        if (activeLinks.length === 0) {
-          onUpdate([]);
-          return;
-        }
-
-        const patients = await Promise.all(
-          activeLinks.map(async (linkDoc) => {
-            const patientId = (linkDoc.data().patientId as string) || linkDoc.id;
-            return fetchCaregiverPatient(patientId);
-          })
-        );
-
-        onUpdate(patients.filter((p): p is Patient => p !== null));
-      } catch (err) {
-        onError(err instanceof Error ? err : new Error('Failed to load patients'));
-      }
-    },
-    (err) => onError(err)
-  );
+export const revokeCaregiverPatientLink = async (
+  _caregiverId: string,
+  _patientId: string,
+): Promise<void> => {
+  // TODO: replace with a Django revoke endpoint once available.
 };
 
 export const verifyCaregiverPatientAccess = async (
-  caregiverId: string,
-  patientId: string
+  _caregiverId: string,
+  _patientId: string,
 ): Promise<boolean> => {
-  const linkRef = doc(db, USERS_COLLECTION, caregiverId, 'linked_patients', patientId);
-  const snap = await getDoc(linkRef);
-  return snap.exists() && snap.data()?.status !== 'inactive';
+  // TODO: replace with a Django access-check endpoint once available.
+  return false;
 };
 
 export const getCaregiverPatientSummaries = async (
-  patients: Patient[]
+  patients: Patient[],
 ): Promise<CaregiverPatientSummary[]> => {
   const today = new Date();
   const thirtyDaysAgo = new Date();
@@ -177,32 +86,57 @@ export const getCaregiverPatientSummaries = async (
         (patient.chronicDiseases?.length ?? 0) > 0;
 
       return { patient, adherenceRate, status, needsAttention };
-    })
+    }),
   );
 
   return summaries;
 };
 
-export const updateCaregiverProfile = async (
-  caregiverId: string,
-  updates: { displayName?: string; phoneNumber?: string; organization?: string }
-): Promise<void> => {
-  const userRef = doc(db, USERS_COLLECTION, caregiverId);
-  await updateDoc(userRef, {
-    ...updates,
-    updatedAt: serverTimestamp(),
-  });
+export type CaregiverProfileData = {
+  id: string;
+  displayName?: string;
+  email?: string;
+  phoneNumber?: string;
+  organization?: string;
+  caregiverTier: 'family' | 'professional';
+  professionalCaregiverProfile?: {
+    organization?: string;
+    services?: string[];
+    bio?: string;
+    city?: string;
+    province?: string;
+    published?: boolean;
+    verified?: boolean;
+  };
 };
 
-export const getCaregiverProfile = async (caregiverId: string) => {
-  const snap = await getDoc(doc(db, USERS_COLLECTION, caregiverId));
-  if (!snap.exists()) return null;
-  const data = snap.data();
+export const updateCaregiverProfile = async (
+  _caregiverId: string,
+  _updates: {
+    displayName?: string;
+    phoneNumber?: string;
+    organization?: string;
+    caregiverTier?: 'family' | 'professional';
+    professionalCaregiverProfile?: CaregiverProfileData['professionalCaregiverProfile'];
+  },
+): Promise<void> => {
+  // TODO: persist via Django caregiver profile endpoint once available.
+};
+
+export const getCaregiverProfile = async (
+  caregiverId: string,
+): Promise<CaregiverProfileData | null> => {
+  // TODO: replace with a Django caregiver profile endpoint once available.
   return {
     id: caregiverId,
-    displayName: data.displayName as string | undefined,
-    email: data.email as string | undefined,
-    phoneNumber: data.phoneNumber as string | undefined,
-    organization: data.organization as string | undefined,
+    caregiverTier: 'family',
   };
+};
+
+export const listPublishedProfessionalCaregivers = async () => {
+  try {
+    return await djangoListWellnessProviders('caregiver');
+  } catch {
+    return [];
+  }
 };

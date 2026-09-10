@@ -20,6 +20,7 @@ import {
   otherParticipantId,
   sendConversationMessage,
 } from '../../services/conversationService';
+import { useAskAnixi } from '../../context/AskAnixiContext';
 import { Patient } from '../../types';
 
 type InboxRow = {
@@ -92,6 +93,7 @@ export const MessagesPage: React.FC = () => {
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState('');
+  const { openAskAnixi, subscribeDraftApproved } = useAskAnixi();
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -246,6 +248,41 @@ export const MessagesPage: React.FC = () => {
     } finally {
       setIsSending(false);
     }
+  };
+
+  useEffect(() => {
+    return subscribeDraftApproved((resolved) => {
+      if (resolved.type !== 'message_reply') return;
+      if (resolved.patientId && selectedPatientId && resolved.patientId !== selectedPatientId) {
+        return;
+      }
+
+      const payload = resolved.payload;
+      const text =
+        (typeof payload.draft === 'string' ? payload.draft : '') || resolved.preview || '';
+      if (text.trim()) {
+        setDraft(text);
+        setError(null);
+      }
+    });
+  }, [selectedPatientId, subscribeDraftApproved]);
+
+  const handleDraftReply = () => {
+    if (!selectedRow) return;
+    const lastPatientMessage = [...messages].reverse().find((m) => m.senderId !== doctorId);
+    if (!lastPatientMessage?.text.trim()) {
+      setError('No patient message to reply to yet.');
+      return;
+    }
+
+    openAskAnixi({
+      autoSend: true,
+      context: {
+        patientId: selectedRow.patientId,
+        patientName: selectedRow.patientName,
+      },
+      prompt: `Draft a reply to this patient message from ${selectedRow.patientName} using draft-message-reply:\n"${lastPatientMessage.text}"`,
+    });
   };
 
   if (isBootstrapping && conversations.length === 0 && patients.length === 0) {
@@ -422,6 +459,16 @@ export const MessagesPage: React.FC = () => {
               </div>
 
               <div className="border-t border-[#eef2f6] p-4">
+                <div className="mb-2 flex justify-end">
+                  <button
+                    type="button"
+                    disabled={messages.length === 0}
+                    onClick={handleDraftReply}
+                    className="text-xs font-semibold text-[#427160] hover:underline disabled:opacity-50"
+                  >
+                    Draft reply with Ayah
+                  </button>
+                </div>
                 <div className="flex gap-2">
                   <textarea
                     value={draft}

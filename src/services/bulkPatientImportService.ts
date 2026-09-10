@@ -1,10 +1,17 @@
-import { addPatientManually } from './patientManagementService';
+import { djangoImportRoster, isDjangoApiEnabled } from './djangoApiService';
 
 export type BulkPatientRow = {
   displayName: string;
+  firstName?: string;
+  lastName?: string;
+  middleName?: string;
   email?: string;
   phoneNumber?: string;
   dateOfBirth?: string;
+  gender?: string;
+  chartId?: string;
+  patientExternalId?: string;
+  mrn?: string;
 };
 
 export type BulkPatientResult = {
@@ -14,6 +21,10 @@ export type BulkPatientResult = {
   patientId?: string;
   error?: string;
   inviteQueued?: boolean;
+  /** Per-patient code for activating a clinic-uploaded account in the mobile app */
+  activationCode?: string;
+  /** Deep link patients can use to activate instead of creating a duplicate account */
+  activationLink?: string;
 };
 
 export type BulkParseIssue = {
@@ -26,12 +37,17 @@ export const PATIENT_IMPORT_CSV_HEADERS = [
   'email',
   'phone',
   'date_of_birth',
+  'gender',
+  'chart_id',
+  'mrn',
 ] as const;
 
 const TEMPLATE_ROWS = [
   PATIENT_IMPORT_CSV_HEADERS.join(','),
-  'Thabo Mokoena,thabo@example.co.za,+27821234567,1990-05-12',
-  'Sarah Jones,sarah@example.co.za,+27829876543,1985-11-03',
+  'Thabo Mokoena,thabo@example.co.za,+27821234567,1990-05-12,Male,,',
+  'Sarah Jones,sarah@example.co.za,+27829876543,1985-11-03,Female,,',
+  'Sipho Dlamini,,+27831112222,1978-02-20,Male,CHT-0041,MRN-5501',
+  'Nomsa Khumalo,,,1982-07-15,Female,CHT-0099,MRN-8820',
 ].join('\n');
 
 /** Trigger download of the standard patient roster CSV template. */
@@ -46,7 +62,7 @@ export function downloadPatientImportTemplate(): void {
 }
 
 function normalizeHeader(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, '_');
+  return value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_');
 }
 
 function splitCsvLine(line: string): string[] {
@@ -76,6 +92,44 @@ function splitCsvLine(line: string): string[] {
   return cells;
 }
 
+/**
+ * Try to find a header index by checking multiple common synonyms.
+ * Returns -1 if none found.
+ */
+function findHeaderIndex(headers: string[], synonyms: string[]): number {
+  for (const syn of synonyms) {
+    const idx = headers.indexOf(syn);
+    if (idx !== -1) return idx;
+  }
+  // Partial match fallback for headers like "patient_first_name" matching "first_name"
+  for (const syn of synonyms) {
+    const idx = headers.findIndex((h) => h.includes(syn));
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+
+function buildDisplayName(parts: {
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  middleName?: string;
+  generalName?: string;
+}): string {
+  // If a "full_name" column exists and has a value, prefer it
+  if (parts.fullName?.trim()) return parts.fullName.trim();
+
+  const nameParts = [parts.firstName, parts.middleName, parts.lastName]
+    .map((p) => p?.trim())
+    .filter(Boolean);
+  if (nameParts.length) return nameParts.join(' ');
+
+  // Fallback: "Patient General" column
+  if (parts.generalName?.trim()) return parts.generalName.trim();
+
+  return '';
+}
+
 export function parsePatientBulkCsv(text: string): {
   rows: BulkPatientRow[];
   issues: BulkParseIssue[];
@@ -90,18 +144,36 @@ export function parsePatientBulkCsv(text: string): {
   }
 
   const headerCells = splitCsvLine(lines[0]).map(normalizeHeader);
-  const hasHeader =
-    headerCells.includes('full_name') ||
-    headerCells.includes('name') ||
-    headerCells.includes('email');
+
+  // Auto-detect header row: if any header looks like a known column name
+  const KNOWN_HEADERS = [
+    'full_name', 'name', 'email', 'phone', 'date_of_birth', 'dob',
+    'first_name', 'last_name', 'gender', 'chart_id', 'mrn',
+    'patient_general', 'patient_last_name', 'patient_first_name',
+    'patient_birth_date', 'patient_gender', 'patient_id', 'patient_mrn',
+  ];
+  const hasHeader = headerCells.some((h) => KNOWN_HEADERS.includes(h));
   const dataLines = hasHeader ? lines.slice(1) : lines;
 
-  const nameIdx = hasHeader
-    ? Math.max(headerCells.indexOf('full_name'), headerCells.indexOf('name'))
-    : 0;
-  const emailIdx = hasHeader ? headerCells.indexOf('email') : 1;
-  const phoneIdx = hasHeader ? headerCells.indexOf('phone') : 2;
-  const dobIdx = hasHeader ? headerCells.indexOf('date_of_birth') : 3;
+  // Resolve column indices with synonym mappings
+  const fullNameIdx = findHeaderIndex(headerCells, ['full_name', 'name', 'display_name', 'patient_name']);
+  const firstNameIdx = findHeaderIndex(headerCells, ['first_name', 'patient_first_name']);
+  const lastNameIdx = findHeaderIndex(headerCells, ['last_name', 'patient_last_name']);
+  const middleNameIdx = findHeaderIndex(headerCells, ['middle_name', 'patient_middle_name']);
+  const generalNameIdx = findHeaderIndex(headerCells, ['patient_general']);
+  const emailIdx = findHeaderIndex(headerCells, ['email', 'patient_email', 'e_mail']);
+  const phoneIdx = findHeaderIndex(headerCells, ['phone', 'phone_number', 'telephone', 'cell', 'mobile']);
+  const dobIdx = findHeaderIndex(headerCells, ['date_of_birth', 'dob', 'birth_date', 'patient_birth_date']);
+  const genderIdx = findHeaderIndex(headerCells, ['gender', 'sex', 'patient_gender']);
+  const chartIdIdx = findHeaderIndex(headerCells, ['chart_id', 'chart_number']);
+  const patientIdIdx = findHeaderIndex(headerCells, ['patient_id', 'external_id']);
+  const mrnIdx = findHeaderIndex(headerCells, ['mrn', 'patient_mrn', 'medical_record_number']);
+  // If no header row detected, use positional defaults matching our template
+  const usePositional = !hasHeader;
+  const pFullNameIdx = usePositional ? 0 : fullNameIdx;
+  const pEmailIdx = usePositional ? 1 : emailIdx;
+  const pPhoneIdx = usePositional ? 2 : phoneIdx;
+  const pDobIdx = usePositional ? 3 : dobIdx;
 
   const rows: BulkPatientRow[] = [];
   const issues: BulkParseIssue[] = [];
@@ -109,27 +181,60 @@ export function parsePatientBulkCsv(text: string): {
   dataLines.forEach((line, index) => {
     const lineNumber = hasHeader ? index + 2 : index + 1;
     const cells = splitCsvLine(line);
-    const displayName = (nameIdx >= 0 ? cells[nameIdx] : cells[0])?.trim();
+
+    const fullName = pFullNameIdx >= 0 ? cells[pFullNameIdx] : undefined;
+    const firstName = firstNameIdx >= 0 ? cells[firstNameIdx] : undefined;
+    const lastName = lastNameIdx >= 0 ? cells[lastNameIdx] : undefined;
+    const middleName = middleNameIdx >= 0 ? cells[middleNameIdx] : undefined;
+    const generalName = generalNameIdx >= 0 ? cells[generalNameIdx] : undefined;
+
+    const displayName = buildDisplayName({ fullName, firstName, lastName, middleName, generalName });
 
     if (!displayName) {
       issues.push({ line: lineNumber, message: 'Missing patient name.' });
       return;
     }
 
-    const email = (emailIdx >= 0 ? cells[emailIdx] : cells[1])?.trim().toLowerCase();
-    if (!email || !email.includes('@')) {
+    const email = pEmailIdx >= 0 ? (cells[pEmailIdx] || '').trim().toLowerCase() : '';
+    const phone = pPhoneIdx >= 0 ? (cells[pPhoneIdx] || '').trim() : '';
+
+    const chartId = chartIdIdx >= 0 ? (cells[chartIdIdx] || '').trim() : '';
+    const patientExtId = patientIdIdx >= 0 ? (cells[patientIdIdx] || '').trim() : '';
+    const mrn = mrnIdx >= 0 ? (cells[mrnIdx] || '').trim() : '';
+
+    // Must have email, phone, or a clinic identifier (MRN / chart ID)
+    if (!email && !phone && !chartId && !mrn && !patientExtId) {
       issues.push({
         line: lineNumber,
-        message: 'Email is required so patients receive app login details.',
+        message: `${displayName}: needs email, phone, or MRN/chart ID.`,
       });
       return;
     }
 
+    // Validate email if present
+    if (email && !email.includes('@')) {
+      issues.push({
+        line: lineNumber,
+        message: `${displayName}: invalid email "${email}".`,
+      });
+      return;
+    }
+
+    const dobRaw = pDobIdx >= 0 ? (cells[pDobIdx] || '').trim() : '';
+    const genderRaw = genderIdx >= 0 ? (cells[genderIdx] || '').trim() : '';
+
     rows.push({
       displayName,
-      email,
-      phoneNumber: phoneIdx >= 0 ? cells[phoneIdx] || undefined : undefined,
-      dateOfBirth: dobIdx >= 0 ? cells[dobIdx] || undefined : undefined,
+      firstName: firstName?.trim() || undefined,
+      lastName: lastName?.trim() || undefined,
+      middleName: middleName?.trim() || undefined,
+      email: email || undefined,
+      phoneNumber: phone || undefined,
+      dateOfBirth: dobRaw || undefined,
+      gender: genderRaw || undefined,
+      chartId: chartId || undefined,
+      patientExternalId: patientExtId || undefined,
+      mrn: mrn || undefined,
     });
   });
 
@@ -141,6 +246,16 @@ export function parsePatientBulkInput(text: string): BulkPatientRow[] {
   return parsePatientBulkCsv(text).rows;
 }
 
+function buildActivationLink(activationCode: string): string {
+  const base = process.env.REACT_APP_PATIENT_APP_URL || 'anixi://activate';
+  if (base.startsWith('http')) {
+    const url = new URL(base.endsWith('/') ? base : `${base}/`);
+    url.searchParams.set('code', activationCode);
+    return url.toString();
+  }
+  return `${base}?code=${encodeURIComponent(activationCode)}`;
+}
+
 export async function importPracticePatientsBulk(opts: {
   doctorId: string;
   practiceId: string;
@@ -148,46 +263,65 @@ export async function importPracticePatientsBulk(opts: {
   rows: BulkPatientRow[];
   sendAppInvites: boolean;
 }): Promise<BulkPatientResult[]> {
-  const results: BulkPatientResult[] = [];
+  if (!isDjangoApiEnabled()) {
+    return opts.rows.map((row) => ({
+      displayName: row.displayName,
+      email: row.email,
+      success: false,
+      error: 'Django API not configured',
+    }));
+  }
 
-  for (const row of opts.rows) {
-    if (!opts.sendAppInvites || !row.email?.trim()) {
-      results.push({
-        displayName: row.displayName,
-        email: row.email,
-        success: false,
-        error: 'Email is required for patient login provisioning.',
-      });
-      continue;
-    }
+  try {
+    const payload = opts.rows.map((row) => ({
+      name: row.displayName,
+      email: row.email?.trim() || '',
+      phone: row.phoneNumber || '',
+      dateOfBirth: row.dateOfBirth || '',
+      mrn: row.mrn || '',
+      chartId: row.chartId || row.patientExternalId || '',
+      practiceId: opts.practiceId,
+      notes: [
+        row.gender ? `Gender: ${row.gender}` : '',
+        row.chartId ? `Chart ID: ${row.chartId}` : '',
+        row.patientExternalId ? `External ID: ${row.patientExternalId}` : '',
+        row.mrn ? `MRN: ${row.mrn}` : '',
+      ]
+        .filter(Boolean)
+        .join(' | '),
+    }));
 
-    try {
-      const created = await addPatientManually(
-        opts.doctorId,
-        {
+    const imported = await djangoImportRoster(payload, opts.practiceId);
+    const importedByName = new Map(imported.rows.map((r) => [r.displayName.toLowerCase(), r]));
+
+    return opts.rows.map((row) => {
+      const match = importedByName.get(row.displayName.toLowerCase());
+      if (!match) {
+        return {
           displayName: row.displayName,
-          email: row.email.trim(),
-          phoneNumber: row.phoneNumber,
-          practiceId: opts.practiceId,
-        },
-        { sendInvite: true, inviteEmail: row.email.trim() }
-      );
-      results.push({
+          email: row.email,
+          success: false,
+          error: 'Row was skipped during import (missing required fields)',
+        };
+      }
+
+      const hasEmail = !!row.email?.trim();
+      return {
         displayName: row.displayName,
         email: row.email,
         success: true,
-        patientId: created.patientId,
-        inviteQueued: created.inviteQueued,
-      });
-    } catch (err) {
-      results.push({
-        displayName: row.displayName,
-        email: row.email,
-        success: false,
-        error: err instanceof Error ? err.message : 'Import failed',
-      });
-    }
+        patientId: match.patientId,
+        inviteQueued: hasEmail && opts.sendAppInvites,
+        activationCode: match.activationCode,
+        activationLink: buildActivationLink(match.activationCode),
+      };
+    });
+  } catch (err) {
+    return opts.rows.map((row) => ({
+      displayName: row.displayName,
+      email: row.email,
+      success: false,
+      error: err instanceof Error ? err.message : 'Import failed',
+    }));
   }
-
-  return results;
 }

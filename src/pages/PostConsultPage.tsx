@@ -28,6 +28,18 @@ import {
 } from '../utils/teleconsult';
 import { sendPatientDownloadInvite } from '../services/patientManagementService';
 import { COMMON_ICD10_CODES, isValidNappiCode } from '../lib/southAfrica';
+import { useAskAnixi } from '../context/AskAnixiContext';
+import {
+  listPublishedPharmacies,
+  sendPrescriptionToPharmacy,
+} from '../services/pharmacyService';
+import type { Pharmacy } from '../types';
+import {
+  AYAH_SCRIBE_ACTION_ID,
+  AYAH_SCRIBE_TITLE,
+} from '../services/consultScribeService';
+import { scribeNoteFromAction } from '../lib/consultScribeNote';
+import { AyahScribeSummaryCard } from '../components/teleconsult/AyahScribeSummaryCard';
 
 type DocumentMode = 'scan' | 'upload';
 
@@ -101,6 +113,10 @@ const doctor = user?.role === 'doctor' ? user : null;
   const [isSendingInvite, setIsSendingInvite] = useState(false);
   const [teleconsultConsentChecked, setTeleconsultConsentChecked] = useState(false);
   const [isSavingTeleconsultConsent, setIsSavingTeleconsultConsent] = useState(false);
+  const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
+  const [selectedPharmacyId, setSelectedPharmacyId] = useState('');
+  const [sendingToPharmacy, setSendingToPharmacy] = useState(false);
+  const { openAskAnixi, subscribeDraftApproved } = useAskAnixi();
 
   useEffect(() => {
     if (!toast.visible) return;
@@ -109,6 +125,10 @@ const doctor = user?.role === 'doctor' ? user : null;
     }, 3500);
     return () => clearTimeout(timer);
   }, [toast.visible]);
+
+  useEffect(() => {
+    void listPublishedPharmacies().then(setPharmacies).catch(() => setPharmacies([]));
+  }, []);
 
   useEffect(() => {
     const loadAppointment = async () => {
@@ -130,7 +150,14 @@ const doctor = user?.role === 'doctor' ? user : null;
               a.type === 'post_consult_note' &&
               (a.id === 'call_notes' || a.title === 'Call notes')
           );
-          setNoteValue(existingCallNote?.content || '');
+          const scribeNote = (direct.postConsultActions ?? []).find(
+            (a) =>
+              a.type === 'post_consult_note' &&
+              (a.id === AYAH_SCRIBE_ACTION_ID ||
+                a.title === AYAH_SCRIBE_TITLE ||
+                a.metadata?.source === 'ayah_scribe'),
+          );
+          setNoteValue(scribeNote?.content || existingCallNote?.content || '');
           return;
         }
 
@@ -147,7 +174,14 @@ const doctor = user?.role === 'doctor' ? user : null;
             a.type === 'post_consult_note' &&
             (a.id === 'call_notes' || a.title === 'Call notes')
         );
-        setNoteValue(existingCallNote?.content || '');
+        const scribeNote = (found.postConsultActions ?? []).find(
+          (a) =>
+            a.type === 'post_consult_note' &&
+            (a.id === AYAH_SCRIBE_ACTION_ID ||
+              a.title === AYAH_SCRIBE_TITLE ||
+              a.metadata?.source === 'ayah_scribe'),
+        );
+        setNoteValue(scribeNote?.content || existingCallNote?.content || '');
       } catch {
         setError('Failed to load this appointment.');
       } finally {
@@ -189,6 +223,23 @@ const doctor = user?.role === 'doctor' ? user : null;
     );
   }, [appointment?.postConsultActions]);
 
+  const ayahScribeNote = useMemo(() => {
+    const actions = appointment?.postConsultActions ?? [];
+    return actions.find(
+      (action) =>
+        action.type === 'post_consult_note' &&
+        (action.id === AYAH_SCRIBE_ACTION_ID ||
+          action.title === AYAH_SCRIBE_TITLE ||
+          action.metadata?.source === 'ayah_scribe') &&
+        action.content.trim().length > 0,
+    );
+  }, [appointment?.postConsultActions]);
+
+  const ayahScribeParsed = useMemo(
+    () => (ayahScribeNote ? scribeNoteFromAction(ayahScribeNote) : null),
+    [ayahScribeNote],
+  );
+
   const latestPrescriptionDraft = useMemo(() => {
     const actions = appointment?.postConsultActions ?? [];
     return actions
@@ -202,6 +253,90 @@ const doctor = user?.role === 'doctor' ? user : null;
       .filter((action) => action.type === 'doctor_letter_draft' && action.content.trim().length > 0)
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
   }, [appointment?.postConsultActions]);
+
+  useEffect(() => {
+    return subscribeDraftApproved((resolved) => {
+      if (resolved.type !== 'clinical_note') return;
+      if (resolved.appointmentId && resolved.appointmentId !== appointmentId) return;
+
+      const payload = resolved.payload;
+      const parts = [
+        payload.subjective ? `S: ${String(payload.subjective)}` : null,
+        payload.objective ? `O: ${String(payload.objective)}` : null,
+        payload.assessment ? `A: ${String(payload.assessment)}` : null,
+        payload.plan ? `P: ${String(payload.plan)}` : null,
+      ].filter(Boolean);
+      const text = parts.length ? parts.join('\n') : resolved.preview;
+      if (!text.trim()) return;
+
+      setNoteValue(text);
+      setToast({
+        visible: true,
+        message: 'Clinical note draft applied, review and save when ready.',
+        type: 'success',
+      });
+    });
+  }, [appointmentId, subscribeDraftApproved]);
+
+  const handleOpenSuggestIcd = () => {
+    if (!appointment) return;
+    const snippet = [noteValue, prescriptionDraft].filter((part) => part.trim()).join('\n');
+    openAskAnixi({
+      autoSend: true,
+      context: {
+        patientId: appointment.patientId,
+        appointmentId: appointment.id,
+        patientName: appointment.patientName,
+      },
+      prompt: `Suggest ICD-10 billing codes for ${appointment.patientName}'s visit using suggest-billing-codes. Context:\n${snippet || '(no note or prescription text yet)'}`,
+    });
+  };
+
+  const handleOpenDraftNote = () => {
+    if (!appointment) return;
+    openAskAnixi({
+      autoSend: true,
+      context: {
+        patientId: appointment.patientId,
+        appointmentId: appointment.id,
+        patientName: appointment.patientName,
+      },
+      prompt: noteValue.trim()
+        ? `Draft a SOAP clinical note for ${appointment.patientName} using draft-clinical-note. Base it on this working text:\n${noteValue.trim()}`
+        : `Help me draft a SOAP clinical note for ${appointment.patientName} using draft-clinical-note. Ask me for visit details if you need them.`,
+    });
+  };
+
+  const handleSendToPharmacy = async () => {
+    if (!appointment || !user?.id) return;
+    const content = (prescriptionDraft || latestPrescriptionDraft?.content || '').trim();
+    if (!content) {
+      setToast({ visible: true, message: 'Save a prescription first.', type: 'error' });
+      return;
+    }
+    const pharmacy = pharmacies.find((p) => p.id === selectedPharmacyId);
+    if (!pharmacy) {
+      setToast({ visible: true, message: 'Select a pharmacy.', type: 'error' });
+      return;
+    }
+    setSendingToPharmacy(true);
+    try {
+      await sendPrescriptionToPharmacy({
+        postConsultActionId: latestPrescriptionDraft?.id,
+        patientId: appointment.patientId,
+        appointmentId: appointment.id,
+        pharmacyEmail: pharmacy.email,
+        pharmacyName: pharmacy.name,
+        pharmacyId: pharmacy.id,
+        prescriptionText: content,
+      });
+      setToast({ visible: true, message: `Prescription sent to ${pharmacy.name}.`, type: 'success' });
+    } catch {
+      setToast({ visible: true, message: 'Failed to send to pharmacy.', type: 'error' });
+    } finally {
+      setSendingToPharmacy(false);
+    }
+  };
 
   useEffect(() => {
     if (latestPrescriptionDraft) {
@@ -1436,6 +1571,14 @@ const doctor = user?.role === 'doctor' ? user : null;
                 )}
               </div>
               <div className="px-5 pb-5">
+                {ayahScribeParsed ? (
+                  <div className="mt-2">
+                    <AyahScribeSummaryCard
+                      note={ayahScribeParsed}
+                      onApply={() => setNoteValue(ayahScribeParsed.fullText)}
+                    />
+                  </div>
+                ) : null}
                 <textarea
                   value={noteValue}
                   onChange={(e) => setNoteValue(e.target.value)}
@@ -1443,7 +1586,7 @@ const doctor = user?.role === 'doctor' ? user : null;
                   placeholder="Chief complaint, findings, assessment, plan…"
                   className="mt-2 w-full rounded-lg border border-[#e1e7ef] bg-[#f8fafc] px-3.5 py-3 text-sm leading-relaxed text-[#344256] outline-none transition focus:border-anixi-green focus:ring-2 focus:ring-anixi-green/20"
                 />
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap items-center gap-3">
                   <button
                     type="button"
                     onClick={() => void saveNote()}
@@ -1452,6 +1595,13 @@ const doctor = user?.role === 'doctor' ? user : null;
                   >
                     <Save className="h-3.5 w-3.5" />
                     {isSavingNote ? 'Saving…' : 'Save clinical note'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenDraftNote}
+                    className="inline-flex h-10 items-center justify-center rounded-lg border border-[#e1e7ef] bg-white px-4 text-sm font-semibold text-[#427160] transition hover:border-[#427160]"
+                  >
+                    Draft with Ayah
                   </button>
                 </div>
               </div>
@@ -1639,7 +1789,7 @@ const doctor = user?.role === 'doctor' ? user : null;
               </div>
               {whatsappSoon && (
                 <div className="mt-3 inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
-                  WhatsApp visit — coming soon
+                  WhatsApp visit, coming soon
                 </div>
               )}
             </div>
@@ -1666,6 +1816,34 @@ const doctor = user?.role === 'doctor' ? user : null;
                   <Eye className="h-4 w-4" />
                   View prescription
                 </button>
+                {pharmacies.length > 0 ? (
+                  <div className="mt-4 space-y-2 border-t border-[#eef2f6] pt-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#65758b]">
+                      Send to pharmacy
+                    </p>
+                    <select
+                      value={selectedPharmacyId}
+                      onChange={(e) => setSelectedPharmacyId(e.target.value)}
+                      className="w-full rounded-lg border border-[#e1e7ef] px-3 py-2 text-sm"
+                    >
+                      <option value="">Select pharmacy</option>
+                      {pharmacies.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                          {p.city ? ` · ${p.city}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={sendingToPharmacy || !selectedPharmacyId}
+                      onClick={() => void handleSendToPharmacy()}
+                      className="rounded-lg bg-[#1a4d4d] px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                    >
+                      {sendingToPharmacy ? 'Sending…' : 'Send to pharmacy'}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             )}
           </>
@@ -1779,7 +1957,16 @@ const doctor = user?.role === 'doctor' ? user : null;
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ICD-10 code</label>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label className="block text-sm font-medium text-gray-700">ICD-10 code</label>
+                    <button
+                      type="button"
+                      onClick={handleOpenSuggestIcd}
+                      className="text-xs font-semibold text-anixi-green hover:underline"
+                    >
+                      Suggest with Ayah
+                    </button>
+                  </div>
                   <select
                     value={icd10Code}
                     onChange={(e) => setIcd10Code(e.target.value)}

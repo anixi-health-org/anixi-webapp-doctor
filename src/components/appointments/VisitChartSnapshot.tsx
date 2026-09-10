@@ -418,7 +418,7 @@ export const VisitPatientBriefing: React.FC<VisitPatientBriefingProps> = ({
                   This month adherence
                 </p>
                 <p className="mt-2 text-2xl font-bold text-[#0E2340]">
-                  {adherencePct != null ? `${adherencePct}%` : '—'}
+                  {adherencePct != null ? `${adherencePct}%` : '-'}
                 </p>
                 <p className="mt-1 text-xs text-[#65758b]">
                   {adherenceTaken} taken · {adherenceMissed} missed · {adherencePending} pending

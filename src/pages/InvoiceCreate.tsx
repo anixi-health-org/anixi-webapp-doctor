@@ -25,6 +25,7 @@ const InvoiceCreate: React.FC = () => {
   );
   const [saving, setSaving] = useState(false);
   const [patientId, setPatientId] = useState<string>('');
+  const [practiceId, setPracticeId] = useState<string>('');
   const [patientName, setPatientName] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +74,7 @@ const InvoiceCreate: React.FC = () => {
 
     try {
       const opts = {
-        ...invoiceOptionsFromDoctor(doctor, appointmentId),
+        ...invoiceOptionsFromDoctor(doctor, appointmentId, practiceId || undefined),
         bankDetailsNote: bankDetailsNote.trim() || undefined,
         diagnosisCodes: icd10Code ? [icd10Code] : undefined,
       };
@@ -116,6 +117,7 @@ const InvoiceCreate: React.FC = () => {
         if (apt) {
           setPatientId(apt.patientId || '');
           setPatientName(apt.patientName);
+          setPracticeId(apt.practiceId || '');
         }
       } catch {
         // Appointment load failure is handled by empty patient fields on save

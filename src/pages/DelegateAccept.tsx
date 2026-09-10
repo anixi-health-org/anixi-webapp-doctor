@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { auth } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { acceptDelegateInvitation } from '../services/permissions/practicePermissionsService';
 
@@ -23,10 +22,9 @@ export const DelegateAccept: React.FC = () => {
     const run = async () => {
       setStatus('accepting');
       try {
-        const authEmail = auth.currentUser?.email ?? user.email;
         await acceptDelegateInvitation(doctorId, delegateId, {
           uid: user.id,
-          email: authEmail,
+          email: user.email,
           displayName: user.displayName,
         });
         await refreshPracticeSession();

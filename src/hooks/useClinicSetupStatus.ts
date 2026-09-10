@@ -50,6 +50,8 @@ export function useClinicSetupStatus(practiceId: string | undefined): ClinicSetu
         blocks.some((b) => b.active !== false && clinicianIds.has(b.doctorId))
       );
       setAppointmentCount(appointments.length);
+    } catch (error) {
+      console.warn('[useClinicSetupStatus] failed to load clinic setup', error);
     } finally {
       setLoading(false);
     }

@@ -13,6 +13,9 @@ export type PracticeRole =
     | 'owner'
     | 'practice_manager'
     | 'doctor'
+    | 'nurse'
+    | 'allied_health'
+    | 'locum'
     | 'receptionist'
     | 'billing_clerk'
     | 'delegate';
@@ -44,6 +47,8 @@ export interface PracticeMember {
     isClinician?: boolean;
     invitedBy?: string;
     invitedAt?: Date;
+    /** Locum contracts, membership auto-expires after this date (client-enforced). */
+    memberExpiresAt?: Date;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -56,6 +61,16 @@ export interface PracticeLocation {
     name: string;
     address?: string;
     type: 'clinic' | 'hospital' | 'virtual' | 'other';
+}
+
+/** Physical or virtual room within a clinic location. */
+export interface PracticeRoom {
+    id: string;
+    name: string;
+    locationId?: string;
+    type: 'consult' | 'procedure' | 'virtual' | 'other';
+    capacity?: number;
+    active?: boolean;
 }
 
 export type ConsultType =
@@ -71,7 +86,7 @@ export type ConsultType =
  * bookableBlocks remain weekly time windows; these settings supply duration/buffer.
  */
 export interface ConsultTypeSetting {
-    /** Stable id — same as ConsultType for built-in types. */
+    /** Stable id, same as ConsultType for built-in types. */
     id: ConsultType;
     type: ConsultType;
     name: string;
@@ -93,10 +108,171 @@ export interface Practice {
     /** BHF practice number at organisation level */
     bhfPracticeNumber?: string;
     locations: PracticeLocation[];
+    /** Consult / procedure rooms for front-desk scheduling */
+    rooms?: PracticeRoom[];
     /** Legacy enabled-type allow-list. Prefer consultTypeSettings when present. */
     consultTypes: ConsultType[];
     /** Authoritative appointment-type config (duration/buffer/enabled). Optional for legacy. */
     consultTypeSettings?: ConsultTypeSetting[];
+    /** Patient-facing clinic listing (marketplace / browse) */
+    publicListing?: PublicClinicListingSettings;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface PublicClinicListingSettings {
+    published: boolean;
+    slug?: string;
+    tagline?: string;
+    description?: string;
+    heroImageUrl?: string;
+    city?: string;
+    province?: string;
+    services?: string[];
+    acceptsMedicalAid?: boolean;
+}
+
+export interface PublicClinicListing {
+    id: string;
+    name: string;
+    slug: string;
+    tagline?: string;
+    description?: string;
+    city?: string;
+    province?: string;
+    services?: string[];
+    acceptsMedicalAid?: boolean;
+    heroImageUrl?: string;
+    bhfPracticeNumber?: string;
+}
+
+export type ClinicAuditAction =
+    | 'member.invited'
+    | 'member.role_changed'
+    | 'member.removed'
+    | 'queue.arrival_updated'
+    | 'queue.room_assigned'
+    | 'settings.updated'
+    | 'claim.submitted'
+    | 'invoice.paid';
+
+export interface ClinicAuditLogEntry {
+    id: string;
+    practiceId: string;
+    action: ClinicAuditAction;
+    actorUid: string;
+    actorName?: string;
+    targetType?: string;
+    targetId?: string;
+    summary: string;
+    metadata?: Record<string, unknown>;
+    createdAt: Date;
+}
+
+/** Wellness marketplace partner categories */
+export type WellnessCategory =
+    | 'nutrition'
+    | 'fitness'
+    | 'mental_health'
+    | 'meal_plan'
+    | 'home_care'
+    | 'other';
+
+export interface WellnessProvider {
+    id: string;
+    name: string;
+    category: WellnessCategory;
+    tagline?: string;
+    description?: string;
+    email?: string;
+    phone?: string;
+    city?: string;
+    province?: string;
+    services?: string[];
+    published: boolean;
+    verified?: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface Pharmacy {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    province?: string;
+    deliveryAvailable?: boolean;
+    published: boolean;
+    verified?: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export type PharmacyOrderStatus = 'sent' | 'acknowledged' | 'ready' | 'collected' | 'cancelled';
+
+export interface PharmacyOrder {
+    id: string;
+    doctorId: string;
+    patientId: string;
+    appointmentId: string;
+    postConsultActionId?: string;
+    pharmacyId?: string;
+    pharmacyEmail: string;
+    pharmacyName: string;
+    status: PharmacyOrderStatus;
+    prescriptionText: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CopilotIcd10Suggestion {
+    code: string;
+    description: string;
+    confidence: number;
+}
+
+export interface PreVisitSummary {
+    patientId: string;
+    headline: string;
+    bullets: string[];
+    medications: string[];
+    lastVitals?: string;
+    generatedAt: string;
+}
+
+export type EmployerMemberRole = 'owner' | 'hr_admin';
+
+export interface EmployerOrg {
+    id: string;
+    name: string;
+    industry?: string;
+    city?: string;
+    province?: string;
+    ownerId: string;
+    employeeTarget?: number;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface EmployerMember {
+    uid: string;
+    employerId: string;
+    role: EmployerMemberRole;
+    email?: string;
+    displayName?: string;
+    status: 'active' | 'inactive';
+    createdAt: Date;
+}
+
+export interface EmployeeEnrollment {
+    id: string;
+    employerId: string;
+    email: string;
+    displayName?: string;
+    patientId?: string;
+    status: 'invited' | 'active' | 'inactive';
     createdAt: Date;
     updatedAt: Date;
 }
@@ -217,9 +393,9 @@ export interface Doctor extends User {
     phoneNumber?: string;
     officeAddress?: string;
     practiceName?: string;
-    /** Practice letterhead — invoices only */
+    /** Practice letterhead, invoices only */
     logoUrl?: string;
-    /** Doctor headshot — header and patient-facing cards */
+    /** Doctor headshot, header and patient-facing cards */
     profileImageUrl?: string;
     /** ISO 3166-1 alpha-2 - set at registration */
     country?: string;
@@ -246,15 +422,32 @@ export interface Doctor extends User {
     practiceNumberBhf?: string;
     vatNumber?: string;
 }
+export type CaregiverTier = 'family' | 'professional';
+
+export interface ProfessionalCaregiverProfile {
+    organization?: string;
+    services?: string[];
+    bio?: string;
+    city?: string;
+    province?: string;
+    /** Listed in patient marketplace when true */
+    published?: boolean;
+    verified?: boolean;
+}
+
 export interface Caregiver extends User {
     role: 'caregiver';
     phoneNumber?: string;
+    caregiverTier?: CaregiverTier;
+    professionalCaregiverProfile?: ProfessionalCaregiverProfile;
 }
 /** Clinic staff (receptionist, billing, practice manager) - portal access via practice membership */
 export interface StaffUser extends User {
     role: 'staff';
     phoneNumber?: string;
     primaryPracticeId?: string;
+    /** B2B employer wellness programme */
+    primaryEmployerId?: string;
 }
 export type ProfessionalUser = Doctor | Caregiver | StaffUser;
 export interface Patient extends User {
@@ -269,9 +462,13 @@ export interface Patient extends User {
     assignedDoctorId?: string;
     /** Practice/clinic this patient belongs to (shared pool) */
     practiceId?: string;
-    /** From patient medical profile (mobile app) — read-only for doctors */
+    /** Roster import status from clinic CSV upload */
+    rosterStatus?: string;
+    /** Code for patient to activate a pre-created clinic account in the app */
+    activationCode?: string;
+    /** From patient medical profile (mobile app), read-only for doctors */
     bloodGroup?: string;
-    /** From patient medical profile (mobile app) — read-only for doctors */
+    /** From patient medical profile (mobile app), read-only for doctors */
     weight?: string;
     emergencyContact?: {
         name: string;
@@ -389,6 +586,8 @@ export interface Appointment {
     time: string;
     /** Canonical visit instant (UTC). Display strings are derived from this. */
     scheduledAt?: Date;
+    /** Practice IANA timezone — calendar day and clock use this, not the browser TZ. */
+    timezone?: string;
     /** Patient edit scope: moving the slot vs correcting visit type only. */
     editScope?: 'slot' | 'visit_type';
     /** When false, a patient edit does not need doctor re-confirmation. */
@@ -415,7 +614,13 @@ export interface Appointment {
     endAt?: Date;
     /** Visit length in minutes when endAt is not stored. */
     durationMinutes?: number;
-    requestedByRole?: 'patient' | 'doctor' | 'delegate';
+    requestedByRole?: 'patient' | 'doctor' | 'delegate' | 'caregiver';
+    /** Front-desk arrival workflow */
+    arrivalStatus?: 'expected' | 'checked_in' | 'with_doctor' | 'completed';
+    checkedInAt?: Date;
+    checkedInBy?: string;
+    /** Assigned consult room (practice rooms[]) */
+    roomId?: string;
     overrideApplied?: boolean;
     conflictMeta?: { softBlockId?: string; appointmentId?: string; reason?: string };
     createdAt: Date;
@@ -486,6 +691,7 @@ export interface Invoice {
     id: string;
     doctorId: string;
     patientId: string;
+    practiceId?: string;
     appointmentId: string;
     invoiceNumber: string;
     status: InvoiceStatus;
@@ -506,6 +712,38 @@ export interface Invoice {
     paidAt?: Date;
     notes?: string;
     lastResentAt?: Date;
+    paymentProvider?: 'payfast' | 'ozow' | 'eft';
+    paymentStatus?: 'pending' | 'completed' | 'failed';
+    externalTransactionId?: string;
+    paidViaGatewayAt?: Date;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export type MedicalAidClaimStatus =
+    | 'draft'
+    | 'submitted'
+    | 'accepted'
+    | 'rejected'
+    | 'paid';
+
+export interface MedicalAidClaim {
+    id: string;
+    practiceId?: string;
+    doctorId: string;
+    patientId: string;
+    invoiceId: string;
+    invoiceNumber?: string;
+    status: MedicalAidClaimStatus;
+    medicalSchemeName?: string;
+    memberNumber?: string;
+    planOption?: string;
+    diagnosisCodes?: string[];
+    lineItems: InvoiceLineItem[];
+    totalAmount: number;
+    currency?: string;
+    notes?: string;
+    submittedAt?: Date;
     createdAt: Date;
     updatedAt: Date;
 }

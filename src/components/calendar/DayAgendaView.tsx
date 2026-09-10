@@ -180,7 +180,7 @@ export const DayAgendaView: React.FC<DayAgendaViewProps> = ({
           {windows.length > 0 ? (
             <p className="mt-1 text-[12px] font-medium text-anixi-green">
               Open {formatMinutesClock(windows[0].start)}
-              {windows.length > 1 ? `–${formatMinutesClock(windows[windows.length - 1].end)}` : `–${formatMinutesClock(windows[0].end)}`}
+              {windows.length > 1 ? `-${formatMinutesClock(windows[windows.length - 1].end)}` : `-${formatMinutesClock(windows[0].end)}`}
             </p>
           ) : (
             <p className="mt-1 text-[12px] text-[#94a3b8]">No clinic hours set for this day</p>

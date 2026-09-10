@@ -48,7 +48,7 @@ export const MedicationAdherenceDailyDetails: React.FC<MedicationAdherenceDailyD
 
         setDailyData({
           date: selectedDate,
-          mood: data.mood,
+          mood: data.mood as DailyAdherenceData['mood'],
           medications: data.medications,
           vitals: data.vitals,
         });

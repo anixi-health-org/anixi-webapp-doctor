@@ -1,38 +1,47 @@
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { djangoGetPatientChart, djangoListPatientPanel } from './djangoApiService';
+
 export interface PatientInfo {
   id: string;
   displayName?: string;
   email?: string;
   role?: string;
 }
+
 export const fetchPatientInfo = async (patientId: string): Promise<PatientInfo | null> => {
   if (!patientId) return null;
   try {
-    const patientDocRef = doc(db, 'patients', patientId);
-    const patientDoc = await getDoc(patientDocRef);
-    if (!patientDoc.exists()) {
-      ;
-      return null;
+    const chart = await djangoGetPatientChart(patientId);
+    if (chart) {
+      return {
+        id: patientId,
+        displayName: String(chart.displayName ?? chart.name ?? 'Patient'),
+        email: chart.email ? String(chart.email) : undefined,
+        role: 'patient',
+      };
     }
-    const data = patientDoc.data();
+
+    const panel = await djangoListPatientPanel();
+    const row = panel.find((p) => p.patientId === patientId);
+    if (!row) return null;
+
     return {
-      id: patientDoc.id,
-      displayName: data.displayName || data.name || 'Patient',
-      email: data.email,
-      role: data.role,
+      id: patientId,
+      displayName: row.displayName || 'Patient',
+      email: row.email,
+      role: 'patient',
     };
-  } catch (error) {
-    ;
+  } catch {
     return null;
   }
 };
+
 export const getPatientDisplayName = async (patientId: string): Promise<string> => {
   const patient = await fetchPatientInfo(patientId);
   return patient?.displayName || `Patient ${patientId.substring(0, 8)}`;
 };
+
 export const fetchMultiplePatients = async (
-  patientIds: string[]
+  patientIds: string[],
 ): Promise<Map<string, PatientInfo>> => {
   const patientMap = new Map<string, PatientInfo>();
   const uniqueIds = Array.from(new Set(patientIds));

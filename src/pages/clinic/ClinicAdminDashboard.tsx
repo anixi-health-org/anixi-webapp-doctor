@@ -52,6 +52,8 @@ export const ClinicAdminDashboard: React.FC = () => {
         setTeamCount(members.filter((m: { status: string }) => m.status === 'active').length);
         setPendingInvites(invites.length);
         setPatientCount(patients.length);
+      } catch (error) {
+        console.warn('[ClinicAdminDashboard] failed to load clinic stats', error);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -67,25 +69,25 @@ export const ClinicAdminDashboard: React.FC = () => {
   const statCards = [
     {
       label: 'Team members',
-      value: loading ? '—' : teamCount,
+      value: loading ? '-' : teamCount,
       hint: 'Active staff',
       icon: UserGroupIcon,
     },
     {
       label: 'Pending invites',
-      value: loading ? '—' : pendingInvites,
+      value: loading ? '-' : pendingInvites,
       hint: 'Awaiting signup',
       icon: UserPlusIcon,
     },
     {
       label: 'Patients',
-      value: loading ? '—' : patientCount,
+      value: loading ? '-' : patientCount,
       hint: 'On clinic roster',
       icon: UsersIcon,
     },
     {
       label: 'Today',
-      value: loading ? '—' : stats?.appointmentsToday ?? 0,
+      value: loading ? '-' : stats?.appointmentsToday ?? 0,
       hint: 'Appointments',
       icon: ClockIcon,
     },

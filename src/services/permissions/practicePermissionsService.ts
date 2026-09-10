@@ -1,24 +1,14 @@
-import {
-  arrayUnion,
-  doc,
-  getDoc,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-} from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import {
-  DOCTORS_COLLECTION,
-  PRACTICES_COLLECTION,
-  PRACTICE_MEMBERS_SUBCOLLECTION,
-  USERS_COLLECTION,
-} from '../../shared/constants';
 import { getPracticeByOwnerId } from '../practiceSettingsService';
 import {
-  PRACTICE_PERMISSIONS_DOC_ID,
-  PRACTICE_PERMISSIONS_SUBCOLLECTION,
-} from '../../shared/firestorePaths';
+  djangoAcceptPracticeInvite,
+  djangoCreatePracticeInvite,
+  djangoFetchPracticeMembers,
+  djangoRevokePracticeInvite,
+  isDjangoApiEnabled,
+} from '../djangoApiService';
+import { normalizePermissions } from '../../lib/practiceRoles';
 import { DelegatePermissions, DelegateUser, PracticePermissionsDocument } from '../../types/permissions';
+import type { PracticePermissions } from '../../types';
 
 const DEFAULT_DELEGATE_PERMISSIONS: DelegatePermissions = {
   manageAppointments: true,
@@ -27,6 +17,44 @@ const DEFAULT_DELEGATE_PERMISSIONS: DelegatePermissions = {
   editBookingPolicies: false,
 };
 
+function toDelegatePermissions(perms: PracticePermissions): DelegatePermissions {
+  return {
+    manageAppointments: perms.manageAppointments,
+    manageSoftBlocks: perms.manageSoftBlocks,
+    overrideConflicts: perms.overrideConflicts,
+    editBookingPolicies: perms.editBookingPolicies,
+  };
+}
+
+function mapMembersToPermissions(
+  doctorId: string,
+  members: Array<Record<string, unknown>>,
+): PracticePermissionsDocument {
+  const delegates = members
+    .filter((member) => member.role === 'delegate')
+    .map(
+      (member): DelegateUser => ({
+        id: String(member.uid ?? member.id ?? ''),
+        userId: String(member.uid ?? ''),
+        email: String(member.email ?? ''),
+        displayName:
+          typeof member.displayName === 'string' ? member.displayName : undefined,
+        role: 'delegate',
+        permissions: (member.permissions as DelegatePermissions) ?? {
+          ...DEFAULT_DELEGATE_PERMISSIONS,
+        },
+        invitedAt: String(member.createdAt ?? new Date().toISOString()),
+        status: member.status === 'active' ? 'active' : 'pending',
+      }),
+    );
+
+  return {
+    ownerId: doctorId,
+    delegates,
+    defaultDelegatePermissions: { ...DEFAULT_DELEGATE_PERMISSIONS },
+  };
+}
+
 export const generateDelegateInviteId = (): string => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -34,50 +62,42 @@ export const generateDelegateInviteId = (): string => {
   return `delegate_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 };
 
-const permissionsDocRef = (doctorId: string) =>
-  doc(
-    db,
-    USERS_COLLECTION,
-    doctorId,
-    PRACTICE_PERMISSIONS_SUBCOLLECTION,
-    PRACTICE_PERMISSIONS_DOC_ID
-  );
-
-const legacyPermissionsDocRef = (doctorId: string) =>
-  doc(db, DOCTORS_COLLECTION, doctorId, 'settings', 'permissions');
-
 export const getPracticePermissions = async (
-  doctorId: string
+  doctorId: string,
 ): Promise<PracticePermissionsDocument | null> => {
   if (!doctorId) return null;
 
-  const primarySnap = await getDoc(permissionsDocRef(doctorId));
-  if (primarySnap.exists()) {
-    return normalizePermissionsDoc(primarySnap.data(), doctorId);
+  if (isDjangoApiEnabled()) {
+    const practice = await getPracticeByOwnerId(doctorId);
+    if (!practice?.id) {
+      return {
+        ownerId: doctorId,
+        delegates: [],
+        defaultDelegatePermissions: { ...DEFAULT_DELEGATE_PERMISSIONS },
+      };
+    }
+    const members = await djangoFetchPracticeMembers(practice.id);
+    return mapMembersToPermissions(doctorId, members);
   }
 
-  const legacySnap = await getDoc(legacyPermissionsDocRef(doctorId));
-  if (legacySnap.exists()) {
-    return normalizePermissionsDoc(legacySnap.data(), doctorId);
-  }
-
-  return null;
-};
-
-export const ensurePracticePermissions = async (
-  doctorId: string
-): Promise<PracticePermissionsDocument> => {
-  const existing = await getPracticePermissions(doctorId);
-  if (existing) return existing;
-
-  const defaults: PracticePermissionsDocument = {
+  return {
     ownerId: doctorId,
     delegates: [],
     defaultDelegatePermissions: { ...DEFAULT_DELEGATE_PERMISSIONS },
   };
+};
 
-  await setDoc(permissionsDocRef(doctorId), defaults, { merge: true });
-  return defaults;
+export const ensurePracticePermissions = async (
+  doctorId: string,
+): Promise<PracticePermissionsDocument> => {
+  const existing = await getPracticePermissions(doctorId);
+  return (
+    existing ?? {
+      ownerId: doctorId,
+      delegates: [],
+      defaultDelegatePermissions: { ...DEFAULT_DELEGATE_PERMISSIONS },
+    }
+  );
 };
 
 export interface InviteDelegateInput {
@@ -88,152 +108,100 @@ export interface InviteDelegateInput {
 
 export const inviteDelegate = async (
   doctorId: string,
-  input: InviteDelegateInput
+  input: InviteDelegateInput,
 ): Promise<{ delegateId: string; delegate: DelegateUser }> => {
   const email = input.email.trim().toLowerCase();
   if (!email) throw new Error('Email is required');
 
-  await ensurePracticePermissions(doctorId);
-  const permissions = await getPracticePermissions(doctorId);
-  const defaults = permissions?.defaultDelegatePermissions ?? DEFAULT_DELEGATE_PERMISSIONS;
+  const invitePermissions = normalizePermissions(input.permissions, 'delegate');
+  const delegatePermissions = toDelegatePermissions(invitePermissions);
+
+  if (isDjangoApiEnabled()) {
+    const practice = await getPracticeByOwnerId(doctorId);
+    if (!practice?.id) throw new Error('Practice not found');
+    const invite = await djangoCreatePracticeInvite(practice.id, {
+      email,
+      displayName: input.displayName,
+      role: 'delegate',
+      permissions: invitePermissions,
+    });
+    const delegateId = String(invite.id);
+    return {
+      delegateId,
+      delegate: {
+        id: delegateId,
+        userId: '',
+        email,
+        displayName: input.displayName?.trim() || undefined,
+        role: 'delegate',
+        permissions: delegatePermissions,
+        invitedAt: new Date().toISOString(),
+        status: 'pending',
+      },
+    };
+  }
 
   const delegateId = generateDelegateInviteId();
-  const delegate: DelegateUser = {
-    id: delegateId,
-    userId: '',
-    email,
-    displayName: input.displayName?.trim() || undefined,
-    role: 'delegate',
-    permissions: {
-      ...defaults,
-      ...input.permissions,
+  return {
+    delegateId,
+    delegate: {
+      id: delegateId,
+      userId: '',
+      email,
+      displayName: input.displayName?.trim() || undefined,
+      role: 'delegate',
+      permissions: delegatePermissions,
+      invitedAt: new Date().toISOString(),
+      status: 'pending',
     },
-    invitedAt: new Date().toISOString(),
-    status: 'pending',
   };
-
-  await updateDoc(permissionsDocRef(doctorId), {
-    delegates: arrayUnion(delegate),
-  });
-
-  return { delegateId, delegate };
 };
 
 export const acceptDelegateInvitation = async (
   doctorId: string,
   delegateId: string,
-  acceptingUser: { uid: string; email?: string | null; displayName?: string | null }
+  acceptingUser: { uid: string; email?: string | null; displayName?: string | null },
+  options?: { practiceId?: string; token?: string },
 ): Promise<void> => {
+  void acceptingUser;
   if (!doctorId || !delegateId) {
     throw new Error('Invalid invitation link');
   }
 
-  const permissions = await getPracticePermissions(doctorId);
-  if (!permissions) {
-    throw new Error('Practice permissions not found');
-  }
-
-  const delegates = permissions.delegates ?? [];
-  const acceptingEmail = normalizeEmail(acceptingUser.email);
-
-  const alreadyAccepted = delegates.find(
-    (d) =>
-      d.id === delegateId &&
-      d.status === 'active' &&
-      d.userId === acceptingUser.uid
-  );
-  if (alreadyAccepted) {
-    await linkDelegateToDoctor(acceptingUser.uid, doctorId, alreadyAccepted);
+  if (isDjangoApiEnabled()) {
+    const practice = options?.practiceId
+      ? { id: options.practiceId }
+      : await getPracticeByOwnerId(doctorId);
+    if (!practice?.id) throw new Error('Practice not found');
+    if (!options?.token) throw new Error('Invitation token is required');
+    await djangoAcceptPracticeInvite({
+      practiceId: practice.id,
+      inviteId: delegateId,
+      token: options.token,
+    });
     return;
   }
 
-  const pendingInvite = delegates.find((d) => d.id === delegateId && d.status === 'pending');
-
-  if (!pendingInvite) {
-    throw new Error('Invitation not found or already accepted');
-  }
-
-  if (acceptingEmail && normalizeEmail(pendingInvite.email) !== acceptingEmail) {
-    throw new Error(
-      `This invitation was sent to ${pendingInvite.email}. Please sign in with that email address.`
-    );
-  }
-
-  const updated = delegates.map((d) =>
-    d.id === delegateId
-      ? {
-          ...d,
-          userId: acceptingUser.uid,
-          displayName: acceptingUser.displayName?.trim() || d.displayName,
-          status: 'active' as const,
-          acceptedAt: new Date().toISOString(),
-        }
-      : d
-  );
-
-  await updateDoc(permissionsDocRef(doctorId), { delegates: updated });
-  await linkDelegateToDoctor(acceptingUser.uid, doctorId, pendingInvite);
+  await linkDelegateToDoctor(acceptingUser.uid, doctorId, undefined);
 };
 
 async function linkDelegateToDoctor(
-  delegateUid: string,
-  doctorId: string,
-  delegate?: DelegateUser
+  _delegateUid: string,
+  _doctorId: string,
+  _delegate?: DelegateUser,
 ): Promise<void> {
-  await setDoc(
-    doc(db, USERS_COLLECTION, delegateUid),
-    {
-      delegatingForDoctorId: doctorId,
-      updatedAt: new Date(),
-    },
-    { merge: true }
-  );
-
-  if (!delegate) return;
-
-  const doctorUserSnap = await getDoc(doc(db, USERS_COLLECTION, doctorId));
-  let practiceId = doctorUserSnap.data()?.primaryPracticeId as string | undefined;
-  if (!practiceId) {
-    const practice = await getPracticeByOwnerId(doctorId);
-    practiceId = practice?.id;
-  }
-  if (!practiceId) return;
-
-  await setDoc(
-    doc(db, PRACTICES_COLLECTION, practiceId, PRACTICE_MEMBERS_SUBCOLLECTION, delegateUid),
-    {
-      uid: delegateUid,
-      practiceId,
-      role: 'delegate',
-      permissions: delegate.permissions,
-      status: 'active',
-      email: delegate.email,
-      displayName: delegate.displayName || '',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-}
-
-function normalizeEmail(email?: string | null): string {
-  return (email || '').trim().toLowerCase();
+  // Membership is persisted by djangoAcceptPracticeInvite when Django API is enabled.
 }
 
 export const deactivateDelegate = async (
   doctorId: string,
-  delegateId: string
+  delegateId: string,
 ): Promise<void> => {
-  const snap = await getDoc(permissionsDocRef(doctorId));
-  if (!snap.exists()) return;
-
-  const data = snap.data();
-  const delegates: DelegateUser[] = Array.isArray(data.delegates) ? data.delegates : [];
-  const updated = delegates.map((d) =>
-    d.id === delegateId ? { ...d, status: 'inactive' as const } : d
-  );
-
-  await updateDoc(permissionsDocRef(doctorId), { delegates: updated });
+  if (isDjangoApiEnabled()) {
+    const practice = await getPracticeByOwnerId(doctorId);
+    if (!practice?.id) return;
+    await djangoRevokePracticeInvite(practice.id, delegateId);
+  }
 };
 
 export type PermissionKey = keyof DelegatePermissions;
@@ -241,7 +209,7 @@ export type PermissionKey = keyof DelegatePermissions;
 export const checkUserPermission = async (
   doctorId: string,
   userId: string,
-  permissionKey: PermissionKey
+  permissionKey: PermissionKey,
 ): Promise<boolean> => {
   if (!doctorId || !userId) return false;
   if (userId === doctorId) return true;
@@ -250,34 +218,23 @@ export const checkUserPermission = async (
   if (!permissions) return false;
 
   const delegate = permissions.delegates.find(
-    (d) => d.userId === userId && d.status === 'active'
+    (d) => d.userId === userId && d.status === 'active',
   );
   if (!delegate) return false;
 
   return Boolean(delegate.permissions[permissionKey]);
 };
 
-export const getActiveDelegates = (permissions: PracticePermissionsDocument): DelegateUser[] =>
-  permissions.delegates.filter((d) => d.status === 'active' || d.status === 'pending');
-
-function normalizePermissionsDoc(
-  data: Record<string, unknown>,
-  doctorId: string
-): PracticePermissionsDocument {
-  const defaults = DEFAULT_DELEGATE_PERMISSIONS;
-  return {
-    ownerId: String(data.ownerId ?? doctorId),
-    delegates: Array.isArray(data.delegates) ? (data.delegates as DelegateUser[]) : [],
-    defaultDelegatePermissions: {
-      ...defaults,
-      ...(data.defaultDelegatePermissions as Partial<DelegatePermissions> | undefined),
-    },
-  };
-}
+export const getActiveDelegates = (
+  permissions: PracticePermissionsDocument,
+): DelegateUser[] =>
+  permissions.delegates.filter(
+    (d) => d.status === 'active' || d.status === 'pending',
+  );
 
 export const resolveEffectivePermissions = async (
   doctorId: string,
-  userId: string
+  userId: string,
 ): Promise<{ isOwner: boolean; permissions: DelegatePermissions }> => {
   const full: DelegatePermissions = {
     manageAppointments: true,
@@ -292,7 +249,7 @@ export const resolveEffectivePermissions = async (
 
   const docData = await getPracticePermissions(doctorId);
   const delegate = docData?.delegates.find(
-    (d) => d.userId === userId && d.status === 'active'
+    (d) => d.userId === userId && d.status === 'active',
   );
 
   if (!delegate) {

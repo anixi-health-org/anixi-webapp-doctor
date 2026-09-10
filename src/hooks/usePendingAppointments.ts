@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { listenToDoctorAppointments } from '../services/appointmentService';
 import type { Appointment } from '../types';
 
-/** Visits waiting on the doctor — matches the "Pending" stat on the Appointments page. */
+/** Visits waiting on the doctor, matches the "Pending" stat on the Appointments page. */
 const awaitsDoctorAction = (appointment: Appointment): boolean =>
   appointment.status === 'pending' || appointment.status === 'rescheduled';
 

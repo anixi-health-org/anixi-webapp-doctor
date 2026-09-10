@@ -1,14 +1,71 @@
-import React, { useState } from 'react';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import React, { useMemo, useState } from 'react';
+import { EyeIcon, EyeSlashIcon, LockClosedIcon } from '@heroicons/react/24/outline';
+import { useLocation } from 'react-router-dom';
+import { PageHeader, PageShell } from '../components/page-layout';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import { useAuth } from '../hooks/useAuth';
-import { auth } from '../lib/firebase';
-import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+import { djangoChangePassword } from '../services/djangoApiService';
+
+const MIN_PASSWORD_LENGTH = 10;
+
+type PasswordFieldProps = {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  show: boolean;
+  onToggleShow: () => void;
+  placeholder: string;
+  autoComplete: string;
+};
+
+const PasswordField: React.FC<PasswordFieldProps> = ({
+  id,
+  label,
+  value,
+  onChange,
+  show,
+  onToggleShow,
+  placeholder,
+  autoComplete,
+}) => (
+  <div>
+    <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-[#344256]">
+      {label}
+    </label>
+    <div className="relative">
+      <input
+        id={id}
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        autoComplete={autoComplete}
+        placeholder={placeholder}
+        className="w-full rounded-xl border border-[#e1e7ef] bg-white px-3 py-2.5 pr-11 text-sm text-[#344256] outline-none transition focus:border-[#1a4d4d] focus:ring-2 focus:ring-[#1a4d4d]/15"
+      />
+      <button
+        type="button"
+        onClick={onToggleShow}
+        className="absolute inset-y-0 right-0 flex items-center px-3 text-[#65758b] hover:text-[#344256]"
+        aria-label={show ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+      >
+        {show ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+      </button>
+    </div>
+  </div>
+);
 
 const ChangePassword: React.FC = () => {
   const { user } = useAuth();
+  const location = useLocation();
   const { navigateBack } = useNavigateWithFallback();
-  const homePath = user?.role === 'caregiver' ? '/caregiver' : '/dashboard';
+
+  const cancelPath = useMemo(() => {
+    if (location.pathname.startsWith('/clinic')) return '/clinic';
+    if (location.pathname.startsWith('/caregiver')) return '/caregiver';
+    return user?.role === 'caregiver' ? '/caregiver' : '/dashboard';
+  }, [location.pathname, user?.role]);
+
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -24,146 +81,122 @@ const ChangePassword: React.FC = () => {
     setError(null);
     setSuccess(null);
 
+    if (!currentPassword.trim()) {
+      setError('Please enter your current password.');
+      return;
+    }
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setError(`New password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+      return;
+    }
     if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.');
+      setError('New password and confirmation do not match.');
       return;
     }
-    if (newPassword.length < 6) {
-      setError('Password must be at least 6 characters.');
-      return;
-    }
-
-    const user = auth.currentUser;
-    if (!user) {
-      setError('User not authenticated.');
+    if (currentPassword === newPassword) {
+      setError('New password must be different from your current password.');
       return;
     }
 
     setLoading(true);
     try {
-      try {
-        await updatePassword(user, newPassword);
-      } catch (err: any) {
-
-        if (err.code === 'auth/requires-recent-login') {
-          const email = user.email;
-          if (!email) throw new Error('No email available for re-authentication.');
-          if (!currentPassword) throw new Error('Please provide your current password to re-authenticate.');
-          const credential = EmailAuthProvider.credential(email, currentPassword);
-          await reauthenticateWithCredential(user, credential);
-          await updatePassword(user, newPassword);
-        } else {
-          throw err;
-        }
-      }
-
-      setSuccess('Password updated successfully.');
+      await djangoChangePassword(currentPassword, newPassword);
+      setSuccess('Your password has been updated successfully.');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      setTimeout(() => setSuccess(null), 5000);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to update password.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to update password.');
     } finally {
       setLoading(false);
     }
   };
 
+  const isClinicAdmin = location.pathname.startsWith('/clinic');
+
   return (
-    <div className="min-h-screen bg-anixi-beige px-4 py-6">
-      <div className="max-w-md mx-auto">
-        <h2 className="text-xl font-bold mb-2">Change Password</h2>
-        <p className="text-sm text-gray-600 mb-4">Enter your current password, then the new password.</p>
+    <PageShell maxWidth={isClinicAdmin ? 'wide' : 'default'} className="py-6 sm:py-8">
+      <PageHeader
+        title="Change password"
+        description="Enter your current password, then choose a new one. You will stay signed in on this device."
+      />
 
-        <div className="bg-anixi-card rounded-lg border border-gray-200 p-6 shadow-sm">
+      <div className="max-w-xl">
+        <div className="rounded-2xl border border-[#e1e7ef] bg-white p-6 shadow-sm sm:p-8">
+          <div className="mb-6 flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1a4d4d]/10 text-[#1a4d4d]">
+              <LockClosedIcon className="h-5 w-5" strokeWidth={1.75} />
+            </span>
+            <p className="text-sm leading-relaxed text-[#65758b]">
+              Use at least {MIN_PASSWORD_LENGTH} characters. Avoid reusing passwords from other sites.
+            </p>
+          </div>
 
-        {error && <div className="mb-3 text-sm text-red-800 bg-anixi-card border border-red-100 rounded px-3 py-2">{error}</div>}
-        {success && <div className="mb-3 text-sm text-green-800 bg-anixi-card border border-green-100 rounded px-3 py-2">{success}</div>}
+          {error ? (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              {error}
+            </div>
+          ) : null}
 
-        <form onSubmit={handleSubmit}>
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Current password</label>
-            <div className="relative">
-              <input
-                type={showCurrent ? 'text' : 'password'}
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded px-3 py-2"
-                placeholder="Current password"
-              />
+          {success ? (
+            <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              {success}
+            </div>
+          ) : null}
+
+          <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+            <PasswordField
+              id="current-password"
+              label="Current password"
+              value={currentPassword}
+              onChange={setCurrentPassword}
+              show={showCurrent}
+              onToggleShow={() => setShowCurrent((s) => !s)}
+              placeholder="Enter current password"
+              autoComplete="current-password"
+            />
+            <PasswordField
+              id="new-password"
+              label="New password"
+              value={newPassword}
+              onChange={setNewPassword}
+              show={showNew}
+              onToggleShow={() => setShowNew((s) => !s)}
+              placeholder="Enter new password"
+              autoComplete="new-password"
+            />
+            <PasswordField
+              id="confirm-password"
+              label="Confirm new password"
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+              show={showConfirm}
+              onToggleShow={() => setShowConfirm((s) => !s)}
+              placeholder="Re-enter new password"
+              autoComplete="new-password"
+            />
+
+            <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
-                onClick={() => setShowCurrent((s) => !s)}
-                className="absolute inset-y-0 right-2 flex items-center px-2 text-gray-500"
-                aria-label={showCurrent ? 'Hide current password' : 'Show current password'}
+                onClick={() => navigateBack(cancelPath)}
+                disabled={loading}
+                className="rounded-full border border-[#e1e7ef] bg-white px-5 py-2.5 text-sm font-semibold text-[#344256] transition hover:bg-[#fafcfb] disabled:opacity-60"
               >
-                {showCurrent ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                Cancel
               </button>
-            </div>
-          </div>
-
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">New password</label>
-            <div className="relative">
-              <input
-                type={showNew ? 'text' : 'password'}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded px-3 py-2"
-                placeholder="New password"
-              />
               <button
-                type="button"
-                onClick={() => setShowNew((s) => !s)}
-                className="absolute inset-y-0 right-2 flex items-center px-2 text-gray-500"
-                aria-label={showNew ? 'Hide new password' : 'Show new password'}
+                type="submit"
+                disabled={loading}
+                className="rounded-full bg-[#1a4d4d] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {showNew ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                {loading ? 'Updating…' : 'Change password'}
               </button>
             </div>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Confirm password</label>
-            <div className="relative">
-              <input
-                type={showConfirm ? 'text' : 'password'}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded px-3 py-2"
-                placeholder="Confirm password"
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirm((s) => !s)}
-                className="absolute inset-y-0 right-2 flex items-center px-2 text-gray-500"
-                aria-label={showConfirm ? 'Hide confirm password' : 'Show confirm password'}
-              >
-                {showConfirm ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => navigateBack(homePath)}
-              className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-4 py-2 bg-anixi-green text-white rounded-md hover:bg-anixi-green/90 disabled:opacity-60"
-            >
-              {loading ? 'Updating…' : 'Change Password'}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
-    </div>
-  </div>
+    </PageShell>
   );
 };
 

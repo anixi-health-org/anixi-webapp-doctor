@@ -31,6 +31,65 @@ describe('usePermissions', () => {
     expect(result.current.can('overrideConflicts')).toBe(false);
   });
 
+  it('grants all permissions to owners even when the API returns empty permissions', () => {
+    mockedUseAuth.mockReturnValue({
+      user: null,
+      practiceSession: {
+        practice: {
+          id: 'practice-1',
+          name: 'Solo Practice',
+          timezone: 'Africa/Johannesburg',
+          ownerId: 'owner-1',
+          locations: [],
+          consultTypes: ['initial'],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        member: {
+          uid: 'owner-1',
+          practiceId: 'practice-1',
+          role: 'owner',
+          permissions: {
+            manageAppointments: false,
+            manageSoftBlocks: false,
+            overrideConflicts: false,
+            editBookingPolicies: false,
+            managePatients: false,
+            manageMembers: false,
+            viewAllDoctors: false,
+            viewBilling: false,
+          },
+          status: 'active',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        bookingPolicy: {
+          practiceId: 'practice-1',
+          patientCancellationWindowHours: 24,
+          doctorCancellationWindowHours: 1,
+          noShowPolicyText: '',
+          confirmationMode: 'doctor_confirms',
+          updatedAt: new Date(),
+        },
+      },
+      joinIntent: null,
+      clinicOnboardingComplete: false,
+      isLoading: false,
+      isAuthenticated: true,
+      login: jest.fn(),
+      logout: jest.fn(),
+      refreshPracticeSession: jest.fn(),
+      refreshUser: jest.fn(),
+    });
+
+    const { result } = renderHook(() => usePermissions());
+
+    expect(result.current.isOwner).toBe(true);
+    expect(result.current.can('manageSoftBlocks')).toBe(true);
+    expect(result.current.can('manageAppointments')).toBe(true);
+    expect(result.current.can('editBookingPolicies')).toBe(true);
+  });
+
   it('enforces member-level permission flags', () => {
     mockedUseAuth.mockReturnValue({
       user: null,
