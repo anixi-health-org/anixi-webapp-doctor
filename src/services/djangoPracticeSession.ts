@@ -2,17 +2,6 @@ import type { BookingPolicy, Practice, PracticeMember, PracticePermissions, Prac
 import { normalizePermissions } from '../lib/practiceRoles';
 import { djangoGetPracticeSession, djangoResolveMediaUrl } from './djangoApiService';
 
-const EMPTY_PERMISSIONS: PracticePermissions = {
-  manageAppointments: false,
-  manageSoftBlocks: false,
-  overrideConflicts: false,
-  editBookingPolicies: false,
-  managePatients: false,
-  manageMembers: false,
-  viewAllDoctors: false,
-  viewBilling: false,
-};
-
 function parsePractice(raw: Record<string, unknown>): Practice {
   return {
     id: String(raw.id),
