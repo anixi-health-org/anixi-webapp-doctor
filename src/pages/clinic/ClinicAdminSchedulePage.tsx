@@ -1,12 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  Calendar,
-  CheckCircle2,
-  ClipboardList,
-  Clock,
-  XCircle,
-} from 'lucide-react';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useClinicSetupStatus } from '../../hooks/useClinicSetupStatus';
@@ -19,17 +12,86 @@ import { memberDisplayLabel } from '../../services/practiceMemberService';
 import type { Appointment, BookableBlock, PracticeMember } from '../../types';
 import { AppointmentList } from '../../components/appointments/AppointmentList';
 import { CreateAppointmentModal } from '../../components/appointments/CreateAppointmentModal';
-import { AppointmentDetails } from '../../components/appointments/AppointmentDetails';
+import { ClinicAppointmentSheet } from '../../components/clinic/ClinicAppointmentSheet';
 import { ClinicAdminSetupBanner } from '../../components/clinic/ClinicAdminSetupBanner';
 import { DayAgendaView } from '../../components/calendar/DayAgendaView';
-import { toDateKey, parseDateKey } from '../../components/calendar/calendarDateUtils';
+import { toDateKey, parseDateKey, asDate } from '../../components/calendar/calendarDateUtils';
 import { Toast, AppointmentsPageSkeleton } from '../../components/ui';
 import { PageHeader, PageShell } from '../../components/page-layout';
-import { TabPill } from '../../components/ui/TabPill';
+import { TabBar, TabPill } from '../../components/ui/TabPill';
 import clsx from 'clsx';
 
-type FilterType = Appointment['status'] | 'All' | 'Today';
-type ViewTab = 'list' | 'calendar';
+type ViewTab = 'list' | 'day';
+type ListFilter = 'upcoming' | 'today' | 'confirmed' | 'pending' | 'completed' | 'cancelled';
+
+const LIST_FILTERS: { key: ListFilter; label: string }[] = [
+  { key: 'upcoming', label: 'Upcoming' },
+  { key: 'today', label: 'Today' },
+  { key: 'confirmed', label: 'Confirmed' },
+  { key: 'pending', label: 'Waiting' },
+  { key: 'completed', label: 'Completed' },
+  { key: 'cancelled', label: 'Cancelled' },
+];
+
+function appointmentDayKey(appointment: Appointment): string {
+  const day =
+    asDate(appointment.startAt) || asDate(appointment.date) || asDate(appointment.scheduledAt);
+  return day ? toDateKey(day) : '';
+}
+
+function isClosedVisit(status: Appointment['status']): boolean {
+  return (
+    status === 'cancelled' ||
+    status === 'auto_cancelled' ||
+    status === 'completed' ||
+    status === 'no_show'
+  );
+}
+
+function filterScheduleAppointments(
+  appointments: Appointment[],
+  filter: ListFilter,
+  todayKey: string,
+): Appointment[] {
+  switch (filter) {
+    case 'today':
+      return appointments.filter(
+        (appointment) =>
+          appointmentDayKey(appointment) === todayKey &&
+          appointment.status !== 'cancelled' &&
+          appointment.status !== 'auto_cancelled',
+      );
+    case 'upcoming':
+      return appointments.filter((appointment) => !isClosedVisit(appointment.status));
+    case 'confirmed':
+      return appointments.filter((appointment) => appointment.status === 'confirmed');
+    case 'pending':
+      return appointments.filter(
+        (appointment) => appointment.status === 'pending' || appointment.status === 'rescheduled',
+      );
+    case 'completed':
+      return appointments.filter((appointment) => appointment.status === 'completed');
+    case 'cancelled':
+      return appointments.filter(
+        (appointment) =>
+          appointment.status === 'cancelled' ||
+          appointment.status === 'auto_cancelled' ||
+          appointment.status === 'no_show',
+      );
+    default:
+      return appointments;
+  }
+}
+
+function sortByStart(appointments: Appointment[]): Appointment[] {
+  return [...appointments].sort((left, right) => {
+    const leftTime =
+      asDate(left.startAt) || asDate(left.scheduledAt) || asDate(left.date);
+    const rightTime =
+      asDate(right.startAt) || asDate(right.scheduledAt) || asDate(right.date);
+    return (leftTime?.getTime() || 0) - (rightTime?.getTime() || 0);
+  });
+}
 
 export const ClinicAdminSchedulePage: React.FC = () => {
   const { practiceSession } = useAuth();
@@ -45,11 +107,11 @@ export const ClinicAdminSchedulePage: React.FC = () => {
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('all');
   const [bookableBlocks, setBookableBlocks] = useState<BookableBlock[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState<Appointment['status'] | 'All'>('All');
-  const [selectedCard, setSelectedCard] = useState<FilterType | null>('Today');
+  const [listFilter, setListFilter] = useState<ListFilter>('upcoming');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [selectedDate, setSelectedDate] = useState(toDateKey(new Date()));
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
     visible: false,
     message: '',
@@ -59,6 +121,7 @@ export const ClinicAdminSchedulePage: React.FC = () => {
   const reload = useCallback(async () => {
     if (!practiceId) return;
     setIsLoading(true);
+    setLoadError(null);
     try {
       const [appts, cliniciansList, blocks] = await Promise.all([
         getPracticeWideAppointments(practiceId),
@@ -68,6 +131,8 @@ export const ClinicAdminSchedulePage: React.FC = () => {
       setAppointments(appts);
       setClinicians(cliniciansList);
       setBookableBlocks(blocks);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Could not load the clinic schedule.');
     } finally {
       setIsLoading(false);
     }
@@ -85,90 +150,62 @@ export const ClinicAdminSchedulePage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [toast.visible]);
 
-  const doctorFiltered = useMemo(() => {
-    if (selectedDoctorId === 'all') return appointments;
-    return appointments.filter((a) => a.doctorId === selectedDoctorId);
-  }, [appointments, selectedDoctorId]);
-
-  const stats = {
-    total: doctorFiltered.filter((a) => a.status !== 'cancelled' && a.status !== 'completed').length,
-    confirmed: doctorFiltered.filter((a) => a.status === 'confirmed').length,
-    pending: doctorFiltered.filter((a) => a.status === 'pending').length,
-    completed: doctorFiltered.filter((a) => a.status === 'completed').length,
-    cancelled: doctorFiltered.filter((a) => a.status === 'cancelled').length,
-    today: doctorFiltered.filter((a) => {
-      const today = new Date();
-      const appointmentDate = new Date(a.date);
-      return (
-        appointmentDate.getFullYear() === today.getFullYear() &&
-        appointmentDate.getMonth() === today.getMonth() &&
-        appointmentDate.getDate() === today.getDate() &&
-        a.status !== 'cancelled' &&
-        a.status !== 'completed'
-      );
-    }).length,
-  };
-
-  const handleCardClick = (card: FilterType) => {
-    setSelectedCard(card);
-    if (card === 'All') {
-      setFilterStatus('All');
-    } else if (card === 'Today') {
-      setFilterStatus('All');
-    } else {
-      setFilterStatus(card as Appointment['status']);
+  useEffect(() => {
+    if (selectedDoctorId === 'all') return;
+    if (!clinicians.some((clinician) => clinician.uid === selectedDoctorId)) {
+      setSelectedDoctorId('all');
     }
-  };
+  }, [clinicians, selectedDoctorId]);
 
-  const baseAppointments =
-    selectedCard === 'cancelled' || selectedCard === 'completed'
-      ? doctorFiltered
-      : doctorFiltered.filter((a) => a.status !== 'cancelled' && a.status !== 'completed');
+  const clinicianIds = useMemo(
+    () => new Set(clinicians.map((clinician) => clinician.uid)),
+    [clinicians],
+  );
 
-  let filteredAppointments: Appointment[] = [];
-  if (selectedCard === 'Today') {
-    const today = new Date();
-    filteredAppointments = baseAppointments.filter((a) => {
-      const appointmentDate = new Date(a.date);
-      return (
-        appointmentDate.getFullYear() === today.getFullYear() &&
-        appointmentDate.getMonth() === today.getMonth() &&
-        appointmentDate.getDate() === today.getDate()
-      );
-    });
-  } else if (selectedCard && selectedCard !== 'All') {
-    filteredAppointments = baseAppointments.filter((a) => a.status === selectedCard);
-  } else if (selectedCard === 'All') {
-    filteredAppointments = baseAppointments;
-  } else if ((filterStatus as string) === 'All') {
-    filteredAppointments = baseAppointments;
-  } else {
-    filteredAppointments = baseAppointments.filter((a) => a.status === filterStatus);
-  }
+  const clinicianAppointments = useMemo(
+    () => appointments.filter((appointment) => clinicianIds.has(appointment.doctorId)),
+    [appointments, clinicianIds],
+  );
+
+  const doctorFiltered = useMemo(() => {
+    if (selectedDoctorId === 'all') return clinicianAppointments;
+    return clinicianAppointments.filter((appointment) => appointment.doctorId === selectedDoctorId);
+  }, [clinicianAppointments, selectedDoctorId]);
+
+  const todayKey = toDateKey(new Date());
+  const filteredAppointments = useMemo(
+    () => sortByStart(filterScheduleAppointments(doctorFiltered, listFilter, todayKey)),
+    [doctorFiltered, listFilter, todayKey],
+  );
+  const filterCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        LIST_FILTERS.map((item) => [
+          item.key,
+          filterScheduleAppointments(doctorFiltered, item.key, todayKey).length,
+        ]),
+      ) as Record<ListFilter, number>,
+    [doctorFiltered, todayKey],
+  );
 
   const calendarDay = useMemo(() => parseDateKey(selectedDate), [selectedDate]);
   const calendarDayAppointments = useMemo(
     () =>
-      doctorFiltered.filter((a) => {
-        const d = new Date(a.date);
-        return (
-          d.getFullYear() === calendarDay.getFullYear() &&
-          d.getMonth() === calendarDay.getMonth() &&
-          d.getDate() === calendarDay.getDate()
-        );
-      }),
-    [doctorFiltered, calendarDay]
+      sortByStart(
+        doctorFiltered.filter((appointment) => appointmentDayKey(appointment) === toDateKey(calendarDay)),
+      ),
+    [doctorFiltered, calendarDay],
   );
 
   const doctorHoursForDay = useMemo(() => {
     const dow = calendarDay.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
     const relevantDoctorIds =
-      selectedDoctorId === 'all' ? clinicians.map((c) => c.uid) : [selectedDoctorId];
+      selectedDoctorId === 'all' ? clinicians.map((clinician) => clinician.uid) : [selectedDoctorId];
     return bookableBlocks.filter(
-      (b) =>
-        b.dayOfWeek === dow &&
-        b.active !== false &&
-        relevantDoctorIds.includes(b.doctorId)
+      (block) =>
+        block.dayOfWeek === dow &&
+        block.active !== false &&
+        relevantDoctorIds.includes(block.doctorId),
     );
   }, [bookableBlocks, calendarDay, clinicians, selectedDoctorId]);
 
@@ -179,29 +216,22 @@ export const ClinicAdminSchedulePage: React.FC = () => {
     const monday = new Date(base);
     monday.setDate(base.getDate() + mondayOffset);
     return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      return d;
+      const next = new Date(monday);
+      next.setDate(monday.getDate() + i);
+      return next;
     });
   }, [selectedDate]);
 
   const appointmentsOnDay = useCallback(
     (day: Date) =>
-      doctorFiltered.filter((a) => {
-        const d = new Date(a.date);
-        return (
-          d.getFullYear() === day.getFullYear() &&
-          d.getMonth() === day.getMonth() &&
-          d.getDate() === day.getDate()
-        );
-      }).length,
-    [doctorFiltered]
+      doctorFiltered.filter((appointment) => appointmentDayKey(appointment) === toDateKey(day)).length,
+    [doctorFiltered],
   );
 
   const doctorLabelById = useMemo(() => {
     const map = new Map<string, string>();
-    clinicians.forEach((c) => {
-      map.set(c.uid, memberDisplayLabel(c, practice?.ownerId));
+    clinicians.forEach((clinician) => {
+      map.set(clinician.uid, memberDisplayLabel(clinician, practice?.ownerId));
     });
     return map;
   }, [clinicians, practice?.ownerId]);
@@ -211,8 +241,18 @@ export const ClinicAdminSchedulePage: React.FC = () => {
     doctorLabelById.forEach((label, id) => {
       record[id] = label;
     });
+    clinicianAppointments.forEach((appointment) => {
+      if (appointment.doctorName && !record[appointment.doctorId]) {
+        record[appointment.doctorId] = appointment.doctorName;
+      }
+    });
     return record;
-  }, [doctorLabelById]);
+  }, [clinicianAppointments, doctorLabelById]);
+
+  const selectedClinicianName =
+    selectedDoctorId === 'all'
+      ? null
+      : doctorLabelById.get(selectedDoctorId) || 'this clinician';
 
   if (isLoading && appointments.length === 0) {
     return (
@@ -234,7 +274,7 @@ export const ClinicAdminSchedulePage: React.FC = () => {
 
       <PageHeader
         title="Schedule"
-        description="Book appointments and view calendars across your clinic's doctors."
+        description="See who is booked with your clinicians, then open a visit or add a new one."
         actions={
           canBook ? (
             <button
@@ -253,44 +293,51 @@ export const ClinicAdminSchedulePage: React.FC = () => {
         <ClinicAdminSetupBanner steps={setup.steps} className="mb-6" />
       )}
 
+      {loadError ? (
+        <p className="mb-6 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {loadError}
+        </p>
+      ) : null}
+
       {clinicians.length === 0 && !isLoading && (
         <div className="mb-6 rounded-2xl border border-[#e1e7ef] bg-white p-5">
-          <p className="text-sm font-semibold text-[#344256]">No doctors on the team yet</p>
+          <p className="text-sm font-semibold text-[#344256]">No clinicians on the team yet</p>
           <p className="mt-1 text-sm text-[#65758b]">
-            Invite doctors before you can book appointments or manage calendars.
+            Invite a doctor, nurse, or other clinician before you can book visits. Administrators and
+            reception staff do not appear here.
           </p>
           <Link
             to="/clinic/team"
             className="mt-3 inline-flex text-sm font-semibold text-anixi-green hover:underline"
           >
-            Go to Team & doctors →
+            Go to Team & doctors
           </Link>
         </div>
       )}
 
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex gap-2">
+      <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <TabBar>
           <TabPill active={viewTab === 'list'} onClick={() => setViewTab('list')}>
             List
           </TabPill>
-          <TabPill active={viewTab === 'calendar'} onClick={() => setViewTab('calendar')}>
-            Day calendar
+          <TabPill active={viewTab === 'day'} onClick={() => setViewTab('day')}>
+            Day view
           </TabPill>
-        </div>
+        </TabBar>
         <div className="flex items-center gap-2">
-          <label htmlFor="doctor-filter" className="text-sm font-medium text-[#65758b]">
-            Doctor
+          <label htmlFor="clinician-filter" className="text-sm font-medium text-[#65758b]">
+            Clinician
           </label>
           <select
-            id="doctor-filter"
+            id="clinician-filter"
             value={selectedDoctorId}
-            onChange={(e) => setSelectedDoctorId(e.target.value)}
-            className="rounded-lg border border-[#e1e7ef] px-3 py-2 text-sm"
+            onChange={(event) => setSelectedDoctorId(event.target.value)}
+            className="rounded-lg border border-[#e1e7ef] bg-white px-3 py-2 text-sm text-[#344256]"
           >
-            <option value="all">All doctors</option>
-            {clinicians.map((c) => (
-              <option key={c.uid} value={c.uid}>
-                {memberDisplayLabel(c, practice?.ownerId)}
+            <option value="all">All clinicians</option>
+            {clinicians.map((clinician) => (
+              <option key={clinician.uid} value={clinician.uid}>
+                {memberDisplayLabel(clinician, practice?.ownerId)}
               </option>
             ))}
           </select>
@@ -299,53 +346,48 @@ export const ClinicAdminSchedulePage: React.FC = () => {
 
       {viewTab === 'list' && (
         <>
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {[
-              { key: 'total' as const, label: 'Total', icon: ClipboardList, value: stats.total },
-              { key: 'confirmed' as const, label: 'Confirmed', icon: CheckCircle2, value: stats.confirmed },
-              { key: 'pending' as const, label: 'Pending', icon: Clock, value: stats.pending },
-              { key: 'completed' as const, label: 'Completed', icon: Clock, value: stats.completed },
-              { key: 'cancelled' as const, label: 'Cancelled', icon: XCircle, value: stats.cancelled },
-              { key: 'today' as const, label: 'Today', icon: Calendar, value: stats.today },
-            ].map(({ key, label, icon: Icon, value }) => (
+          <div className="mt-5 flex flex-wrap gap-2">
+            {LIST_FILTERS.map((item) => (
               <button
-                key={key}
+                key={item.key}
                 type="button"
-                onClick={() => handleCardClick(key === 'total' ? 'All' : key === 'today' ? 'Today' : key)}
-                className={`rounded-xl border bg-white p-4 text-left transition hover:border-anixi-green/40 ${
-                  selectedCard === (key === 'total' ? 'All' : key === 'today' ? 'Today' : key)
-                    ? 'border-anixi-green ring-1 ring-anixi-green/30'
-                    : 'border-[#e1e7ef]'
-                }`}
-              >
-                <Icon className="mb-2 h-5 w-5 text-[#8FA0B6]" />
-                <p className="text-2xl font-bold text-[#344256]">{value}</p>
-                <p className="text-xs text-[#65758b]">{label}</p>
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-6 flex flex-wrap gap-2">
-            {(['All', 'confirmed', 'pending', 'completed'] as const).map((status) => (
-              <button
-                key={status}
-                type="button"
-                onClick={() => {
-                  setFilterStatus(status);
-                  setSelectedCard(status === 'All' ? 'All' : status);
-                }}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium ${
-                  filterStatus === status
+                aria-pressed={listFilter === item.key}
+                onClick={() => setListFilter(item.key)}
+                className={clsx(
+                  'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition',
+                  listFilter === item.key
                     ? 'bg-anixi-green text-white'
-                    : 'bg-white text-[#65758b] border border-[#e1e7ef]'
-                }`}
+                    : 'border border-[#e1e7ef] bg-white text-[#65758b] hover:border-anixi-green/40 hover:text-[#344256]',
+                )}
               >
-                {status === 'All' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
+                {item.label}
+                <span
+                  className={clsx(
+                    'rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
+                    listFilter === item.key ? 'bg-white/15 text-white' : 'bg-[#f4f7f6] text-[#344256]',
+                  )}
+                >
+                  {filterCounts[item.key]}
+                </span>
               </button>
             ))}
           </div>
 
-          <div className="mt-6">
+          <p className="mt-4 text-sm text-[#65758b]">
+            {listFilter === 'upcoming'
+              ? selectedClinicianName
+                ? `Open visits with ${selectedClinicianName}.`
+                : 'Open visits across your clinicians.'
+              : listFilter === 'today'
+                ? selectedClinicianName
+                  ? `Today's diary for ${selectedClinicianName}.`
+                  : "Today's diary across your clinicians."
+                : `${LIST_FILTERS.find((item) => item.key === listFilter)?.label} visits${
+                    selectedClinicianName ? ` for ${selectedClinicianName}` : ''
+                  }.`}
+          </p>
+
+          <div className="mt-4">
             <AppointmentList
               appointments={filteredAppointments}
               pageSize={10}
@@ -358,13 +400,13 @@ export const ClinicAdminSchedulePage: React.FC = () => {
         </>
       )}
 
-      {viewTab === 'calendar' && (
+      {viewTab === 'day' && (
         <div className="mt-6 space-y-4">
           <div className="grid grid-cols-7 gap-2">
             {weekDays.map((day) => {
               const key = toDateKey(day);
               const isSelected = key === selectedDate;
-              const isToday = key === toDateKey(new Date());
+              const isToday = key === todayKey;
               const count = appointmentsOnDay(day);
               return (
                 <button
@@ -375,7 +417,7 @@ export const ClinicAdminSchedulePage: React.FC = () => {
                     'rounded-xl border px-2 py-3 text-center transition',
                     isSelected
                       ? 'border-anixi-green bg-anixi-green/10 ring-1 ring-anixi-green/30'
-                      : 'border-[#e1e7ef] bg-white hover:border-anixi-green/40'
+                      : 'border-[#e1e7ef] bg-white hover:border-anixi-green/40',
                   )}
                 >
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-[#8FA0B6]">
@@ -384,13 +426,15 @@ export const ClinicAdminSchedulePage: React.FC = () => {
                   <p
                     className={clsx(
                       'mt-1 text-lg font-bold',
-                      isToday ? 'text-anixi-green' : 'text-[#344256]'
+                      isToday ? 'text-anixi-green' : 'text-[#344256]',
                     )}
                   >
                     {day.getDate()}
                   </p>
                   {count > 0 && (
-                    <p className="mt-1 text-[10px] font-medium text-anixi-green">{count} appt</p>
+                    <p className="mt-1 text-[10px] font-medium text-anixi-green">
+                      {count} visit{count === 1 ? '' : 's'}
+                    </p>
                   )}
                 </button>
               );
@@ -398,59 +442,59 @@ export const ClinicAdminSchedulePage: React.FC = () => {
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
-          <div className="rounded-xl border border-[#e1e7ef] bg-white p-4">
-            <label className="mb-2 block text-sm font-medium text-[#344256]">Date</label>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full rounded-lg border border-[#e1e7ef] px-3 py-2 text-sm"
-            />
-            {doctorHoursForDay.length > 0 && (
-              <div className="mt-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#8FA0B6]">
-                  Clinic hours
+            <div className="rounded-xl border border-[#e1e7ef] bg-white p-4">
+              <label className="mb-2 block text-sm font-medium text-[#344256]">Date</label>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(event) => setSelectedDate(event.target.value)}
+                className="w-full rounded-lg border border-[#e1e7ef] px-3 py-2 text-sm"
+              />
+              {doctorHoursForDay.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#8FA0B6]">
+                    Clinic hours
+                  </p>
+                  <ul className="mt-2 space-y-1 text-sm text-[#65758b]">
+                    {doctorHoursForDay.map((block) => (
+                      <li key={block.id}>
+                        {selectedDoctorId === 'all' && (
+                          <span className="font-medium text-[#344256]">
+                            {doctorLabelById.get(block.doctorId) || 'Clinician'}:{' '}
+                          </span>
+                        )}
+                        {block.startTime}, {block.endTime}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <Link
+                to="/clinic/settings?tab=schedules"
+                className="mt-4 inline-block text-xs font-semibold text-anixi-green hover:underline"
+              >
+                Edit clinician hours
+              </Link>
+              {clinicians.length === 0 && (
+                <p className="mt-4 text-sm text-amber-700">
+                  Invite clinicians to manage their calendars from Clinic settings.
                 </p>
-                <ul className="mt-2 space-y-1 text-sm text-[#65758b]">
-                  {doctorHoursForDay.map((b) => (
-                    <li key={b.id}>
-                      {selectedDoctorId === 'all' && (
-                        <span className="font-medium text-[#344256]">
-                          {doctorLabelById.get(b.doctorId) || 'Doctor'}:{' '}
-                        </span>
-                      )}
-                      {b.startTime}, {b.endTime}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <Link
-              to="/clinic/settings?tab=schedules"
-              className="mt-4 inline-block text-xs font-semibold text-anixi-green hover:underline"
-            >
-              Edit doctor schedules →
-            </Link>
-            {clinicians.length === 0 && (
-              <p className="mt-4 text-sm text-amber-700">
-                Invite doctors to manage their calendars from Clinic settings.
-              </p>
-            )}
-          </div>
-          <DayAgendaView
-            dateLabel={calendarDay.toLocaleDateString('en-ZA', {
-              weekday: 'long',
-              day: 'numeric',
-              month: 'long',
-            })}
-            dateKey={toDateKey(calendarDay)}
-            appointments={calendarDayAppointments}
-            isLoading={isLoading}
-            onSelectAppointment={setSelectedAppointment}
-            onQuickAdd={canBook ? () => setShowCreateModal(true) : undefined}
-            showDoctor={selectedDoctorId === 'all'}
-            doctorLabels={doctorLabelsRecord}
-          />
+              )}
+            </div>
+            <DayAgendaView
+              dateLabel={calendarDay.toLocaleDateString('en-ZA', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              })}
+              dateKey={toDateKey(calendarDay)}
+              appointments={calendarDayAppointments}
+              isLoading={isLoading}
+              onSelectAppointment={setSelectedAppointment}
+              onQuickAdd={canBook ? () => setShowCreateModal(true) : undefined}
+              showDoctor={selectedDoctorId === 'all'}
+              doctorLabels={doctorLabelsRecord}
+            />
           </div>
         </div>
       )}
@@ -459,6 +503,7 @@ export const ClinicAdminSchedulePage: React.FC = () => {
         <CreateAppointmentModal
           isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}
+          prefillDate={selectedDate}
           onAppointmentCreated={(message) => {
             setShowCreateModal(false);
             void reload();
@@ -470,11 +515,13 @@ export const ClinicAdminSchedulePage: React.FC = () => {
       )}
 
       {selectedAppointment && (
-        <AppointmentDetails
+        <ClinicAppointmentSheet
           appointment={selectedAppointment}
-          onClose={() => {
+          onClose={() => setSelectedAppointment(null)}
+          onChanged={(message) => {
             setSelectedAppointment(null);
             void reload();
+            setToast({ visible: true, message, type: 'success' });
           }}
         />
       )}

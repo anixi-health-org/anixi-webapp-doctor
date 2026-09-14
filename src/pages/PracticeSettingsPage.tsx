@@ -155,6 +155,22 @@ const PracticeSettingsPage: React.FC = () => {
     );
   }
 
+  if (!practice && isClinicEmployedClinician) {
+    return (
+      <PageShell className="max-w-2xl pb-12">
+        <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">Clinic settings</h1>
+        <p className="mt-1 text-[13px] text-[#65758b]">
+          Practice settings for your account are owned by the clinic, not this doctor workspace.
+        </p>
+        <ClinicManagedNotice
+          practiceName={doctor?.practiceName}
+          surface="settings"
+          className="mt-5"
+        />
+      </PageShell>
+    );
+  }
+
   if (!practice) {
     return (
       <div className="mx-auto flex min-h-screen max-w-lg flex-col items-center justify-center px-4 py-12 text-center">
@@ -299,11 +315,11 @@ const PracticeSettingsPage: React.FC = () => {
       </div>
 
       {isClinicEmployedClinician && (
-        <ClinicManagedNotice practiceName={practice.name} className="mb-5" />
+        <ClinicManagedNotice practiceName={practice.name} surface="settings" className="mb-5" />
       )}
 
       {!isClinicEmployedClinician && activeTab === 'overview' && (
-        <LetterheadSetupBanner doctor={doctor} className="mb-5" />
+        <LetterheadSetupBanner doctor={doctor} practice={practice} className="mb-5" />
       )}
 
       <nav

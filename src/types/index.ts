@@ -107,6 +107,10 @@ export interface Practice {
     tradingName?: string;
     /** BHF practice number at organisation level */
     bhfPracticeNumber?: string;
+    /** Shared code patients use to activate via "Activate clinic account" */
+    clinicCode?: string;
+    /** Practice letterhead / invoice logo */
+    logoUrl?: string;
     locations: PracticeLocation[];
     /** Consult / procedure rooms for front-desk scheduling */
     rooms?: PracticeRoom[];
@@ -143,6 +147,7 @@ export interface PublicClinicListing {
     services?: string[];
     acceptsMedicalAid?: boolean;
     heroImageUrl?: string;
+    logoUrl?: string;
     bhfPracticeNumber?: string;
 }
 
@@ -523,7 +528,7 @@ export interface DailyLog {
     adherence?: AdherenceLog[];
     vitals?: VitalsLog;
 }
-export type PatientStatus = 'stable' | 'warning' | 'inactive';
+export type PatientStatus = 'stable' | 'warning' | 'inactive' | 'unknown';
 
 export interface AppointmentDocument {
     id: string;
@@ -577,6 +582,7 @@ export interface TeleconsultConsent {
 export interface Appointment {
     id: string;
     doctorId: string;
+    doctorName?: string;
     patientId: string;
     patientName: string;
     patientEmail: string;
@@ -690,7 +696,9 @@ export interface InvoiceLineItem {
 export interface Invoice {
     id: string;
     doctorId: string;
+    doctorName?: string;
     patientId: string;
+    patientName?: string;
     practiceId?: string;
     appointmentId: string;
     invoiceNumber: string;

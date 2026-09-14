@@ -11,6 +11,7 @@ import {
 } from '../hooks/useDoctorBriefingData';
 import { commandNeedsPatient, PRACTICE_COMMANDS, type AyahCommand } from '../lib/ayahCommands';
 import { formatAyahReply } from '../lib/formatAyahReply';
+import { clinicianGivenName, clinicianHeaderLabel } from '../lib/clinicianName';
 import { loadAyahPatientChart } from '../services/ayahPatientChart';
 import {
   formatAskAnixiError,
@@ -59,7 +60,7 @@ export const AyahPage: React.FC = () => {
   const contextRef = useRef(context);
   contextRef.current = context;
 
-  const firstName = user?.displayName?.split(' ')[0] || 'Doctor';
+  const firstName = clinicianGivenName(user?.displayName);
   const greeting =
     new Date().getHours() < 12
       ? 'Good morning'
@@ -339,14 +340,8 @@ export const AyahPage: React.FC = () => {
             reply += `\n❌ ${failed.length} failed: ${failed.slice(0, 3).map((f) => `${f.displayName}: ${f.error}`).join('; ')}`;
           }
           if (needsActivation.length) {
-            const codesPreview = needsActivation
-              .slice(0, 5)
-              .map((r) => `${r.displayName}: \`${r.activationCode}\``)
-              .join('\n');
-            reply += `\n\n📱 **${needsActivation.length} activation code${needsActivation.length !== 1 ? 's' : ''}** — patients should choose "Activate clinic account" in the app:\n${codesPreview}`;
-            if (needsActivation.length > 5) {
-              reply += `\n…and ${needsActivation.length - 5} more (see clinic setup import results).`;
-            }
+            const clinicCode = needsActivation[0]?.activationCode;
+            reply += `\n\nPatients activate in the Anixi app with clinic code \`${clinicCode}\`. They tap Activate clinic account, enter that code, and confirm their details.`;
           }
           void sendMessage(reply, { hideUser: true });
         } catch (err) {
@@ -445,7 +440,7 @@ export const AyahPage: React.FC = () => {
 
       <div className="border-b border-[#e1e7ef] bg-white px-4 py-3 lg:hidden">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#65758b]">
-          {greeting}, Dr. {firstName}
+          {greeting}, {clinicianHeaderLabel(user?.displayName)}
         </p>
         <div className="mt-2 flex gap-2 overflow-x-auto">
           <span className="rounded-full bg-[#eef4f1] px-3 py-1 text-xs font-medium text-[#427160]">

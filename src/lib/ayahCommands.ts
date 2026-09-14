@@ -40,7 +40,7 @@ export const PRACTICE_COMMANDS: AyahCommand[] = [
     shortLabel: 'My panel',
     hint: 'Full practice list',
     prompt:
-      'List every patient on my practice panel with roster status and conditions. Use list-practice-panel. Name them.',
+      'List every patient on my practice panel with name, account activation status, and recorded conditions only. Use list-practice-panel. Do not invent clinical status.',
   },
   {
     id: 'inbox',
@@ -57,6 +57,38 @@ export const PRACTICE_COMMANDS: AyahCommand[] = [
     hint: 'Across the panel',
     prompt:
       'What follow-ups are open on my panel? Use list-practice-panel and the work queue. Name patients. Do not invent overdue clinical need.',
+  },
+  {
+    id: 'practice-setup',
+    label: 'What is left to set up?',
+    shortLabel: 'Practice setup',
+    hint: 'Team, hours, roster',
+    prompt:
+      'What is left to set up in this practice? Use get-practice-workspace. Then team, hours, roster, and listing. Name real gaps only.',
+  },
+  {
+    id: 'team',
+    label: 'Who is on my team?',
+    shortLabel: 'Team',
+    hint: 'Members and roles',
+    prompt:
+      'Who is on my clinic team? Use list-team-members. Include role and status. Do not invent people.',
+  },
+  {
+    id: 'hours',
+    label: 'When are we open?',
+    shortLabel: 'Hours',
+    hint: 'Clinic hours',
+    prompt:
+      'When is this practice open? Use get-practice-hours. List weekdays and doctors. If none, say hours are not set.',
+  },
+  {
+    id: 'invoices',
+    label: 'Show recent invoices',
+    shortLabel: 'Invoices',
+    hint: 'Billing',
+    prompt:
+      'List recent invoices for this practice. Use list-invoices. Do not invent amounts. If I cannot view billing, say so.',
   },
 ];
 

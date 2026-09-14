@@ -23,6 +23,7 @@ export const ClinicAdminQueuePage: React.FC = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const canManage = can('manageAppointments');
   const rooms = useMemo(() => activeRooms(practice), [practice]);
@@ -39,13 +40,26 @@ export const ClinicAdminQueuePage: React.FC = () => {
   const load = useCallback(async () => {
     if (!practiceId) return;
     setLoading(true);
+    setError(null);
     try {
-      const rows = await getPracticeWideAppointments(practiceId);
+      const tz = practice?.timezone || 'Africa/Johannesburg';
+      const today = new Intl.DateTimeFormat('en-CA', {
+        timeZone: tz,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+      const rows = await getPracticeWideAppointments(practiceId, {
+        fromDate: today,
+        toDate: today,
+      });
       setAppointments(rows);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load the queue');
     } finally {
       setLoading(false);
     }
-  }, [practiceId]);
+  }, [practiceId, practice?.timezone]);
 
   useEffect(() => {
     void load();
@@ -90,11 +104,14 @@ export const ClinicAdminQueuePage: React.FC = () => {
         ...auditContext,
         roomName: room?.name,
       });
+      setError(null);
       setAppointments((current) =>
         current.map((row) =>
           row.id === appointmentId ? { ...row, roomId: roomId || undefined } : row,
         ),
       );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not assign that room');
     } finally {
       setUpdatingId(null);
     }
@@ -106,6 +123,12 @@ export const ClinicAdminQueuePage: React.FC = () => {
         title="Front desk queue"
         description="Check patients in, assign rooms, and track who is waiting for today's appointments."
       />
+
+      {error ? (
+        <p className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </p>
+      ) : null}
 
       {loading ? (
         <p className="mt-6 text-sm text-[#65758b]">Loading queue…</p>
@@ -129,7 +152,7 @@ export const ClinicAdminQueuePage: React.FC = () => {
                 <tr key={appointment.id}>
                   <td className="px-4 py-3">{appointment.time}</td>
                   <td className="px-4 py-3">{appointment.patientName}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{appointment.doctorId.slice(0, 8)}…</td>
+                  <td className="px-4 py-3">{appointment.doctorName || 'Clinician'}</td>
                   <td className="px-4 py-3">
                     {canManage && rooms.length > 0 ? (
                       <select

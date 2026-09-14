@@ -256,7 +256,8 @@ export const getAvailableSlots = async (
   practiceId: string,
   doctorId: string,
   date: Date,
-  consultType?: ConsultType
+  consultType?: ConsultType,
+  options?: { excludeAppointmentId?: string },
 ): Promise<AvailableSlot[]> => {
   const dayStart = startOfDay(date);
   const dayEnd = endOfDay(date);
@@ -302,6 +303,7 @@ export const getAvailableSlots = async (
   });
 
   const dayAppointments = appointments.filter((a) => {
+    if (options?.excludeAppointmentId && a.id === options.excludeAppointmentId) return false;
     const aptDate = a.startAt ?? a.date;
     return (
       aptDate >= dayStart &&

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import {
@@ -34,11 +35,15 @@ type PracticeMembersPanelProps = {
   variant?: 'full' | 'clinic' | 'listOnly';
   /** Bump to force reload after bulk invite */
   reloadToken?: number;
+  extraHeaderActions?: React.ReactNode;
+  onLoaded?: (info: { memberCount: number; inviteCount: number }) => void;
 };
 
 export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
   variant = 'full',
   reloadToken = 0,
+  extraHeaderActions,
+  onLoaded,
 }) => {
   const { user, practiceSession } = useAuth();
   const { canManageMembers, isOwner } = usePermissions();
@@ -57,6 +62,8 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
   });
   const [saving, setSaving] = useState(false);
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const onLoadedRef = React.useRef(onLoaded);
+  onLoadedRef.current = onLoaded;
 
   const reload = useCallback(async () => {
     if (!practice?.id) return;
@@ -68,6 +75,7 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
       ]);
       setMembers(m);
       setInvites(i);
+      onLoadedRef.current?.({ memberCount: m.length, inviteCount: i.length });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load team');
     } finally {
@@ -208,13 +216,16 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
               Active members and pending invitations.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowInvite(true)}
-            className="rounded-full bg-anixi-green px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90"
-          >
-            Invite one person
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {extraHeaderActions}
+            <button
+              type="button"
+              onClick={() => setShowInvite(true)}
+              className="rounded-full bg-anixi-green px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+            >
+              Invite one person
+            </button>
+          </div>
         </div>
       )}
 
@@ -298,7 +309,13 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
               >
                 <div>
                   <p className="font-medium text-gray-900">
-                    {label}
+                    {variant === 'clinic' ? (
+                      <Link to={`/clinic/team/${m.uid}`} className="hover:text-anixi-green hover:underline">
+                        {label}
+                      </Link>
+                    ) : (
+                      label
+                    )}
                     {m.uid === practice.ownerId && (
                       <span className="ml-2 rounded-full bg-[#eef4f1] px-2 py-0.5 text-xs text-anixi-green">
                         Owner
@@ -345,6 +362,14 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
                       </button>
                     </>
                   )}
+                  {variant === 'clinic' ? (
+                    <Link
+                      to={`/clinic/team/${m.uid}`}
+                      className="text-sm font-semibold text-anixi-green hover:underline"
+                    >
+                      Manage
+                    </Link>
+                  ) : null}
                 </div>
               </li>
             );

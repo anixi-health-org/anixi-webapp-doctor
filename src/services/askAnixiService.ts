@@ -14,6 +14,9 @@ export type AskAnixiContext = {
   patientSnapshot?: Record<string, unknown>;
   clinicDate?: string;
   clinicTimezone?: string;
+  onboardingFlow?: string;
+  onboardingStep?: string | number;
+  onboardingStepLabel?: string;
 };
 
 export type DoctorAgentDraft = {

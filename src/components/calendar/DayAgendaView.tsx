@@ -314,7 +314,7 @@ export const DayAgendaView: React.FC<DayAgendaViewProps> = ({
                     : apt.consultType
                       ? ` · ${apt.consultType}`
                       : ''}
-                  {showDoctor ? ` · ${doctorLabels?.[apt.doctorId] || 'Doctor'}` : ''}
+                  {showDoctor ? ` · ${doctorLabels?.[apt.doctorId] || apt.doctorName || 'Doctor'}` : ''}
                   {' · '}
                   {formatAppointmentStatusLabel(apt.status)}
                 </p>

@@ -9,12 +9,13 @@ import { BookingPoliciesForm } from '../../components/practice/BookingPoliciesFo
 import { PracticeLogoUploader } from '../../components/practice/PracticeLogoUploader';
 import { LetterheadSetupBanner } from '../../components/invoices/LetterheadSetupBanner';
 import { Toast, SettingsPageSkeleton } from '../../components/ui';
-import { TabPill } from '../../components/ui/TabPill';
+import { TabBar, TabPill } from '../../components/ui/TabPill';
 import { PageHeader, PageShell } from '../../components/page-layout';
 import {
   listPracticeClinicians,
   updatePractice,
 } from '../../services/practiceSettingsService';
+import { djangoRotateClinicCode } from '../../services/djangoApiService';
 import { memberDisplayLabel } from '../../services/practiceMemberService';
 import type { Doctor, PracticeLocation, PracticeMember } from '../../types';
 
@@ -60,6 +61,8 @@ export const ClinicAdminSettingsPage: React.FC = () => {
     listingAcceptsMedicalAid: false,
   });
   const [savingProfile, setSavingProfile] = useState(false);
+  const [clinicCode, setClinicCode] = useState('');
+  const [rotatingCode, setRotatingCode] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
     visible: false,
     message: '',
@@ -67,6 +70,7 @@ export const ClinicAdminSettingsPage: React.FC = () => {
   });
 
   const practice = practiceSession?.practice;
+  const locations = practice?.locations ?? [];
   const canEditProfile = can('manageMembers') || can('editBookingPolicies');
   const canEditBooking = can('editBookingPolicies');
   const canManageSchedules = can('manageAppointments');
@@ -81,6 +85,7 @@ export const ClinicAdminSettingsPage: React.FC = () => {
 
   useEffect(() => {
     if (practice) {
+      setClinicCode(practice.clinicCode || '');
       setProfileDraft({
         name: practice.name || '',
         timezone: practice.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -155,7 +160,7 @@ export const ClinicAdminSettingsPage: React.FC = () => {
         type: newLocType,
         ...(newLocAddress.trim() ? { address: newLocAddress.trim() } : {}),
       };
-      await updatePractice(practice.id, { locations: [...practice.locations, newLoc] });
+      await updatePractice(practice.id, { locations: [...(practice.locations ?? []), newLoc] });
       await refreshPracticeSession();
       setNewLocName('');
       setNewLocType('clinic');
@@ -176,7 +181,7 @@ export const ClinicAdminSettingsPage: React.FC = () => {
     if (!practice || !canEditProfile) return;
     try {
       await updatePractice(practice.id, {
-        locations: practice.locations.filter((l) => l.id !== locId),
+        locations: (practice.locations ?? []).filter((l) => l.id !== locId),
       });
       await refreshPracticeSession();
       setToast({ visible: true, message: 'Location removed.', type: 'success' });
@@ -221,6 +226,39 @@ export const ClinicAdminSettingsPage: React.FC = () => {
     }
   };
 
+  const handleCopyClinicCode = async () => {
+    if (!clinicCode) return;
+    try {
+      await navigator.clipboard.writeText(clinicCode);
+      setToast({ visible: true, message: 'Clinic code copied.', type: 'success' });
+    } catch {
+      setToast({ visible: true, message: 'Could not copy clinic code.', type: 'error' });
+    }
+  };
+
+  const handleRotateClinicCode = async () => {
+    if (!practice || !canEditProfile) return;
+    const confirmed = window.confirm(
+      'Rotate the clinic code? The current code will stop working for new activations.',
+    );
+    if (!confirmed) return;
+    setRotatingCode(true);
+    try {
+      const result = await djangoRotateClinicCode(practice.id);
+      setClinicCode(result.clinicCode);
+      await refreshPracticeSession();
+      setToast({ visible: true, message: 'Clinic code rotated.', type: 'success' });
+    } catch (e: unknown) {
+      setToast({
+        visible: true,
+        message: e instanceof Error ? e.message : 'Failed to rotate clinic code.',
+        type: 'error',
+      });
+    } finally {
+      setRotatingCode(false);
+    }
+  };
+
   if (authLoading || !practice) {
     return (
       <PageShell maxWidth="wide" className="py-6 sm:py-8">
@@ -241,16 +279,21 @@ export const ClinicAdminSettingsPage: React.FC = () => {
 
       <PageHeader
         title="Clinic settings"
-        description="Manage your clinic profile, booking rules, and doctor availability."
+        description="Manage clinic branding, locations, booking rules, and doctor availability. Hospital and clinic practices own these settings. Employed doctors do not."
       />
 
-      <div className="mt-6 flex flex-wrap gap-2 border-b border-[#e1e7ef] pb-4">
+      <TabBar className="mt-6">
         {visibleTabs.map((tab) => (
-          <TabPill key={tab.id} active={activeTab === tab.id} onClick={() => selectTab(tab.id)}>
+          <TabPill
+            key={tab.id}
+            active={activeTab === tab.id}
+            onClick={() => selectTab(tab.id)}
+            className="min-w-0 flex-1 justify-center"
+          >
             {tab.label}
           </TabPill>
         ))}
-      </div>
+      </TabBar>
 
       {error && (
         <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
@@ -262,17 +305,22 @@ export const ClinicAdminSettingsPage: React.FC = () => {
         <div className="mt-6">
           {activeTab === 'profile' && (
             <div className="space-y-6">
-              <LetterheadSetupBanner doctor={doctor} className="rounded-2xl" />
+              <LetterheadSetupBanner doctor={doctor} practice={practice} className="rounded-2xl" />
               <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
                   Letterhead & logo
                 </p>
                 <p className="mt-2 text-sm text-[#65758b]">
-                  Used on invoices, prescriptions, and patient communications for your entire clinic.
+                  Used on invoices, prescriptions, and patient communications for the whole clinic. Employed doctors do not set their own letterhead.
                 </p>
                 {canEditProfile ? (
                   <div className="mt-4">
-                    <PracticeLogoUploader logoUrl={doctor?.logoUrl} />
+                    <PracticeLogoUploader
+                      practiceId={practice?.id}
+                      logoUrl={practice?.logoUrl}
+                      embedded
+                      onUploaded={() => void refreshPracticeSession()}
+                    />
                   </div>
                 ) : (
                   <p className="mt-4 text-sm text-[#65758b]">
@@ -354,6 +402,38 @@ export const ClinicAdminSettingsPage: React.FC = () => {
                     </div>
                   </div>
                 )}
+              </section>
+
+              <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                  Patient activation
+                </p>
+                <p className="mt-2 text-sm text-[#65758b]">
+                  Patients enter this single clinic code in the Anixi app, then verify their identity against your roster.
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <span className="rounded-lg bg-[#f4f7f6] px-4 py-2 font-mono text-xl font-bold tracking-widest text-[#1e3a5f]">
+                    {clinicCode || 'Not set'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyClinicCode()}
+                    disabled={!clinicCode}
+                    className="rounded-lg border border-[#e1e7ef] px-3 py-2 text-sm font-medium text-[#344256] hover:bg-[#f8faf9] disabled:opacity-50"
+                  >
+                    Copy code
+                  </button>
+                  {canEditProfile && (
+                    <button
+                      type="button"
+                      onClick={() => void handleRotateClinicCode()}
+                      disabled={rotatingCode}
+                      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 disabled:opacity-50"
+                    >
+                      {rotatingCode ? 'Rotating…' : 'Rotate code'}
+                    </button>
+                  )}
+                </div>
               </section>
 
               <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5">
@@ -441,7 +521,7 @@ export const ClinicAdminSettingsPage: React.FC = () => {
                   Locations
                 </p>
                 <ul className="mt-4 divide-y divide-[#eef2f6]">
-                  {practice.locations.map((loc) => (
+                  {locations.map((loc) => (
                     <li key={loc.id} className="flex items-center justify-between py-3">
                       <div>
                         <p className="font-medium text-[#344256]">{loc.name}</p>
@@ -460,7 +540,7 @@ export const ClinicAdminSettingsPage: React.FC = () => {
                       )}
                     </li>
                   ))}
-                  {practice.locations.length === 0 && (
+                  {locations.length === 0 && (
                     <li className="py-3 text-sm text-[#65758b]">No locations added yet.</li>
                   )}
                 </ul>
@@ -544,7 +624,7 @@ export const ClinicAdminSettingsPage: React.FC = () => {
                 <BookableBlocksEditor
                   practiceId={practice.id}
                   blocks={doctorBlocks}
-                  locations={practice.locations}
+                  locations={locations}
                   timezone={practice.timezone}
                   practiceConsultTypes={practice.consultTypes}
                   onChanged={reload}

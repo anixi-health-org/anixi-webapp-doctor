@@ -14,7 +14,7 @@ const STEPS = [
   {
     Icon: Link2,
     title: 'Open the invite link',
-    description: 'Tap the button in the email — it includes your practice, role, and access token.',
+    description: 'Tap the button in the email. It includes your practice, role, and access token.',
   },
   {
     Icon: UserCheck,

@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, ImageIcon } from 'lucide-react';
+import { getMissingClinicLetterheadFields } from '../../lib/invoiceLetterhead';
 import { usePermissions } from '../../hooks/usePermissions';
 import { getDoctorProfile } from '../../services/doctorService';
-import type { Doctor } from '../../types';
+import type { Doctor, Practice } from '../../types';
 
 /** Fields the invoice PDF letterhead is built from - see invoicePdfService. */
 export const LETTERHEAD_FIELDS = [
@@ -66,8 +67,11 @@ export function getMissingLetterheadFields(doctor: Doctor | null | undefined) {
   );
 }
 
+export { getMissingClinicLetterheadFields };
+
 interface LetterheadSetupBannerProps {
   doctor: Doctor | null | undefined;
+  practice?: Practice | null;
   className?: string;
   /** Slightly shorter copy for the create-invoice flow */
   compact?: boolean;
@@ -75,6 +79,7 @@ interface LetterheadSetupBannerProps {
 
 export const LetterheadSetupBanner: React.FC<LetterheadSetupBannerProps> = ({
   doctor,
+  practice,
   className = '',
   compact = false,
 }) => {
@@ -82,6 +87,7 @@ export const LetterheadSetupBanner: React.FC<LetterheadSetupBannerProps> = ({
   const { isClinicEmployedClinician } = usePermissions();
   const [dismissed, setDismissed] = useState(false);
   const [resolvedDoctor, setResolvedDoctor] = useState<Doctor | null | undefined>(doctor);
+  const isClinicPractice = practice?.orgType === 'clinic';
 
   useEffect(() => {
     setResolvedDoctor(doctor);
@@ -89,7 +95,7 @@ export const LetterheadSetupBanner: React.FC<LetterheadSetupBannerProps> = ({
 
   useEffect(() => {
     const doctorId = doctor?.id;
-    if (!doctorId) return;
+    if (!doctorId || isClinicPractice) return;
 
     let cancelled = false;
     void getDoctorProfile(doctorId).then((fresh) => {
@@ -101,22 +107,29 @@ export const LetterheadSetupBanner: React.FC<LetterheadSetupBannerProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [doctor?.id]);
+  }, [doctor?.id, isClinicPractice]);
 
   const missingLetterhead = useMemo(
-    () => getMissingLetterheadFields(resolvedDoctor ?? doctor),
-    [resolvedDoctor, doctor]
+    () =>
+      isClinicPractice
+        ? getMissingClinicLetterheadFields(practice)
+        : getMissingLetterheadFields(resolvedDoctor ?? doctor),
+    [isClinicPractice, practice, resolvedDoctor, doctor]
   );
   const missingLogo = missingLetterhead.some(({ key }) => key === 'logoUrl');
 
-  if (
-    isClinicEmployedClinician ||
-    !doctor ||
-    missingLetterhead.length === 0 ||
-    dismissed
-  ) {
+  if (isClinicEmployedClinician || missingLetterhead.length === 0 || dismissed) {
     return null;
   }
+
+  if (!isClinicPractice && !doctor) {
+    return null;
+  }
+
+  const settingsPath = isClinicPractice ? '/clinic/settings' : '/practice-settings';
+  const detailsPath = isClinicPractice
+    ? '/clinic/settings'
+    : '/professional-profile?tab=practice';
 
   return (
     <div
@@ -130,14 +143,30 @@ export const LetterheadSetupBanner: React.FC<LetterheadSetupBannerProps> = ({
           <div>
             <p className="text-sm font-semibold text-amber-900">
               {missingLogo
-                ? 'Add your letterhead before sending invoices'
-                : 'Finish your invoice letterhead'}
+                ? isClinicPractice
+                  ? 'Add clinic letterhead before sending invoices'
+                  : 'Add your letterhead before sending invoices'
+                : isClinicPractice
+                  ? 'Finish the clinic invoice letterhead'
+                  : 'Finish your invoice letterhead'}
             </p>
             <p className="mt-1 text-[13px] leading-relaxed text-amber-800">
               {compact
                 ? missingLogo
-                  ? 'PDF exports print with your practice branding. Without a logo they go out unbranded.'
+                  ? isClinicPractice
+                    ? 'Clinic invoices print with organisation branding. Without a logo they go out unbranded.'
+                    : 'PDF exports print with your practice branding. Without a logo they go out unbranded.'
                   : 'A few practice details are still missing from your letterhead.'
+                : isClinicPractice
+                  ? (
+                    <>
+                      Invoices for this hospital or clinic use organisation branding, not an
+                      individual doctor&apos;s letterhead.
+                      {missingLogo
+                        ? ' Without a clinic logo they go out unbranded.'
+                        : ' A few clinic details are still missing.'}
+                    </>
+                  )
                 : (
                   <>
                     Invoice and prescription PDFs are printed with your practice branding.
@@ -176,10 +205,10 @@ export const LetterheadSetupBanner: React.FC<LetterheadSetupBannerProps> = ({
                   input.click();
                   return;
                 }
-                navigate('/practice-settings');
+                navigate(settingsPath);
                 return;
               }
-              navigate('/professional-profile?tab=practice');
+              navigate(detailsPath);
             }}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-amber-600 px-3.5 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-700"
           >

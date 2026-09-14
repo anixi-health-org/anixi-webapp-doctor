@@ -7,7 +7,7 @@ import {
 } from '../lib/doctorAccess';
 
 export const usePermissions = () => {
-  const { practiceSession } = useAuth();
+  const { practiceSession, joinIntent, user } = useAuth();
   const role: PracticeRole | null = practiceSession?.member?.role ?? null;
   const rawPermissions = practiceSession?.member?.permissions;
   const permissions =
@@ -15,7 +15,10 @@ export const usePermissions = () => {
       ? normalizePermissions(rawPermissions ?? undefined, role)
       : EMPTY_PERMISSIONS;
   const orgType = practiceSession?.practice?.orgType ?? 'solo';
-  const clinicEmployed = isClinicEmployedClinician(practiceSession);
+  const clinicEmployed = isClinicEmployedClinician(practiceSession, {
+    joinIntent,
+    accountKind: user && 'accountKind' in user ? user.accountKind : undefined,
+  });
   const canManageOps = canManageOperationalSettings(practiceSession);
   const isOwner = role === 'owner';
 

@@ -217,7 +217,7 @@ export const BulkDoctorInvitePanel: React.FC<BulkDoctorInvitePanelProps> = ({
 
         {summary && (
           <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            {summary.sent} activation email{summary.sent !== 1 ? 's' : ''} sent — each doctor
+            {summary.sent} activation email{summary.sent !== 1 ? 's' : ''} sent. Each doctor
             receives a link to create their login and join {practiceName}.
             {summary.failed > 0 ? ` ${summary.failed} could not be sent.` : ''}
           </p>

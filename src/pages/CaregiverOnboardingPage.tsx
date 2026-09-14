@@ -58,10 +58,10 @@ export const CaregiverOnboardingPage: React.FC = () => {
       title={step === 1 ? 'Tell us about you' : step === 2 ? 'How linking works' : 'Get the patient app'}
       subtitle={
         step === 1
-          ? 'Step 1 of 3 — caregiver profile'
+          ? 'Step 1 of 3: caregiver profile'
           : step === 2
-            ? 'Step 2 of 3 — patient must link you'
-            : 'Step 3 of 3 — optional for your patient'
+            ? 'Step 2 of 3: patient must link you'
+            : 'Step 3 of 3: optional for your patient'
       }
       maxWidth="lg"
       heroSlides={config.heroSlides}
@@ -129,7 +129,7 @@ export const CaregiverOnboardingPage: React.FC = () => {
               <Heart className="mt-0.5 h-5 w-5 shrink-0 text-anixi-green" />
               <p className="text-sm leading-relaxed text-gray-600">
                 Once linked, you can view adherence, appointments, and updates permitted by the
-                patient — all POPIA-compliant.
+                patient. All of this is POPIA-compliant.
               </p>
             </div>
             <button

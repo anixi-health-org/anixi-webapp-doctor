@@ -103,8 +103,12 @@ export function AskAnixiProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
+export function useAskAnixiOptional() {
+  return useContext(Ctx);
+}
+
 export function useAskAnixi() {
-  const ctx = useContext(Ctx);
+  const ctx = useAskAnixiOptional();
   if (!ctx) throw new Error('useAskAnixi must be used within AskAnixiProvider');
   return ctx;
 }

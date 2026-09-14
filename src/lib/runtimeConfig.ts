@@ -6,7 +6,10 @@
  * functions always return the Django-only state regardless of env.
  */
 
-export const API_BASE = process.env.REACT_APP_ANIXI_API_URL ?? '';
+const envApiUrl = (process.env.REACT_APP_ANIXI_API_URL ?? '').trim();
+
+export const API_BASE =
+  envApiUrl || (process.env.NODE_ENV !== 'production' ? 'http://127.0.0.1:8000' : '');
 
 export function isDjangoApiEnabled(): boolean {
   return true;

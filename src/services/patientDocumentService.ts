@@ -1,4 +1,5 @@
-import { djangoListMedicalFiles } from './djangoApiService';
+import { djangoListMedicalFiles, djangoResolveMediaUrl } from './djangoApiService';
+import { mapInBatches } from '../utils/asyncBatch';
 
 export interface PatientUploadedFile {
   id: string;
@@ -28,28 +29,37 @@ export const getPatientUploadedFiles = async (
   const ids = patientIds.filter((id) => id && !id.startsWith('manual_') && id !== 'unknown');
   if (ids.length === 0) return [];
 
-  const snapshots = await Promise.all(ids.map((patientId) => djangoListMedicalFiles(patientId)));
+  const snapshots = await mapInBatches(ids, 6, async (patientId) => {
+    try {
+      return await djangoListMedicalFiles(patientId);
+    } catch (error) {
+      console.warn('getPatientUploadedFiles failed:', patientId, error);
+      return [];
+    }
+  });
 
   const files: PatientUploadedFile[] = [];
   const seen = new Set<string>();
 
-  snapshots.forEach((rows, index) => {
+  for (let index = 0; index < snapshots.length; index += 1) {
     const patientId = ids[index]!;
-    rows.forEach((row) => {
+    const rows = snapshots[index] ?? [];
+    for (const row of rows) {
       const id = String(row.id);
-      if (seen.has(id)) return;
+      if (seen.has(id)) continue;
       seen.add(id);
+      const rawUrl = String(row.url ?? '');
       files.push({
         id,
         patientId,
         category: String(row.category ?? ''),
         name: String(row.title ?? 'Document'),
-        url: String(row.url ?? ''),
+        url: (await djangoResolveMediaUrl(rawUrl)) ?? rawUrl,
         mimeType: String(row.mimeType ?? ''),
         uploadedAt: null,
       });
-    });
-  });
+    }
+  }
 
   return files.sort((a, b) => (b.uploadedAt?.getTime() ?? 0) - (a.uploadedAt?.getTime() ?? 0));
 };

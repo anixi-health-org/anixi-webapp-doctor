@@ -151,7 +151,7 @@ export function DashboardAyahChat({
 
 You are helping the doctor design their Anixi dashboard. Use get-doctor-dashboard first, then upsert-doctor-dashboard to save the layout.
 Use widget dataBinding values for live practice data (today_appointments, patient_count, attention_items, etc.).
-Keep replies brief — confirm what you built, no JSON in chat.`;
+Keep replies brief. Confirm what you built, no JSON in chat.`;
 
     try {
       await streamAskAnixi({

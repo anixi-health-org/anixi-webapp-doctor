@@ -1,4 +1,4 @@
-import { djangoUpdateArrivalStatus } from './djangoApiService';
+import { djangoPatchAppointment, djangoUpdateArrivalStatus } from './djangoApiService';
 import { logClinicAuditEvent } from './clinicAuditService';
 import type { Appointment } from '../types';
 
@@ -32,9 +32,7 @@ export async function updateAppointmentRoom(
   roomId: string | null,
   audit?: AuditContext & { roomName?: string },
 ): Promise<void> {
-  // Room assignment has moved to the Django appointment resource.
-  // The audit trail is preserved; the persistent write is handled by the
-  // appointment PATCH endpoint once wired.
+  await djangoPatchAppointment(appointmentId, { roomId: roomId || '' });
   if (audit?.practiceId && audit?.actorUid) {
     await logClinicAuditEvent({
       practiceId: audit.practiceId,

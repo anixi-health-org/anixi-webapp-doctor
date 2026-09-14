@@ -14,6 +14,7 @@ import {
   getDoctorPatientsAdherenceSummary,
   PatientAdherenceListSummary,
 } from '../../services/adherenceService';
+import { userFacingLoadError } from '../../services/djangoApiService';
 import { Patient } from '../../types';
 
 const HealthMonitorSkeleton: React.FC = () => (
@@ -53,21 +54,26 @@ export const HealthMonitorPage: React.FC = () => {
   const [filter, setFilter] = useState<'all' | 'attention' | 'excellent'>('all');
 
   const load = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
       const list = await getDoctorPatients(user.id);
       setPatients(list);
-      const ids = list.map((p) => p.id);
+      setIsLoading(false);
+      const ids = list.map((patient) => patient.id);
       const map =
         ids.length > 0
           ? await getDoctorPatientsAdherenceSummary(user.id, ids, 30)
           : new Map<string, PatientAdherenceListSummary>();
       setSummaries(map);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load health monitor');
-    } finally {
+      setError(userFacingLoadError(err, 'Could not load health monitor'));
+      setPatients([]);
+      setSummaries(new Map());
       setIsLoading(false);
     }
   }, [user?.id]);

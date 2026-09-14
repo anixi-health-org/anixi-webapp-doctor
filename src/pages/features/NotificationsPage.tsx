@@ -16,6 +16,7 @@ import {
   useRejectIncomingRequest,
 } from '../../hooks/useIncomingSharingRequests';
 import { getDoctorAppointments } from '../../services/appointmentService';
+import { userFacingLoadError } from '../../services/djangoApiService';
 import {
   listDoctorNotifications,
   DoctorNotification,
@@ -97,7 +98,7 @@ export const NotificationsPage: React.FC = () => {
       setAppointments(data);
       setDurable(stored);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load notifications');
+      setError(userFacingLoadError(err, 'Failed to load notifications'));
     } finally {
       setIsLoading(false);
     }

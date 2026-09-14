@@ -9,13 +9,14 @@ import { PageHeader, PageShell } from '../../components/page-layout';
 import { ListRowsSkeleton, PageHeaderSkeleton, Skeleton } from '../../components/ui/Skeleton';
 import { useAuth } from '../../hooks/useAuth';
 import { getDoctorAppointments } from '../../services/appointmentService';
-import { getDoctorPatients } from '../../services/doctorService';
+import { getDoctorPatients } from '../../services/patientManagementService';
 import {
   getPatientUploadedFiles,
   patientFileCategoryLabel,
   type PatientUploadedFile,
 } from '../../services/patientDocumentService';
 import { getPatientsSharingRecords } from '../../services/medicalRecordShareService';
+import { userFacingLoadError } from '../../services/djangoApiService';
 import { PendingRecordShares } from '../../components/records/PendingRecordShares';
 import { useIncomingRecordShares } from '../../hooks/useIncomingRecordShares';
 import { Appointment, AppointmentDocument, PostConsultAction } from '../../types';
@@ -90,35 +91,47 @@ export const MedicalRecordsPage: React.FC = () => {
   const { requests: pendingShares } = useIncomingRecordShares(user?.id);
 
   const load = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
       const [data, patients, sharedGrants] = await Promise.all([
         getDoctorAppointments(user.id),
         getDoctorPatients(user.id),
-        getPatientsSharingRecords(user.id),
+        getPatientsSharingRecords(user.id).catch(() => []),
       ]);
       setAppointments(data);
 
       const names = new Map(
-        patients.map((p) => [p.id, p.displayName || p.email || p.id])
+        patients.map((patient) => [patient.id, patient.displayName || patient.email || patient.id]),
       );
-      // A patient can share records without being on the roster, so their name
-      // comes from the share itself.
       sharedGrants.forEach((grant) => {
         if (!names.has(grant.patientId)) {
           names.set(grant.patientId, grant.patientName || 'Shared patient');
         }
       });
+      data.forEach((appointment) => {
+        if (appointment.patientId && !names.has(appointment.patientId)) {
+          names.set(appointment.patientId, appointment.patientName || 'Patient');
+        }
+      });
       setPatientNames(names);
 
-      // Documents the patients uploaded themselves, read from the same
-      // collection the mobile app writes to.
-      const files = await getPatientUploadedFiles(Array.from(names.keys()));
+      const filePatientIds = Array.from(
+        new Set(
+          [
+            ...data.map((appointment) => appointment.patientId),
+            ...sharedGrants.map((grant) => grant.patientId),
+          ].filter(Boolean),
+        ),
+      );
+      const files = await getPatientUploadedFiles(filePatientIds);
       setPatientFiles(files);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load medical records');
+      setError(userFacingLoadError(err, 'Could not load medical records'));
       setAppointments([]);
       setPatientFiles([]);
     } finally {
@@ -138,7 +151,7 @@ export const MedicalRecordsPage: React.FC = () => {
           kind: 'document',
           id: `doc-${apt.id}-${doc.id}`,
           title: doc.title || doc.fileName,
-          subtitle: `${doc.fileType || 'File'} · ${(doc.fileSize / 1024).toFixed(0)} KB`,
+          subtitle: `${doc.fileType || 'File'} · ${((Number(doc.fileSize) || 0) / 1024).toFixed(0)} KB`,
           patientId: apt.patientId,
           patientName: apt.patientName,
           date: doc.createdAt instanceof Date ? doc.createdAt : apt.date,
@@ -174,7 +187,11 @@ export const MedicalRecordsPage: React.FC = () => {
         appointmentId: '',
       });
     });
-    items.sort((a, b) => b.date.getTime() - a.date.getTime());
+    items.sort((a, b) => {
+      const left = a.date instanceof Date && !Number.isNaN(a.date.getTime()) ? a.date.getTime() : 0;
+      const right = b.date instanceof Date && !Number.isNaN(b.date.getTime()) ? b.date.getTime() : 0;
+      return right - left;
+    });
     return items;
   }, [appointments, patientFiles, patientNames]);
 

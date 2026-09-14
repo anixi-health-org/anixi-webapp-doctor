@@ -3,6 +3,7 @@ import { Appointment } from '../../types';
 import { convertTimestamp } from '../../utils/dateFormatter';
 import { formatAppointmentTypeLabel, isWhatsAppComingSoon } from '../../utils/teleconsult';
 import { formatAppointmentStatusLabel } from '../../services/appointmentCanonical';
+import { patientContactLabel } from '../../utils/patientContact';
 
 interface AppointmentCardProps {
   appointment: Appointment;
@@ -87,14 +88,14 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-[#344256]">{appointment.patientName}</p>
         <p className="mt-0.5 truncate text-xs text-[#94a3b8]">
-          {appointment.patientEmail || 'No email'}
+          {patientContactLabel(appointment.patientEmail) || 'No email'}
         </p>
       </div>
 
       {showDoctor && (
         <div className="hidden min-w-0 sm:block">
           <p className="truncate text-sm font-medium text-[#344256]">
-            {doctorLabel || 'Doctor'}
+            {doctorLabel || appointment.doctorName || 'Doctor'}
           </p>
         </div>
       )}
