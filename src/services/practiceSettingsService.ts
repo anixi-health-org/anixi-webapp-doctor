@@ -7,7 +7,7 @@ import {
   CLINIC_CONSULT_TYPES,
   VIDEO_CONSULT_TYPE,
 } from '../lib/consultTypeSettings';
-import { isClinicianRole } from '../lib/practiceRoles';
+import { isBookableClinician } from '../lib/practiceRoles';
 import type {
   BookableBlock,
   BookingPolicy,
@@ -163,24 +163,21 @@ export const listPracticeMembers = djangoPractice.djangoListPracticeMembers;
 export const listPracticeClinicians = async (practiceId: string): Promise<PracticeMember[]> => {
   const { enrichPracticeMembers } = await import('./practiceMemberService');
   const members = await enrichPracticeMembers(await listPracticeMembers(practiceId));
-  return members.filter(
-    (m) => m.status === 'active' && (isClinicianRole(m.role) || m.isClinician === true),
-  );
+  return members.filter(isBookableClinician);
 };
 
 export const updatePracticeMember = async (
   practiceId: string,
   uid: string,
-  updates: Partial<Pick<PracticeMember, 'role' | 'permissions' | 'status' | 'displayName'>>,
+  updates: Partial<Pick<PracticeMember, 'role' | 'permissions' | 'status' | 'displayName' | 'isClinician'>>,
 ): Promise<void> => {
-  void practiceId;
-  void uid;
-  void updates;
-  throw new Error('Practice member updates are not yet available via Django API.');
+  const { djangoPatchPracticeMember } = await import('./djangoApiService');
+  await djangoPatchPracticeMember(practiceId, uid, updates);
 };
 
 export const deactivatePracticeMember = async (practiceId: string, uid: string): Promise<void> => {
-  await updatePracticeMember(practiceId, uid, { status: 'inactive' });
+  const { djangoDeactivatePracticeMember } = await import('./djangoApiService');
+  await djangoDeactivatePracticeMember(practiceId, uid);
 };
 
 export const addDelegate = async (
@@ -194,11 +191,11 @@ export const addDelegate = async (
 };
 
 export const updateDelegatePermissions = async (
-  _practiceId: string,
-  _uid: string,
-  _permissions: PracticePermissions,
+  practiceId: string,
+  uid: string,
+  permissions: PracticePermissions,
 ): Promise<void> => {
-  throw new Error('Delegate permission updates are not yet available via Django API.');
+  await updatePracticeMember(practiceId, uid, { permissions });
 };
 
 export const removeDelegate = async (practiceId: string, uid: string): Promise<void> => {

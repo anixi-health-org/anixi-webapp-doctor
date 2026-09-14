@@ -1,4 +1,4 @@
-import type { Doctor, PracticeSession, ProfessionalUser } from '../types';
+import type { Doctor, Practice, PracticeSession, ProfessionalUser } from '../types';
 import type { JoinPath } from '../types/auth';
 import type { ProfessionalProfileFormData } from '../types/doctorProfile';
 
@@ -27,14 +27,43 @@ export function canSwitchWorkspaces(session: PracticeSession | null): boolean {
   return role === 'owner' || role === 'practice_manager';
 }
 
+export type ClinicEmployedHints = {
+  joinIntent?: string | null;
+  accountKind?: Doctor['accountKind'];
+};
+
 /**
  * Invited clinicians at a hospital/clinic — bookings, branding, and rules are
  * managed by clinic admin staff, not the individual doctor or nurse.
  */
-export function isClinicEmployedClinician(session: PracticeSession | null): boolean {
-  if (session?.practice?.orgType !== 'clinic') return false;
-  if (session.member?.isClinician !== true) return false;
-  return !canSwitchWorkspaces(session);
+export function isClinicEmployedClinician(
+  session: PracticeSession | null,
+  hints?: ClinicEmployedHints,
+): boolean {
+  if (session?.practice?.orgType === 'clinic') {
+    if (canSwitchWorkspaces(session)) return false;
+    const role = session.member?.role;
+    if (role === 'doctor' || role === 'nurse' || session.member?.isClinician === true) {
+      return true;
+    }
+    return false;
+  }
+
+  if (!session && hints?.joinIntent === 'invite') {
+    return true;
+  }
+
+  return false;
+}
+
+/** Private / independent practice — the doctor owns branding, billing, hours, and roster. */
+export function isIndependentPractice(session: PracticeSession | null): boolean {
+  return session?.practice?.orgType !== 'clinic';
+}
+
+/** Hospital/clinic org — front desk and clinic admin own ops; employed doctors do not. */
+export function isClinicManagedPractice(session: PracticeSession | null): boolean {
+  return session?.practice?.orgType === 'clinic';
 }
 
 /** Who may edit operational settings (hours, blocks, branding, booking rules). */
@@ -108,11 +137,58 @@ export const REQUIRED_ONBOARDING_FIELDS: (keyof ProfessionalProfileFormData)[] =
   'practiceAddress',
 ];
 
-export function isOnboardingFormComplete(form: ProfessionalProfileFormData): boolean {
+/** Clinic org owns these; invited doctors should not re-enter them. */
+export const CLINIC_INHERITED_ONBOARDING_FIELDS: (keyof ProfessionalProfileFormData)[] = [
+  'practiceType',
+  'practiceName',
+  'timezone',
+  'practiceFacility',
+  'province',
+  'city',
+  'practiceAddress',
+];
+
+type OnboardingCompleteOptions = {
+  inheritPracticeFromClinic?: boolean;
+};
+
+export function isOnboardingFormComplete(
+  form: ProfessionalProfileFormData,
+  options?: OnboardingCompleteOptions,
+): boolean {
+  const skip = options?.inheritPracticeFromClinic
+    ? new Set(CLINIC_INHERITED_ONBOARDING_FIELDS)
+    : new Set<keyof ProfessionalProfileFormData>();
   return REQUIRED_ONBOARDING_FIELDS.every((key) => {
+    if (skip.has(key)) return true;
     const value = form[key];
     return typeof value === 'string' && value.trim().length > 0;
   });
+}
+
+/** Snapshot clinic-owned practice fields onto an invited doctor's profile form. */
+export function inheritClinicPracticeFields(
+  practice: Practice,
+): Partial<ProfessionalProfileFormData> {
+  const primary = Array.isArray(practice.locations) ? practice.locations[0] : undefined;
+  const listing = practice.publicListing;
+  const locationType = primary?.type;
+  const province = String(listing?.province || '').trim().toLowerCase();
+  const city = String(listing?.city || '').trim();
+  const address = String(primary?.address || '').trim();
+
+  return {
+    practiceType: locationType === 'hospital' || practice.orgType === 'clinic'
+      ? 'Hospital-based'
+      : 'Group Practice',
+    practiceName: (practice.tradingName || practice.name || '').trim(),
+    timezone: practice.timezone || 'Africa/Johannesburg',
+    practiceNumber: (practice.bhfPracticeNumber || '').trim(),
+    practiceFacility: locationType === 'hospital' ? 'Private Hospital' : 'Private Clinic',
+    province,
+    city,
+    practiceAddress: address,
+  };
 }
 
 /**

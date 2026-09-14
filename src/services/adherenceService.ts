@@ -1,11 +1,7 @@
-import {
-  djangoListAdherence,
-  djangoListMood,
-  djangoSaveMoodEntry,
-  type DjangoAdherenceRecord,
-} from './djangoApiService';
+import { djangoListAdherence, djangoListMood, djangoSaveMoodEntry, type DjangoAdherenceRecord } from './djangoApiService';
 import { getVitalsRecordsForDate } from './logsService';
 import { convertTimestamp, getDateString } from '../utils/dateFormatter';
+import { mapInBatches } from '../utils/asyncBatch';
 
 interface AdherenceRecord {
   date: string;
@@ -581,29 +577,31 @@ export const getDoctorPatientAdherenceSummary = async (
   };
 };
 
+const ADHERENCE_SUMMARY_BATCH = 6;
+const ADHERENCE_SUMMARY_CAP = 80;
+
 export const getDoctorPatientsAdherenceSummary = async (
   doctorId: string,
   patientIds: string[],
   daysBack = 30,
 ): Promise<Map<string, PatientAdherenceListSummary>> => {
   const summaryMap = new Map<string, PatientAdherenceListSummary>();
+  const ids = patientIds.filter(Boolean).slice(0, ADHERENCE_SUMMARY_CAP);
 
-  const results = await Promise.all(
-    patientIds.map(async (patientId) => {
-      try {
-        return await getDoctorPatientAdherenceSummary(doctorId, patientId, daysBack);
-      } catch {
-        return {
-          patientId,
-          adherenceRate: 0,
-          takenCount: 0,
-          missedCount: 0,
-          pendingCount: 0,
-          statusLabel: 'no-data' as const,
-        };
-      }
-    }),
-  );
+  const results = await mapInBatches(ids, ADHERENCE_SUMMARY_BATCH, async (patientId) => {
+    try {
+      return await getDoctorPatientAdherenceSummary(doctorId, patientId, daysBack);
+    } catch {
+      return {
+        patientId,
+        adherenceRate: 0,
+        takenCount: 0,
+        missedCount: 0,
+        pendingCount: 0,
+        statusLabel: 'no-data' as const,
+      };
+    }
+  });
 
   results.forEach((summary) => {
     summaryMap.set(summary.patientId, summary);

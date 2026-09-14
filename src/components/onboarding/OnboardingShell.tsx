@@ -7,6 +7,7 @@ import {
   type OnboardingFlow,
   type OnboardingStepSidebarProps,
 } from './OnboardingProgress';
+import { OnboardingAyahCoach } from './OnboardingAyahCoach';
 
 type OnboardingShellProps = {
   children: React.ReactNode;
@@ -73,6 +74,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
             subProgress={subProgress}
             onStepClick={onStepClick}
           />
+          <OnboardingAyahCoach flow={flow} currentStep={currentStep} />
         </div>
       </aside>
 
@@ -111,6 +113,11 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
           </div>
 
           {children}
+          <div className="mt-6 lg:hidden">
+            <div className="rounded-2xl border border-[#e1e7ef] bg-white p-4 shadow-sm">
+              <OnboardingAyahCoach flow={flow} currentStep={currentStep} />
+            </div>
+          </div>
         </div>
       </main>
     </div>

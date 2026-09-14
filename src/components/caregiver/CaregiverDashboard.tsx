@@ -51,7 +51,6 @@ export const CaregiverDashboard: React.FC = () => {
           map.set(s.patient.id, s.adherenceRate);
           if (s.status === 'inactive') inactive += 1;
           else if (s.needsAttention) attention += 1;
-          else stable += 1;
         });
 
         setAdherenceMap(map);

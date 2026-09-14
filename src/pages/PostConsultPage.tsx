@@ -59,7 +59,7 @@ const { appointmentId } = useParams<{ appointmentId: string }>();
 const location = useLocation();
 const { navigateBack } = useNavigateWithFallback();
 const navigate = useNavigate();
-const { user } = useAuth();
+const { user, practiceSession } = useAuth();
 const doctor = user?.role === 'doctor' ? user : null;
 
   const [appointment, setAppointment] = useState<Appointment | null>(
@@ -1388,6 +1388,9 @@ const doctor = user?.role === 'doctor' ? user : null;
         doctorId: user.id,
         to: email,
         patientDisplayName: appointment.patientName,
+        clinicName: practiceSession?.practice?.name,
+        clinicCode: practiceSession?.practice?.clinicCode,
+        invitedByName: user.displayName || practiceSession?.practice?.name,
       });
       setToast({ visible: true, message: 'App invite emailed to the patient.', type: 'success' });
     } catch {

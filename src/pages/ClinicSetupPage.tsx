@@ -175,7 +175,7 @@ export const ClinicSetupPage: React.FC = () => {
           name || existingPractice?.name || 'Your clinic'
         );
       }
-      markClinicOnboardingComplete(doctor.id);
+      await markClinicOnboardingComplete(doctor.id);
       await refreshUser();
       navigate('/clinic', { replace: true });
     } catch (err: unknown) {
@@ -367,6 +367,7 @@ export const ClinicSetupPage: React.FC = () => {
             doctorId={doctor.id}
             practiceId={practiceId}
             practiceName={name || existingPractice?.name}
+            clinicCode={existingPractice?.clinicCode}
           />
           <div className="flex justify-end gap-3">
             <button

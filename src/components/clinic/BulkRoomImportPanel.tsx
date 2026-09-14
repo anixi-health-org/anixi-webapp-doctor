@@ -100,7 +100,7 @@ export const BulkRoomImportPanel: React.FC<BulkRoomImportPanelProps> = ({
               <p className="text-sm font-semibold text-[#344256]">1. Download CSV template</p>
               <p className="mt-0.5 text-xs leading-relaxed text-[#65758b]">
                 Columns: {ROOM_IMPORT_CSV_HEADERS.join(', ')}. Type can be consult, procedure,
-                virtual, or other. Location is optional — use a clinic location name if set up.
+                virtual, or other. Location is optional. Use a clinic location name if set up.
               </p>
               {locations.length > 0 ? (
                 <p className="mt-1 text-xs text-[#65758b]">
@@ -108,7 +108,7 @@ export const BulkRoomImportPanel: React.FC<BulkRoomImportPanelProps> = ({
                 </p>
               ) : (
                 <p className="mt-1 text-xs text-amber-700">
-                  No clinic locations yet — leave location blank or add locations under Clinic settings.
+                  No clinic locations yet. Leave location blank or add locations under Clinic settings.
                 </p>
               )}
             </div>

@@ -1,8 +1,32 @@
 import {
+  djangoDeletePracticeDailySchedule,
   djangoGetPracticeDailySchedule,
+  djangoGetPracticeScheduleMap,
   djangoSetPracticeDailySchedule,
 } from './djangoApiService';
 import type { PracticeDailySchedule } from '../types';
+
+const VALID_AVAILABILITY = new Set(['open', 'limited', 'closed']);
+
+/** Missing or empty API payloads mean "use weekly hours", not a closed day. */
+export function parseDailyScheduleRecord(
+  practiceId: string,
+  date: string,
+  row: Record<string, unknown> | null | undefined,
+): PracticeDailySchedule | null {
+  if (!row || typeof row !== 'object') return null;
+  const availabilityRaw = String(row.availability ?? row.status ?? '').trim();
+  if (!VALID_AVAILABILITY.has(availabilityRaw)) return null;
+  return {
+    practiceId,
+    date,
+    availability: availabilityRaw as PracticeDailySchedule['availability'],
+    openTime: typeof row.openTime === 'string' ? row.openTime : undefined,
+    closeTime: typeof row.closeTime === 'string' ? row.closeTime : undefined,
+    note: typeof row.note === 'string' ? row.note : undefined,
+    updatedAt: toDate(row.updatedAt),
+  };
+}
 
 export const getPracticeDailySchedule = async (
   practiceId: string,
@@ -10,16 +34,7 @@ export const getPracticeDailySchedule = async (
 ): Promise<PracticeDailySchedule | null> => {
   try {
     const d = await djangoGetPracticeDailySchedule(practiceId, date);
-    if (!d) return null;
-    return {
-      practiceId,
-      date,
-      availability: (d.availability as PracticeDailySchedule['availability']) || 'closed',
-      openTime: (d.openTime as string) || undefined,
-      closeTime: (d.closeTime as string) || undefined,
-      note: (d.note as string) || undefined,
-      updatedAt: toDate(d.updatedAt),
-    };
+    return parseDailyScheduleRecord(practiceId, date, d);
   } catch (error) {
     return null;
   }
@@ -51,12 +66,7 @@ export const deletePracticeDailySchedule = async (
   date: string,
 ): Promise<void> => {
   try {
-    await djangoSetPracticeDailySchedule(practiceId, date, {
-      availability: 'closed',
-      openTime: undefined,
-      closeTime: undefined,
-      note: undefined,
-    });
+    await djangoDeletePracticeDailySchedule(practiceId, date);
   } catch (error) {
     throw new Error(
       error instanceof Error ? error.message : 'Failed to delete daily schedule',
@@ -67,8 +77,24 @@ export const deletePracticeDailySchedule = async (
 export const listPracticeDailySchedules = async (
   practiceId: string,
 ): Promise<PracticeDailySchedule[]> => {
-  // TODO: replace with a Django listing endpoint once available.
-  return [];
+  try {
+    const payload = await djangoGetPracticeScheduleMap(practiceId);
+    const daySchedules = payload.daySchedules || {};
+    return Object.entries(daySchedules)
+      .filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key))
+      .map(([date, raw]) =>
+        parseDailyScheduleRecord(
+          practiceId,
+          date,
+          raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null,
+        ),
+      )
+      .filter((row): row is PracticeDailySchedule => row != null)
+      .sort((a, b) => a.date.localeCompare(b.date));
+  } catch (error) {
+    console.warn('[practiceCalendar] list daily schedules failed', error);
+    return [];
+  }
 };
 
 const toDate = (v: unknown): Date => {

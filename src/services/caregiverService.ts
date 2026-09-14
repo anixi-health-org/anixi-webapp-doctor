@@ -79,11 +79,7 @@ export const getCaregiverPatientSummaries = async (
       }
 
       const status = getPatientStatus(patient);
-      const needsAttention =
-        status === 'warning' ||
-        status === 'inactive' ||
-        adherenceRate < 70 ||
-        (patient.chronicDiseases?.length ?? 0) > 0;
+      const needsAttention = adherenceRate > 0 && adherenceRate < 70;
 
       return { patient, adherenceRate, status, needsAttention };
     }),

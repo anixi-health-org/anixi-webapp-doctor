@@ -82,7 +82,7 @@ export const AppointmentList: React.FC<AppointmentListProps> = ({
             key={appointment.id}
             appointment={appointment}
             onClick={() => onSelectAppointment(appointment)}
-            doctorLabel={doctorLabels?.[appointment.doctorId]}
+            doctorLabel={doctorLabels?.[appointment.doctorId] || appointment.doctorName}
             showDoctor={showDoctor}
           />
         ))}

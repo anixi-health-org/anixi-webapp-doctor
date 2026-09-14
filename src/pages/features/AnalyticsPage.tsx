@@ -14,6 +14,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { getDoctorAppointments } from '../../services/appointmentService';
 import { getDoctorPatients } from '../../services/patientManagementService';
 import { getDoctorPatientsAdherenceSummary } from '../../services/adherenceService';
+import { userFacingLoadError } from '../../services/djangoApiService';
+import { asDate } from '../../components/calendar/calendarDateUtils';
 import { Appointment, Patient } from '../../types';
 
 const AnalyticsSkeleton: React.FC = () => (
@@ -46,7 +48,10 @@ export const AnalyticsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -56,24 +61,24 @@ export const AnalyticsPage: React.FC = () => {
       ]);
       setPatients(patientList);
       setAppointments(aptList);
+      setIsLoading(false);
 
-      const ids = patientList.map((p) => p.id);
+      const ids = patientList.map((patient) => patient.id);
       if (ids.length > 0) {
         const summary = await getDoctorPatientsAdherenceSummary(user.id, ids, 30);
         const rates = Array.from(summary.values())
-          .filter((s) => s.statusLabel !== 'no-data')
-          .map((s) => s.adherenceRate);
+          .filter((item) => item.statusLabel !== 'no-data')
+          .map((item) => item.adherenceRate);
         setAvgAdherence(
           rates.length > 0
-            ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length)
-            : null
+            ? Math.round(rates.reduce((sum, rate) => sum + rate, 0) / rates.length)
+            : null,
         );
       } else {
         setAvgAdherence(null);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load analytics');
-    } finally {
+      setError(userFacingLoadError(err, 'Could not load analytics'));
       setIsLoading(false);
     }
   }, [user?.id]);
@@ -83,9 +88,14 @@ export const AnalyticsPage: React.FC = () => {
   }, [load]);
 
   const stats = useMemo(() => {
+    const appointmentDate = (appointment: Appointment) =>
+      asDate(appointment.startAt) || asDate(appointment.scheduledAt) || asDate(appointment.date);
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthApts = appointments.filter((a) => a.date >= startOfMonth);
+    const monthApts = appointments.filter((appointment) => {
+      const day = appointmentDate(appointment);
+      return Boolean(day && day >= startOfMonth);
+    });
     const completed = appointments.filter((a) => a.status === 'completed').length;
     const pending = appointments.filter((a) => a.status === 'pending').length;
     const confirmed = appointments.filter((a) => a.status === 'confirmed').length;
@@ -98,8 +108,10 @@ export const AnalyticsPage: React.FC = () => {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       byMonth.set(monthKey(d), 0);
     }
-    appointments.forEach((a) => {
-      const key = monthKey(a.date);
+    appointments.forEach((appointment) => {
+      const day = appointmentDate(appointment);
+      if (!day) return;
+      const key = monthKey(day);
       if (byMonth.has(key)) byMonth.set(key, (byMonth.get(key) || 0) + 1);
     });
 

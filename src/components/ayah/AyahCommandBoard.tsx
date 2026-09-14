@@ -47,7 +47,7 @@ export function AyahCommandBoard({
 }: Props) {
   const next = snapshot.nextAppointment;
   const nextWhen = minutesUntil(next?.startAt ?? next?.scheduledAt ?? next?.date);
-  const unstableCount = snapshot.totalPatients - snapshot.stablePatients;
+  const pendingActivation = snapshot.patients.filter((patient) => patient.status === 'pending').length;
   const hasQueue = snapshot.attentionItems.length > 0 || pendingDrafts.length > 0;
 
   return (
@@ -95,8 +95,8 @@ export function AyahCommandBoard({
             {briefingLoading ? '…' : snapshot.totalPatients} patients in your care
           </p>
           <p className="mt-0.5 text-xs text-[#65758b]">
-            {unstableCount > 0
-              ? `${unstableCount} not marked stable`
+            {pendingActivation > 0
+              ? `${pendingActivation} pending activation`
               : 'Your full panel, not only today’s list'}
           </p>
         </button>

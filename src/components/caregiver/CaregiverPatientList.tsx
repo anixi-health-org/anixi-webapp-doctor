@@ -1,7 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Patient } from '../../types';
-import { getPatientStatus } from '../../services/patientManagementService';
+import { patientContactLabel } from '../../utils/patientContact';
+import { patientAccountStatus, patientAccountStatusLabel } from '../../utils/patientRosterStatus';
 import { ListRowsSkeleton } from '../ui/Skeleton';
 
 interface CaregiverPatientListProps {
@@ -52,12 +53,13 @@ export const CaregiverPatientList: React.FC<CaregiverPatientListProps> = ({
   return (
     <div className="divide-y divide-gray-100">
       {patients.map((patient) => {
-        const status = getPatientStatus(patient);
+        const status = patientAccountStatus(patient);
+        const contact = patientContactLabel(patient.email);
         const adherence = adherenceByPatient?.get(patient.id);
         const statusStyles =
-          status === 'stable'
+          status === 'active'
             ? 'bg-emerald-50 text-emerald-700'
-            : status === 'warning'
+            : status === 'pending'
               ? 'bg-amber-50 text-amber-700'
               : 'bg-gray-100 text-gray-600';
 
@@ -71,17 +73,17 @@ export const CaregiverPatientList: React.FC<CaregiverPatientListProps> = ({
             }`}
           >
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-anixi-green text-sm font-bold text-white">
-              {(patient.displayName || patient.email || '?').charAt(0).toUpperCase()}
+              {(patient.displayName || contact || '?').charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate font-semibold text-gray-900">
                 {patient.displayName || 'Unnamed patient'}
               </p>
-              <p className="truncate text-sm text-gray-500">{patient.email}</p>
+              <p className="truncate text-sm text-gray-500">{contact || '—'}</p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
               <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${statusStyles}`}>
-                {status}
+                {patientAccountStatusLabel(status)}
               </span>
               {adherence !== undefined && (
                 <span className="text-xs text-gray-500">{Math.round(adherence)}% adherence</span>

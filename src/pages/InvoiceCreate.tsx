@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { createInvoiceRecord, invoiceOptionsFromDoctor } from '../services/invoiceService';
+import { createInvoiceRecord, invoiceOptionsFromPracticeContext } from '../services/invoiceService';
 import { useAuth } from '../hooks/useAuth';
 import { useDoctorCurrency } from '../hooks/useDoctorCurrency';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
@@ -11,8 +11,9 @@ import { COMMON_ICD10_CODES, SA_VAT_RATE, computeVatBreakdown } from '../lib/sou
 
 const InvoiceCreate: React.FC = () => {
   const { appointmentId } = useParams<{ appointmentId?: string }>();
-  const { user } = useAuth();
+  const { user, practiceSession } = useAuth();
   const doctor = user?.role === 'doctor' ? (user as Doctor) : null;
+  const practice = practiceSession?.practice;
   const { currency: doctorCurrency } = useDoctorCurrency();
   const { navigateBack } = useNavigateWithFallback();
   const navigate = useNavigate();
@@ -74,7 +75,12 @@ const InvoiceCreate: React.FC = () => {
 
     try {
       const opts = {
-        ...invoiceOptionsFromDoctor(doctor, appointmentId, practiceId || undefined),
+        ...invoiceOptionsFromPracticeContext(
+          doctor,
+          practice,
+          appointmentId,
+          practiceId || practice?.id,
+        ),
         bankDetailsNote: bankDetailsNote.trim() || undefined,
         diagnosisCodes: icd10Code ? [icd10Code] : undefined,
       };
@@ -117,14 +123,14 @@ const InvoiceCreate: React.FC = () => {
         if (apt) {
           setPatientId(apt.patientId || '');
           setPatientName(apt.patientName);
-          setPracticeId(apt.practiceId || '');
+          setPracticeId(apt.practiceId || practice?.id || '');
         }
       } catch {
         // Appointment load failure is handled by empty patient fields on save
       }
     };
     void load();
-  }, [appointmentId, user?.id]);
+  }, [appointmentId, user?.id, practice?.id]);
 
   return (
     <div className="min-h-screen bg-[#f5f7fa]">
@@ -160,7 +166,7 @@ const InvoiceCreate: React.FC = () => {
           </div>
         </div>
 
-        <LetterheadSetupBanner doctor={doctor} compact className="mb-5" />
+        <LetterheadSetupBanner doctor={doctor} practice={practice} compact className="mb-5" />
 
         <div className="rounded-xl border border-[#e1e7ef] bg-white shadow-sm">
           <div className="border-b border-[#e1e7ef] px-5 py-4">

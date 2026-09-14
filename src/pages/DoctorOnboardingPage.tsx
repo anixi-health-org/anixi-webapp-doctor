@@ -5,17 +5,24 @@ import { OnboardingShell } from '../components/onboarding/OnboardingShell';
 import { getOnboardingStepMeta } from '../components/onboarding/OnboardingProgress';
 import { AppShellSkeleton } from '../components/ui/Skeleton';
 import { useAuth } from '../hooks/AuthContext';
-import { clinicAdminHomePath, doctorHomePath, getDoctorAccessState, isClinicOwner } from '../lib/doctorAccess';
+import { clinicAdminHomePath, doctorHomePath, getDoctorAccessState, isClinicEmployedClinician, isClinicOwner } from '../lib/doctorAccess';
 import type { Doctor } from '../types';
 
 const PROFILE_SUB_LABELS = ['Personal details', 'Professional details', 'Practice details'];
 
 /** Doctor credential onboarding (HPCSA review). Separate from clinic bulk setup. */
 export const DoctorOnboardingPage: React.FC = () => {
-  const { user, refreshUser, practiceSession, clinicOnboardingComplete } = useAuth();
+  const { user, refreshUser, practiceSession, clinicOnboardingComplete, joinIntent } = useAuth();
   const navigate = useNavigate();
   const doctor = user?.role === 'doctor' ? (user as Doctor) : null;
   const [profileStep, setProfileStep] = useState(1);
+  const clinicEmployed = isClinicEmployedClinician(practiceSession, {
+    joinIntent,
+    accountKind: doctor?.accountKind,
+  });
+  const profileLabels = clinicEmployed
+    ? ['Personal details', 'Professional details']
+    : PROFILE_SUB_LABELS;
 
   useEffect(() => {
     if (!doctor) return;
@@ -43,11 +50,15 @@ export const DoctorOnboardingPage: React.FC = () => {
       currentStep={1}
       subProgress={{
         current: profileStep,
-        total: 3,
-        label: PROFILE_SUB_LABELS[profileStep - 1] ?? 'Profile',
+        total: clinicEmployed ? 2 : 3,
+        label: profileLabels[profileStep - 1] ?? 'Profile',
       }}
       title={stepMeta.title}
-      subtitle={stepMeta.subtitle}
+      subtitle={
+        clinicEmployed
+          ? 'Fill in your personal and professional details. Practice name, location, and hours come from your clinic.'
+          : stepMeta.subtitle
+      }
       maxWidth="full"
       onBack={profileStep > 1 ? () => setProfileStep((s) => Math.max(1, s - 1)) : undefined}
       backLabel="Back"

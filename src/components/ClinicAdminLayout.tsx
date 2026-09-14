@@ -17,9 +17,11 @@ import {
 import clsx from 'clsx';
 import React from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
+import { AskAnixiProvider } from '../context/AskAnixiContext';
 import { useAuth } from '../hooks/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { AnixiLogo } from './brand/AnixiLogo';
+import { ClinicErrorBoundary } from './clinic/ClinicErrorBoundary';
 import { UserProfileMenu } from './page-layout/UserProfileMenu';
 
 type NavItem = {
@@ -136,7 +138,13 @@ function NavLink({
   );
 }
 
-export const ClinicAdminLayout: React.FC = () => {
+export const ClinicAdminLayout: React.FC = () => (
+  <AskAnixiProvider>
+    <ClinicAdminShell />
+  </AskAnixiProvider>
+);
+
+const ClinicAdminShell: React.FC = () => {
   const { user, practiceSession } = useAuth();
   const { can, isOwner, isPracticeManager } = usePermissions();
   const location = useLocation();
@@ -248,7 +256,9 @@ export const ClinicAdminLayout: React.FC = () => {
         )}
 
         <main className="flex-1 overflow-y-auto">
-          <Outlet />
+          <ClinicErrorBoundary key={location.pathname}>
+            <Outlet />
+          </ClinicErrorBoundary>
         </main>
       </div>
     </div>

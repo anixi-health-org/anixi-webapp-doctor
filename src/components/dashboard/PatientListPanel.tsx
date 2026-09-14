@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Patient } from '../../types';
-import { getPatientStatus } from '../../utils/patientStatusUtils';
+import { patientContactLabel } from '../../utils/patientContact';
+import { patientAccountStatus, patientAccountStatusLabel } from '../../utils/patientRosterStatus';
 
 interface PatientListPanelProps {
   patients: Patient[];
@@ -20,51 +21,25 @@ export const PatientListPanel: React.FC<PatientListPanelProps> = ({
   isVisible,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [patientStatuses, setPatientStatuses] = useState<Map<string, string>>(new Map());
 
-  useEffect(() => {
-    const calculateStatuses = async () => {
-      const statusMap = new Map<string, string>();
-
-      for (const patient of patients) {
-        try {
-          const status = await getPatientStatus(patient);
-          statusMap.set(patient.id, status);
-        } catch {
-          statusMap.set(patient.id, 'Stable');
-        }
-      }
-
-      setPatientStatuses(statusMap);
-    };
-
-    if (patients.length > 0) {
-      calculateStatuses();
-    }
-  }, [patients]);
-
-  const filteredPatients = patients.filter((patient) =>
-    (patient.displayName || patient.email)
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase()) ||
-    patient.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredPatients = patients.filter((patient) => {
+    const haystack = `${patient.displayName || ''} ${patientContactLabel(patient.email)}`.toLowerCase();
+    return haystack.includes(searchTerm.toLowerCase());
+  });
 
   if (!isVisible) {
     return null;
   }
 
   const getPatientStatusDisplay = (patient: Patient): string => {
-    return patientStatuses.get(patient.id) || 'Loading...';
+    return patientAccountStatusLabel(patientAccountStatus(patient));
   };
 
   const getStatusColor = (status: string): string => {
     switch (status) {
-      case 'Action Required':
+      case 'Pending activation':
         return 'bg-[#FFEAD1] text-[#D9480F]';
-      case 'Inactive':
-        return 'bg-[#F2F4F7] text-[#5C6775]';
-      case 'Stable':
+      case 'Activated':
         return 'bg-[#CFF2DE] text-[#0E9F6E]';
       default:
         return 'bg-[#F2F4F7] text-[#5C6775]';
@@ -73,14 +48,12 @@ export const PatientListPanel: React.FC<PatientListPanelProps> = ({
 
   const getAvatarColor = (status: string): string => {
     switch (status) {
-      case 'Action Required':
+      case 'Pending activation':
         return 'bg-[#FF6A00]';
-      case 'Stable':
+      case 'Activated':
         return 'bg-[#10B981]';
-      case 'Inactive':
-        return 'bg-[#94A3B8]';
       default:
-        return 'bg-[#425950]';
+        return 'bg-[#5C6775]';
     }
   };
 

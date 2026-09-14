@@ -31,6 +31,7 @@ import { NotificationBell } from './notifications/NotificationBell';
 import { GlobalPatientSearch } from './ui/GlobalPatientSearch';
 import { UserProfileMenu } from './page-layout/UserProfileMenu';
 import { AnixiLogo } from './brand/AnixiLogo';
+import { clinicianHeaderLabel } from '../lib/clinicianName';
 import { AskAnixiProvider } from '../context/AskAnixiContext';
 import { AyahChatProvider } from '../context/AyahChatContext';
 
@@ -129,7 +130,6 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
   };
 
   const closeMobile = () => setMobileNavOpen(false);
-  const firstName = user?.displayName?.split(' ')[0] || 'Doctor';
 
   const primaryNav: NavItem[] = [
     { name: 'Ayah', href: '/ayah', icon: SparklesIcon },
@@ -166,7 +166,11 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
 
   const practiceNav: NavItem[] = [
     { name: 'Invoices', href: '/invoices', icon: CurrencyDollarIcon },
-    { name: 'Practice Calendar', href: '/practice-calendar', icon: CalendarDaysIcon },
+    {
+      name: isClinicEmployedClinician ? 'My calendar' : 'Practice Calendar',
+      href: '/practice-calendar',
+      icon: CalendarDaysIcon,
+    },
     {
       name: isClinicEmployedClinician ? 'My schedule' : 'Settings',
       href: '/practice-settings',
@@ -235,7 +239,7 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
               <NotificationBell />
               <UserProfileMenu
                 subtitle="Physician"
-                displayLabel={`Dr. ${firstName}`}
+                displayLabel={clinicianHeaderLabel(user?.displayName)}
               />
             </div>
           </div>

@@ -1,5 +1,10 @@
 import { buildPatientSignupLink } from '../lib/referralLinks';
 import { Patient, SharingRequest } from '../types';
+import { isPlaceholderPatientEmail } from '../utils/patientContact';
+import {
+  patientAccountStatus,
+  type PatientAccountStatus,
+} from '../utils/patientRosterStatus';
 import { mapPatientRecord } from './patientRecordMapper';
 import {
   djangoCreateSharingRequest,
@@ -8,19 +13,40 @@ import {
   djangoListPatientPanel,
   djangoListSharingRequests,
   djangoResolveSharing,
+  djangoSendTransactionalEmail,
   isDjangoApiEnabled,
+  type DjangoPanelPatient,
 } from './djangoApiService';
+
+const patientAppUrl = () =>
+  process.env.REACT_APP_PATIENT_APP_URL || 'https://anixihealth.com/activate';
 
 export const sendPatientDownloadInvite = async (opts: {
   doctorId: string;
   to: string;
   patientDisplayName?: string;
+  clinicName?: string;
+  clinicCode?: string;
+  invitedByName?: string;
 }): Promise<void> => {
-  // TODO: route invite email via Django transactional-email endpoint once available.
-  const signupLink = buildPatientSignupLink();
-  console.log(
-    `[patientManagementService] sendPatientDownloadInvite stub — to=${opts.to} signupLink=${signupLink}`,
-  );
+  if (!isDjangoApiEnabled()) {
+    const signupLink = buildPatientSignupLink();
+    console.log(
+      `[patientManagementService] sendPatientDownloadInvite skipped, to=${opts.to} signupLink=${signupLink}`,
+    );
+    throw new Error('Email is not configured.');
+  }
+
+  const sent = await djangoSendTransactionalEmail('patient_download_invite', opts.to.trim(), {
+    doctorName: opts.invitedByName || 'Your clinic',
+    patientName: opts.patientDisplayName || '',
+    clinicName: opts.clinicName || 'your clinic',
+    clinicCode: opts.clinicCode || '',
+    signupUrl: patientAppUrl(),
+  });
+  if (!sent) {
+    throw new Error('The invitation email could not be sent.');
+  }
 };
 
 /** Keeps doctor portal + mobile permission models in sync for health data reads. */
@@ -46,7 +72,7 @@ async function loadPatientRecordForDoctor(
       return mapPatientRecord(
         patientId,
         undefined,
-        { displayName: row.displayName || 'Patient', email: row.email || '' },
+        { displayName: row.displayName || '', email: row.email || '' },
         doctorId,
       );
     }
@@ -115,24 +141,39 @@ export const getPatientForDoctorView = async (
   return null;
 };
 
+function parseOptionalDate(value?: string | null): Date | undefined {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+export function mapPanelPatient(row: DjangoPanelPatient): Patient {
+  const createdAt = parseOptionalDate(row.createdAt);
+  const updatedAt = parseOptionalDate(row.updatedAt) ?? createdAt;
+  return {
+    id: row.patientId,
+    email: isPlaceholderPatientEmail(row.email) ? '' : row.email || '',
+    displayName: (row.displayName || '').trim(),
+    phoneNumber: row.phoneNumber || undefined,
+    rosterStatus: row.status,
+    practiceId: row.practiceId ?? undefined,
+    role: 'patient' as const,
+    createdAt: createdAt as Date,
+    updatedAt: updatedAt as Date,
+  };
+}
+
 export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> => {
+  void doctorId;
   if (isDjangoApiEnabled()) {
     try {
       const panel = await djangoListPatientPanel();
-      return panel.map((row) => ({
-        id: row.patientId,
-        email: row.email,
-        displayName: row.displayName || 'Patient',
-        role: 'patient' as const,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }));
+      return panel.map(mapPanelPatient);
     } catch {
       return [];
     }
   }
 
-  // Firestore roster path removed.
   return [];
 };
 export interface PatientRequest {
@@ -201,28 +242,16 @@ export const sendPatientRequest = async (
   }
 };
 
-export type PatientRosterStatus = 'stable' | 'critical' | 'recovering' | 'inactive';
+export type PatientRosterStatus = PatientAccountStatus;
 
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-
-/** Same roster status as the Patients page, not adherence or 5-day recency. */
+/** Account activation only. Never infers clinical stability. */
 export function derivePatientRosterStatus(patient: Patient): PatientRosterStatus {
-  const chronicCount = patient.chronicDiseases?.length ?? 0;
-  if (chronicCount > 2) return 'critical';
-  if (chronicCount > 0) return 'recovering';
-  const lastRaw = patient.updatedAt ?? patient.createdAt;
-  const last = lastRaw ? new Date(lastRaw) : null;
-  if (last && !Number.isNaN(last.getTime()) && last.getTime() < Date.now() - THIRTY_DAYS_MS) {
-    return 'inactive';
-  }
-  return 'stable';
+  return patientAccountStatus(patient);
 }
 
-export const getPatientStatus = (patient: Patient): 'stable' | 'warning' | 'inactive' => {
-  const status = derivePatientRosterStatus(patient);
-  if (status === 'inactive') return 'inactive';
-  if (status === 'critical' || status === 'recovering') return 'warning';
-  return 'stable';
+export const getPatientStatus = (patient: Patient): 'stable' | 'warning' | 'inactive' | 'unknown' => {
+  void patient;
+  return 'unknown';
 };
 
 export const addPatientManually = async (
@@ -231,43 +260,78 @@ export const addPatientManually = async (
     displayName: string;
     email?: string;
     phoneNumber?: string;
-    dateOfBirth?: Date;
+    dateOfBirth?: Date | string;
     notes?: string;
     /** When set, patient joins the practice-shared pool */
     practiceId?: string;
+    clinicName?: string;
+    clinicCode?: string;
+    invitedByName?: string;
   },
   inviteOptions?: { sendInvite?: boolean; inviteEmail?: string },
-): Promise<{ patientId: string; inviteQueued?: boolean; inviteMailId?: string; inviteError?: string }> => {
+): Promise<{
+  patientId: string;
+  activationCode?: string;
+  inviteQueued?: boolean;
+  inviteMailId?: string;
+  inviteError?: string;
+}> => {
   if (!doctorId) throw new Error('Doctor ID is required');
   const targetEmail = (inviteOptions?.inviteEmail || payload.email || '').trim().toLowerCase();
 
   if (isDjangoApiEnabled()) {
-    await djangoImportRoster(
+    const imported = await djangoImportRoster(
       [
         {
           name: payload.displayName,
           email: payload.email,
           phone: payload.phoneNumber,
+          dateOfBirth:
+            payload.dateOfBirth instanceof Date
+              ? payload.dateOfBirth.toISOString().slice(0, 10)
+              : payload.dateOfBirth,
           notes: payload.notes,
           practiceId: payload.practiceId,
         },
       ],
       payload.practiceId,
     );
-
-    const panel = await djangoListPatientPanel();
-    const match = panel.find(
-      (row) => targetEmail && row.email.trim().toLowerCase() === targetEmail,
-    );
-    const patientId = match?.patientId ?? `pending-${Date.now()}`;
-
-    if (inviteOptions?.sendInvite && targetEmail) {
-      console.log(
-        `[patientManagementService] Roster import complete — invite email for ${targetEmail} not yet automated`,
+    const created = imported.rows[0];
+    if (!created?.patientId) {
+      throw new Error(
+        imported.skipped
+          ? 'This patient could not be added. Provide an email, phone, or date of birth, or they may already belong to another clinic.'
+          : 'Patient was not added to the roster.',
       );
     }
 
-    return { patientId, inviteQueued: Boolean(inviteOptions?.sendInvite && targetEmail) };
+    let inviteQueued = false;
+    let inviteError: string | undefined;
+    if (inviteOptions?.sendInvite && targetEmail) {
+      try {
+        await sendPatientDownloadInvite({
+          doctorId,
+          to: targetEmail,
+          patientDisplayName: payload.displayName,
+          clinicName: payload.clinicName,
+          clinicCode: payload.clinicCode,
+          invitedByName: payload.invitedByName,
+        });
+        inviteQueued = true;
+      } catch (err) {
+        inviteError =
+          err instanceof Error
+            ? err.message
+            : 'Patient was added, but the invitation email could not be sent.';
+      }
+    }
+
+    return {
+      patientId: created.patientId,
+      activationCode: created.activationCode || payload.clinicCode,
+      inviteQueued,
+      inviteError,
+    };
   }
 
   const patientId = `patient-${Date.now()}`;

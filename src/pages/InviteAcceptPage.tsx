@@ -33,7 +33,7 @@ const clinicAdminRoles: PracticeRole[] = [
 export const InviteAcceptPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, login, refreshPracticeSession, refreshUser, isAuthenticated } = useAuth();
+  const { user, login, logout, refreshPracticeSession, refreshUser, isAuthenticated, isLoading } = useAuth();
 
   const practiceId = searchParams.get('practiceId') || '';
   const inviteId = searchParams.get('inviteId') || '';
@@ -56,7 +56,7 @@ export const InviteAcceptPage: React.FC = () => {
     let cancelled = false;
     (async () => {
       try {
-        const data = await getPracticeInvite(practiceId, inviteId);
+        const data = await getPracticeInvite(practiceId, inviteId, token);
         if (cancelled) return;
         if (!data) {
           setLoadError('Invitation not found.');
@@ -128,6 +128,10 @@ export const InviteAcceptPage: React.FC = () => {
       const authRole: AuthRole = doctorAuthRoles.includes(invite.role) ? 'doctor' : 'staff';
 
       if (isAuthenticated && user) {
+        if (user.email.trim().toLowerCase() !== invite.email.trim().toLowerCase()) {
+          setError('Sign out and continue with the invited email address.');
+          return;
+        }
         await finishAccept(user.id, user.email, user.displayName, invite.role);
         return;
       }
@@ -210,6 +214,17 @@ export const InviteAcceptPage: React.FC = () => {
     );
   }
 
+  const invitedEmail = invite.email.trim().toLowerCase();
+  const signedInEmail = (user?.email || '').trim().toLowerCase();
+  const signedInAsInvitedUser = Boolean(signedInEmail) && signedInEmail === invitedEmail;
+  const signedInAsWrongUser = !isLoading && isAuthenticated && Boolean(user) && !signedInAsInvitedUser;
+  const showAuthForm = !isLoading && !isAuthenticated;
+
+  const handleSwitchAccount = async () => {
+    setError('');
+    await logout();
+  };
+
   return (
     <AuthLayout
       title="You're invited"
@@ -226,7 +241,24 @@ export const InviteAcceptPage: React.FC = () => {
           </p>
         </div>
 
-        {!isAuthenticated && (
+        {signedInAsWrongUser && (
+          <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <p className="font-medium">This invitation is for {invite.email}</p>
+            <p className="mt-1 text-amber-800">
+              You&apos;re signed in as {user?.email}. Sign out to create an account or sign in with the
+              invited email.
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleSwitchAccount()}
+              className="mt-3 inline-flex rounded-full bg-anixi-green px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+            >
+              Sign out and continue
+            </button>
+          </div>
+        )}
+
+        {showAuthForm && (
           <div className="mb-5 flex rounded-full bg-gray-100 p-1 text-sm">
             <button
               type="button"
@@ -249,8 +281,9 @@ export const InviteAcceptPage: React.FC = () => {
           </div>
         )}
 
+        {!signedInAsWrongUser && (
         <form className="space-y-4" onSubmit={handleSubmit}>
-          {mode === 'register' && !isAuthenticated && (
+          {mode === 'register' && showAuthForm && (
             <div>
               <label className="block text-sm font-medium text-gray-700">Full name</label>
               <input
@@ -272,7 +305,7 @@ export const InviteAcceptPage: React.FC = () => {
             />
             <p className="mt-1 text-xs text-gray-400">Must match the invited email address</p>
           </div>
-          {!isAuthenticated && (
+          {showAuthForm && (
             <div>
               <label className="block text-sm font-medium text-gray-700">Password</label>
               <div className="relative mt-1.5">
@@ -298,20 +331,23 @@ export const InviteAcceptPage: React.FC = () => {
 
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || isLoading}
             className="w-full rounded-full bg-anixi-green py-3.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
           >
             {submitting
               ? 'Joining…'
-              : isAuthenticated
-                ? 'Accept invitation'
-                : mode === 'register'
-                  ? 'Create account & join'
-                  : 'Sign in & join'}
+              : isLoading
+                ? 'Checking session…'
+                : signedInAsInvitedUser
+                  ? 'Accept invitation'
+                  : mode === 'register'
+                    ? 'Create account & join'
+                    : 'Sign in & join'}
           </button>
         </form>
+        )}
 
-        {!isAuthenticated && (
+        {showAuthForm && (
           <div className="mt-6">
             <SignInPrompt />
           </div>

@@ -87,13 +87,8 @@ export const PatientList: React.FC = () => {
     setFilteredPatients(filtered);
   };
   const getPatientStatus = (patient: Patient): PatientStatus => {
-    const now = new Date();
-    const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
-    const lastActive = patient.updatedAt ? new Date(patient.updatedAt) : new Date(patient.createdAt);
-    if (lastActive < fiveDaysAgo) {
-      return 'inactive';
-    }
-    return 'stable';
+    void patient;
+    return 'unknown';
   };
   const getFilterLabel = () => {
     switch (filterParam) {

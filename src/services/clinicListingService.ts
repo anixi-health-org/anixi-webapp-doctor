@@ -1,6 +1,11 @@
 import type { Practice, PublicClinicListing } from '../types';
+import {
+  djangoGetPublicClinic,
+  djangoListPublicClinics,
+  isDjangoApiEnabled,
+} from './djangoApiService';
 
-function mapListing(id: string, practice: Practice): PublicClinicListing {
+export function mapListing(id: string, practice: Practice): PublicClinicListing {
   const listing = practice.publicListing;
   const primaryLocation = practice.locations?.[0];
   return {
@@ -14,18 +19,38 @@ function mapListing(id: string, practice: Practice): PublicClinicListing {
     services: listing?.services || [],
     acceptsMedicalAid: listing?.acceptsMedicalAid ?? false,
     heroImageUrl: listing?.heroImageUrl,
+    logoUrl: practice.logoUrl,
     bhfPracticeNumber: practice.bhfPracticeNumber,
   };
 }
 
+export function mapPublicClinicRow(row: Record<string, unknown>): PublicClinicListing {
+  return {
+    id: String(row.id ?? ''),
+    name: String(row.name ?? 'Clinic'),
+    slug: String(row.slug ?? row.id ?? ''),
+    tagline: row.tagline ? String(row.tagline) : undefined,
+    description: row.description ? String(row.description) : undefined,
+    city: row.city ? String(row.city) : undefined,
+    province: row.province ? String(row.province) : undefined,
+    services: Array.isArray(row.services) ? row.services.map(String) : [],
+    acceptsMedicalAid: row.acceptsMedicalAid === true,
+    heroImageUrl: row.heroImageUrl ? String(row.heroImageUrl) : undefined,
+    logoUrl: row.logoUrl ? String(row.logoUrl) : undefined,
+    bhfPracticeNumber: row.bhfPracticeNumber ? String(row.bhfPracticeNumber) : undefined,
+  };
+}
+
 export async function listPublicClinics(): Promise<PublicClinicListing[]> {
-  // TODO: replace with a Django public-clinic listing endpoint once available.
-  return [];
+  if (!isDjangoApiEnabled()) return [];
+  const rows = await djangoListPublicClinics();
+  return rows.map(mapPublicClinicRow);
 }
 
 export async function getPublicClinic(
   practiceId: string,
 ): Promise<PublicClinicListing | null> {
-  // TODO: replace with a Django public-clinic detail endpoint once available.
-  return null;
+  if (!practiceId || !isDjangoApiEnabled()) return null;
+  const row = await djangoGetPublicClinic(practiceId);
+  return row ? mapPublicClinicRow(row) : null;
 }

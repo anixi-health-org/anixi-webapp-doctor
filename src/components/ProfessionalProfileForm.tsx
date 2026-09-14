@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { TabPill } from '../components/ui/TabPill';
+import { TabBar, TabPill } from '../components/ui/TabPill';
 import { PageHeader } from './page-layout/PageHeader';
 import { PageShell } from './page-layout/PageShell';
 import { LogoCropModal } from './LogoCropModal';
@@ -12,7 +12,9 @@ import {
   type ProfessionalProfileFormData,
 } from '../types/doctorProfile';
 import { PageHeaderSkeleton, Skeleton } from './ui/Skeleton';
-import { isOnboardingFormComplete } from '../lib/doctorAccess';
+import { isOnboardingFormComplete, inheritClinicPracticeFields } from '../lib/doctorAccess';
+import { usePermissions } from '../hooks/usePermissions';
+import { ClinicManagedNotice } from './practice/ClinicManagedNotice';
 import { detectBrowserTimezone, timezoneSelectOptions } from '../lib/timezones';
 import { SA_PROVINCES, validateSouthAfricanId } from '../lib/southAfrica';
 import {
@@ -73,10 +75,12 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
 }) => {
   const isOnboarding = mode === 'onboarding';
   const { user, practiceSession, refreshPracticeSession, refreshUser } = useAuth();
+  const { isClinicEmployedClinician: clinicEmployed } = usePermissions();
+  const lastStep = clinicEmployed ? 2 : 3;
   const [searchParams] = useSearchParams();
   const doctor = user?.role === 'doctor' ? user : null;
   const [currentStep, setCurrentStep] = useState(() =>
-    searchParams.get('tab') === 'practice' ? 3 : 1,
+    searchParams.get('tab') === 'practice' && !clinicEmployed ? 3 : 1,
   );
   const [isLoading, setIsLoading] = useState(false);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
@@ -122,12 +126,18 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
         if (cancelled) return;
 
         if (saved) {
+          const inherited =
+            clinicEmployed && practiceSession?.practice
+              ? inheritClinicPracticeFields(practiceSession.practice)
+              : {};
           setFormData((prev) => ({
             ...prev,
             ...saved,
+            ...inherited,
             emailAddress: saved.emailAddress || doctor.email || prev.emailAddress,
             fullName: saved.fullName || doctor.displayName || prev.fullName,
             timezone:
+              inherited.timezone ||
               saved.timezone ||
               practiceSession?.practice?.timezone ||
               detectBrowserTimezone(),
@@ -139,9 +149,15 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
             setPhotoPreview(saved.profileImageUrl);
           }
         } else {
+          const inherited =
+            clinicEmployed && practiceSession?.practice
+              ? inheritClinicPracticeFields(practiceSession.practice)
+              : {};
           setFormData((prev) => ({
             ...prev,
+            ...inherited,
             timezone:
+              inherited.timezone ||
               prev.timezone ||
               practiceSession?.practice?.timezone ||
               detectBrowserTimezone(),
@@ -163,7 +179,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [doctor?.id, doctor?.displayName, doctor?.email, practiceSession?.practice?.timezone]);
+  }, [doctor?.id, doctor?.displayName, doctor?.email, practiceSession?.practice, clinicEmployed]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -305,9 +321,17 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
         return;
       }
 
-      if (isOnboarding && !isOnboardingFormComplete(formData)) {
+      const inherited =
+        clinicEmployed && practiceSession?.practice
+          ? inheritClinicPracticeFields(practiceSession.practice)
+          : {};
+      const payload = { ...formData, ...inherited };
+
+      if (isOnboarding && !isOnboardingFormComplete(payload, { inheritPracticeFromClinic: clinicEmployed })) {
         setMessage(
-          'Please complete all required personal, professional, and practice fields before submitting for review.'
+          clinicEmployed
+            ? 'Please complete all required personal and professional fields before submitting for review.'
+            : 'Please complete all required personal, professional, and practice fields before submitting for review.'
         );
         setIsLoading(false);
         return;
@@ -317,7 +341,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
       let profileImageUrl: string | undefined =
         formData.profileImageUrl || doctor?.profileImageUrl;
 
-      if (logoFile && doctor?.id) {
+      if (!clinicEmployed && logoFile && doctor?.id) {
         setLogoUploading(true);
         logoUrl = await uploadPracticeLogo(doctor.id, logoFile);
         setLogoUploading(false);
@@ -331,20 +355,24 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
 
       await saveDoctorProfileForm(
         doctor.id,
-        { ...formData, profileImageUrl: profileImageUrl || formData.profileImageUrl },
-        logoUrl,
+        { ...payload, profileImageUrl: profileImageUrl || payload.profileImageUrl },
+        clinicEmployed ? undefined : logoUrl,
         {
           submitForReview: isOnboarding,
         }
       );
 
       const practiceId = practiceSession?.practice?.id;
-      if (practiceId && (formData.practiceName.trim() || formData.timezone.trim())) {
+      if (
+        !clinicEmployed &&
+        practiceId &&
+        (payload.practiceName.trim() || payload.timezone.trim())
+      ) {
         await updatePractice(practiceId, {
-          ...(formData.practiceName.trim()
-            ? { name: formData.practiceName.trim() }
+          ...(payload.practiceName.trim()
+            ? { name: payload.practiceName.trim() }
             : {}),
-          ...(formData.timezone.trim() ? { timezone: formData.timezone.trim() } : {}),
+          ...(payload.timezone.trim() ? { timezone: payload.timezone.trim() } : {}),
         });
         await refreshPracticeSession();
       }
@@ -384,6 +412,10 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
   }, [currentStep, onStepChange]);
 
   useEffect(() => {
+    setCurrentStep((step) => Math.min(step, lastStep));
+  }, [lastStep]);
+
+  useEffect(() => {
     if (currentStep !== 3) return;
     const focusId =
       searchParams.get('tab') === 'practice'
@@ -400,11 +432,11 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
     const tabs = [
       { id: 1, name: 'Personal', label: 'Personal Information' },
       { id: 2, name: 'Professional', label: 'Professional Information' },
-      { id: 3, name: 'Practice', label: 'Practice Information' },
+      ...(clinicEmployed ? [] : [{ id: 3, name: 'Practice', label: 'Practice Information' }]),
     ];
 
     return (
-      <div className="mb-6 flex gap-1.5 overflow-x-auto rounded-[12px] border border-[#e1e7ef] bg-white p-1.5 shadow-sm">
+      <TabBar className="mb-6">
         {tabs.map((tab) => (
           <TabPill
             key={tab.id}
@@ -415,7 +447,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
             {tab.name}
           </TabPill>
         ))}
-      </div>
+      </TabBar>
     );
   };
 
@@ -966,6 +998,13 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
 
   const formCard = (
     <>
+      {clinicEmployed && (
+        <ClinicManagedNotice
+          practiceName={practiceSession?.practice?.tradingName || practiceSession?.practice?.name}
+          surface={isOnboarding ? 'onboarding' : 'settings'}
+          className="mb-5"
+        />
+      )}
       {renderTabNavigation()}
 
       <div className="rounded-[12px] border border-[#e1e7ef] bg-white shadow-sm">
@@ -978,7 +1017,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
                 className={`mt-6 rounded-[12px] p-4 text-sm ${
                   message.includes('successfully') || message.includes('submitted')
                     ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
-                    : message.includes('Could not load') || message.includes('required')
+                    : message.includes('Could not load') || message.includes('required') || message.includes('complete all required')
                       ? 'border border-amber-200 bg-amber-50 text-amber-800'
                       : 'border border-red-200 bg-red-50 text-red-800'
                 }`}
@@ -998,10 +1037,10 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
                     Back
                   </button>
                 )}
-                {currentStep < 3 && (
+                {currentStep < lastStep && (
                   <button
                     type="button"
-                    onClick={() => setCurrentStep((s) => Math.min(3, s + 1))}
+                    onClick={() => setCurrentStep((s) => Math.min(lastStep, s + 1))}
                     className={btnPrimaryClass}
                   >
                     Continue

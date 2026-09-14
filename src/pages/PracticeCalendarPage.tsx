@@ -19,6 +19,7 @@ import {
 } from '../components/calendar/calendarDateUtils';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { AppointmentDetails } from '../components/appointments/AppointmentDetails';
+import { ClinicManagedNotice } from '../components/practice/ClinicManagedNotice';
 
 type Tab = 'day' | 'week';
 
@@ -149,13 +150,7 @@ const PracticeCalendarPage: React.FC = () => {
     setSelectedDayAppointment(apt);
   };
 
-  if (!practice) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <p className="text-[#65758b]">No practice found. Contact support.</p>
-      </div>
-    );
-  }
+  const clinicManaged = isClinicEmployedClinician || !practice;
 
   const miniCalendarDays = (() => {
     const year = miniMonth.getFullYear();
@@ -188,9 +183,13 @@ const PracticeCalendarPage: React.FC = () => {
       <div className="mx-auto max-w-7xl space-y-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">Practice calendar</h1>
+            <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">
+              {clinicManaged ? 'My clinic calendar' : 'Practice calendar'}
+            </h1>
             <p className="mt-1 text-[13px] text-[#65758b]">
-              See who is booked today, and scan the full week when you need it.
+              {clinicManaged
+                ? 'Your clinic manages this diary. Review the appointments assigned to you.'
+                : 'See who is booked today, and scan the full week when you need it.'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -218,16 +217,22 @@ const PracticeCalendarPage: React.FC = () => {
                 Week view
               </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowCreateModal(true)}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-anixi-green px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f]"
-            >
-              <span className="text-lg leading-none">+</span>
-              Quick add
-            </button>
+            {!clinicManaged && (
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(true)}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-anixi-green px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f]"
+              >
+                <span className="text-lg leading-none">+</span>
+                Quick add
+              </button>
+            )}
           </div>
         </div>
+
+        {clinicManaged && (
+          <ClinicManagedNotice practiceName={practice?.name} surface="calendar" />
+        )}
 
         <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
           <div className="space-y-4">
@@ -345,11 +350,9 @@ const PracticeCalendarPage: React.FC = () => {
                   blockedTime={dayBlockedTime}
                   isLoading={loadingApts || loadingHours}
                   onSelectAppointment={handleSelectAppointment}
-                  onQuickAdd={() => setShowCreateModal(true)}
+                  onQuickAdd={clinicManaged ? undefined : () => setShowCreateModal(true)}
                   onManageHours={
-                    isClinicEmployedClinician
-                      ? undefined
-                      : () => navigate('/practice-settings?tab=availability')
+                    clinicManaged ? undefined : () => navigate('/practice-settings?tab=availability')
                   }
                 />
               </div>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { usePermissions } from '../hooks/usePermissions';
 import { listenToDoctorAppointments } from '../services/appointmentService';
+import { userFacingLoadError } from '../services/djangoApiService';
 import { Appointment } from '../types';
 import { AppointmentList } from '../components/appointments/AppointmentList';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
@@ -71,7 +72,7 @@ export const AppointmentsPage: React.FC = () => {
         setIsLoading(false);
       },
       (err) => {
-        setError(err.message || 'Failed to load appointments');
+        setError(userFacingLoadError(err, 'Failed to load appointments'));
         setIsLoading(false);
       }
     );

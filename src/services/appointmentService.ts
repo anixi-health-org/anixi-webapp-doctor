@@ -4,6 +4,7 @@ import {
   djangoBookAppointment,
   djangoListAppointments,
   djangoPatchAppointment,
+  djangoResolveMediaUrl,
   djangoUploadDocument,
 } from './djangoApiService';
 import {
@@ -245,6 +246,11 @@ const mapAppointmentFields = (
         ? data.durationMinutes
         : undefined,
     requestedByRole: data.requestedByRole || undefined,
+    arrivalStatus: data.arrivalStatus || 'expected',
+    checkedInAt: convertTimestamp(data.checkedInAt) || undefined,
+    checkedInBy: typeof data.checkedInBy === 'string' ? data.checkedInBy : undefined,
+    roomId: data.roomId || undefined,
+    doctorName: typeof data.doctorName === 'string' && data.doctorName ? data.doctorName : undefined,
     overrideApplied: data.overrideApplied ?? undefined,
     conflictMeta: data.conflictMeta || undefined,
     editScope,
@@ -309,7 +315,7 @@ export const getDoctorAppointments = async (doctorId: string): Promise<Appointme
     return mapDjangoAppointments(rows as Array<Record<string, unknown>>, doctorId);
   } catch (error) {
     console.error('Django getDoctorAppointments failed:', error);
-    throw error;
+    return [];
   }
 };
 
@@ -334,13 +340,18 @@ export const listenToDoctorAppointments = (
 };
 
 /** All appointments for a clinic/practice (clinic admin schedule view). */
-export const getPracticeWideAppointments = async (practiceId: string): Promise<Appointment[]> => {
+export const getPracticeWideAppointments = async (
+  practiceId: string,
+  opts?: { fromDate?: string; toDate?: string; doctorId?: string },
+): Promise<Appointment[]> => {
   try {
-    const rows = await djangoListAppointments('doctor');
-    const filtered = (rows as Array<Record<string, unknown>>).filter(
-      (row) => String(row.practiceId ?? '') === practiceId
-    );
-    return mapDjangoAppointments(filtered, 'unknown');
+    const rows = await djangoListAppointments({
+      practiceId,
+      fromDate: opts?.fromDate,
+      toDate: opts?.toDate,
+      doctorId: opts?.doctorId,
+    });
+    return mapDjangoAppointments(rows as Array<Record<string, unknown>>, 'unknown');
   } catch (error) {
     console.error('Error in getPracticeWideAppointments:', error);
     return [];
@@ -430,6 +441,13 @@ export const updateAppointment = async (
   if (updates.consultType) {
     patch.consultType = updates.consultType;
     patch.consultationType = updates.consultType;
+  }
+  if (updates.startAt) {
+    patch.startAt =
+      updates.startAt instanceof Date ? updates.startAt.toISOString() : updates.startAt;
+  }
+  if (updates.endAt) {
+    patch.endAt = updates.endAt instanceof Date ? updates.endAt.toISOString() : updates.endAt;
   }
   if (Object.keys(patch).length > 0) {
     await djangoPatchAppointment(appointmentId, patch);
@@ -548,7 +566,7 @@ export const addAppointmentDocument = async (
       fileName: file.name,
       fileType: uploaded.mimeType || file.type,
       fileSize: uploaded.sizeBytes || file.size,
-      downloadURL: uploaded.url,
+      downloadURL: (await djangoResolveMediaUrl(uploaded.url)) ?? uploaded.url,
       storagePath: uploaded.storageKey,
       createdAt: new Date(),
       createdBy,

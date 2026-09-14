@@ -38,9 +38,12 @@ import InviteAcceptPage from './pages/InviteAcceptPage';
 import CaregiverOnboardingPage from './pages/CaregiverOnboardingPage';
 import { ClinicAdminLayout } from './components/ClinicAdminLayout';
 import { ClinicAdminRoute } from './components/ClinicAdminRoute';
+import { ClinicPermissionGate } from './components/ClinicPermissionGate';
 import ClinicAdminDashboard from './pages/clinic/ClinicAdminDashboard';
 import ClinicAdminTeamPage from './pages/clinic/ClinicAdminTeamPage';
 import ClinicAdminPatientsPage from './pages/clinic/ClinicAdminPatientsPage';
+import ClinicAdminPatientAccountPage from './pages/clinic/ClinicAdminPatientAccountPage';
+import ClinicAdminMemberAccountPage from './pages/clinic/ClinicAdminMemberAccountPage';
 import ClinicAdminSettingsPage from './pages/clinic/ClinicAdminSettingsPage';
 import ClinicAdminSchedulePage from './pages/clinic/ClinicAdminSchedulePage';
 import ClinicAdminInvoicesPage from './pages/clinic/ClinicAdminInvoicesPage';
@@ -132,15 +135,87 @@ function App() {
             }
           >
             <Route index element={<ClinicAdminDashboard />} />
-            <Route path="team" element={<ClinicAdminTeamPage />} />
-            <Route path="patients" element={<ClinicAdminPatientsPage />} />
-            <Route path="schedule" element={<ClinicAdminSchedulePage />} />
-            <Route path="invoices" element={<ClinicAdminInvoicesPage />} />
-            <Route path="claims" element={<ClinicAdminClaimsPage />} />
-            <Route path="queue" element={<ClinicAdminQueuePage />} />
-            <Route path="rooms" element={<ClinicAdminRoomsPage />} />
+            <Route
+              path="team"
+              element={
+                <ClinicPermissionGate requires="manageMembers">
+                  <ClinicAdminTeamPage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="team/:memberId"
+              element={
+                <ClinicPermissionGate requires="manageMembers">
+                  <ClinicAdminMemberAccountPage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="patients"
+              element={
+                <ClinicPermissionGate requires="managePatients">
+                  <ClinicAdminPatientsPage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="patients/:patientId"
+              element={
+                <ClinicPermissionGate requires="managePatients">
+                  <ClinicAdminPatientAccountPage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="schedule"
+              element={
+                <ClinicPermissionGate requires="manageAppointments">
+                  <ClinicAdminSchedulePage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="invoices"
+              element={
+                <ClinicPermissionGate requires="viewBilling">
+                  <ClinicAdminInvoicesPage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="claims"
+              element={
+                <ClinicPermissionGate requires="viewBilling">
+                  <ClinicAdminClaimsPage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="queue"
+              element={
+                <ClinicPermissionGate requires="manageAppointments">
+                  <ClinicAdminQueuePage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="rooms"
+              element={
+                <ClinicPermissionGate requires="manageAppointments">
+                  <ClinicAdminRoomsPage />
+                </ClinicPermissionGate>
+              }
+            />
             <Route path="reports" element={<ClinicAdminReportsPage />} />
-            <Route path="audit" element={<ClinicAdminAuditLogPage />} />
+            <Route
+              path="audit"
+              element={
+                <ClinicPermissionGate requires="manageMembers">
+                  <ClinicAdminAuditLogPage />
+                </ClinicPermissionGate>
+              }
+            />
             <Route path="appointments" element={<Navigate to="/clinic/schedule" replace />} />
             <Route path="calendar" element={<Navigate to="/clinic/schedule" replace />} />
             <Route path="settings" element={<ClinicAdminSettingsPage />} />

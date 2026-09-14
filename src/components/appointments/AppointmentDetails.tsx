@@ -16,7 +16,7 @@ import {
   validateSlot,
 } from '../../services/schedulingService';
 import { getPatientForDoctorView } from '../../services/patientManagementService';
-import { createInvoiceRecord, invoiceOptionsFromDoctor } from '../../services/invoiceService';
+import { createInvoiceRecord, invoiceOptionsFromPracticeContext } from '../../services/invoiceService';
 import { CreateAppointmentModal } from './CreateAppointmentModal';
 import { InvoiceModal } from './InvoiceModal';
 import { sendPatientNotification } from '../../services/notificationService';
@@ -29,7 +29,9 @@ import {
   whatsAppDeepLink,
 } from '../../utils/teleconsult';
 import { formatAppointmentStatusLabel, needsDoctorConfirmation } from '../../services/appointmentCanonical';
-import { useAskAnixi } from '../../context/AskAnixiContext';
+import { useAskAnixiOptional } from '../../context/AskAnixiContext';
+import { usesClinicAdminPortal } from '../../lib/doctorAccess';
+import { toDateKey } from '../calendar/calendarDateUtils';
 
 interface AppointmentDetailsProps {
   appointment: Appointment;
@@ -107,6 +109,8 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   const { user, practiceSession } = useAuth();
   const navigate = useNavigate();
   const canManage = can('manageAppointments');
+  const isClinicAdmin = usesClinicAdminPortal(practiceSession);
+  const askAnixi = useAskAnixiOptional();
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [showScanModal, setShowScanModal] = useState(false);
@@ -118,12 +122,11 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   const [documents, setDocuments] = useState<AppointmentDocument[]>(appointment.documents ?? []);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const safeDate = convertTimestamp(appointment.date) ?? new Date();
-  const [rescheduleDate, setRescheduleDate] = useState(safeDate.toISOString().split('T')[0]);
+  const [rescheduleDate, setRescheduleDate] = useState(toDateKey(safeDate));
   const [rescheduleTime, setRescheduleTime] = useState(convertTo24Hour(appointment.time));
   const [isProcessing, setIsProcessing] = useState(false);
   const [patientPhone, setPatientPhone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { openAskAnixi } = useAskAnixi();
   const appointmentDate = convertTimestamp(appointment.date) || new Date();
   const fullDateFormatted = appointmentDate.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -288,7 +291,12 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
         lineItems,
         notes,
         doctorProfile?.currency || 'ZAR',
-        invoiceOptionsFromDoctor(doctorProfile, appointment.id, appointment.practiceId)
+        invoiceOptionsFromPracticeContext(
+          doctorProfile,
+          practiceSession?.practice,
+          appointment.id,
+          appointment.practiceId ?? practiceSession?.practice?.id
+        )
       );
 
       // Mark appointment as completed
@@ -447,8 +455,8 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
   };
 
   const handleOpenPreVisit = () => {
-    if (appointment.isManual) return;
-    openAskAnixi({
+    if (appointment.isManual || isClinicAdmin || !askAnixi) return;
+    askAnixi.openAskAnixi({
       autoSend: true,
       context: {
         patientId: appointment.patientId,
@@ -457,6 +465,26 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
       },
       prompt: `Generate a pre-visit briefing for ${patientName} (patientId: ${appointment.patientId}, appointmentId: ${appointment.id}). Use generate-pre-visit-briefing.`,
     });
+  };
+
+  const handleOpenPatientAccount = () => {
+    navigate(
+      isClinicAdmin
+        ? `/clinic/patients/${appointment.patientId}`
+        : `/patient-profile/${appointment.patientId}`,
+      {
+        state: {
+          appointmentId: appointment.id,
+          appointmentTime,
+          appointmentDate: fullDateFormatted,
+          consultType: appointment.consultType ?? toConsultType(),
+          status: appointment.status,
+          patientName: appointment.patientName,
+          patientEmail: appointment.patientEmail,
+        },
+      },
+    );
+    onClose();
   };
 
   const resetScanState = () => {
@@ -559,23 +587,10 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
                 </span>
               ) : (
                 <button
-                  onClick={() => {
-                    navigate(`/patient-profile/${appointment.patientId}`, {
-                      state: {
-                        appointmentId: appointment.id,
-                        appointmentTime,
-                        appointmentDate: fullDateFormatted,
-                        consultType: appointment.consultType ?? toConsultType(),
-                        status: appointment.status,
-                        patientName: appointment.patientName,
-                        patientEmail: appointment.patientEmail,
-                      },
-                    });
-                    onClose();
-                  }}
+                  onClick={handleOpenPatientAccount}
                   className="text-sm font-medium text-[#425950] hover:underline"
                 >
-                  View profile →
+                  {isClinicAdmin ? 'Manage account →' : 'View profile →'}
                 </button>
               )}
             </div>
@@ -598,7 +613,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
               </div>
             </div>
           </div>
-          {!appointment.isManual ? (
+          {!appointment.isManual && !isClinicAdmin && askAnixi ? (
             <div className="rounded-lg border border-[#dbeafe] bg-[#f8fbff] p-4">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-[#1a4d4d]">Ayah, pre-visit briefing</h2>
@@ -784,7 +799,7 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
                   </div>
                 ) : null}
 
-                {canDoctorStartVideoCall(appointment) && (
+                {canDoctorStartVideoCall(appointment) && !isClinicAdmin && (
                   <button
                     onClick={handleOpenPostConsult}
                     disabled={isProcessing}

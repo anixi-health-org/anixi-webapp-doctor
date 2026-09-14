@@ -1,7 +1,8 @@
 import React from 'react';
 import { Users } from 'lucide-react';
 import { Patient } from '../../types';
-import { getPatientStatus } from '../../services/patientManagementService';
+import { patientContactLabel } from '../../utils/patientContact';
+import { patientAccountStatus, patientAccountStatusLabel } from '../../utils/patientRosterStatus';
 import { ListRowsSkeleton } from '../ui/Skeleton';
 
 interface PatientListProps {
@@ -32,17 +33,18 @@ export const PatientList: React.FC<PatientListProps> = ({
   return (
     <div className="divide-y divide-gray-100">
       {patients.map((patient) => {
-        const status = getPatientStatus(patient);
+        const status = patientAccountStatus(patient);
+        const contact = patientContactLabel(patient.email);
         const statusColor =
-          status === 'stable'
+          status === 'active'
             ? 'bg-emerald-50 text-emerald-700'
-            : status === 'warning'
+            : status === 'pending'
               ? 'bg-amber-50 text-amber-700'
               : 'bg-gray-100 text-gray-600';
         const avatarColor =
-          status === 'warning'
+          status === 'pending'
             ? 'bg-amber-500'
-            : status === 'inactive'
+            : status === 'unknown'
               ? 'bg-slate-400'
               : 'bg-emerald-500';
 
@@ -57,19 +59,19 @@ export const PatientList: React.FC<PatientListProps> = ({
                 <div
                   className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl font-sans text-sm font-bold text-white shadow-soft ${avatarColor}`}
                 >
-                  {(patient.displayName || patient.email || '?').charAt(0).toUpperCase()}
+                  {(patient.displayName || contact || '?').charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0">
                   <p className="truncate font-sans font-semibold text-gray-900">
                     {patient.displayName || 'Unnamed Patient'}
                   </p>
-                  <p className="truncate font-sans text-sm text-gray-500">{patient.email}</p>
+                  <p className="truncate font-sans text-sm text-gray-500">{contact || '—'}</p>
                 </div>
               </div>
               <span
                 className={`inline-flex w-fit rounded-full px-3 py-1 font-sans text-xs font-semibold capitalize ${statusColor}`}
               >
-                {status}
+                {patientAccountStatusLabel(status)}
               </span>
             </div>
           </div>

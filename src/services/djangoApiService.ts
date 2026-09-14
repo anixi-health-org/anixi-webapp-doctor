@@ -9,9 +9,19 @@
  */
 import { API_BASE, isDjangoApiEnabled as djangoEnabled } from '../lib/runtimeConfig';
 import { parseCompanionStreamLine } from '../lib/companionStreamParse';
+import {
+  encodeMediaStorageKey,
+  extractMediaStorageKey,
+  isDirectBrowserMediaUrl,
+} from '../lib/mediaUrls';
 import type { PracticePermissions } from '../types';
 
-type Envelope<T> = { success: boolean; data: T; error?: unknown };
+type Envelope<T> = {
+  success: boolean;
+  data: T;
+  error?: unknown;
+  metadata?: Record<string, unknown> | null;
+};
 
 /** Flatten Django/DRF envelope errors into user-readable text. */
 export function formatDjangoError(error: unknown, fallback = 'Request failed'): string {
@@ -41,40 +51,72 @@ export function formatDjangoError(error: unknown, fallback = 'Request failed'): 
   return parts.length > 0 ? parts.join(' ') : fallback;
 }
 
+/** Map HTML/JSON parse failures (API down or CRA fallback) to a readable banner. */
+export function userFacingLoadError(err: unknown, fallback: string): string {
+  const message = err instanceof Error ? err.message : fallback;
+  if (
+    /unexpected token/i.test(message) ||
+    /DOCTYPE/i.test(message) ||
+    /not valid JSON/i.test(message) ||
+    /Failed to fetch/i.test(message) ||
+    /NetworkError/i.test(message) ||
+    /Could not reach the Anixi API/i.test(message) ||
+    /API returned an error page/i.test(message)
+  ) {
+    return 'Could not reach the Anixi API. Confirm Django is running on http://127.0.0.1:8000.';
+  }
+  return message || fallback;
+}
+
 function enabled(): boolean {
   return djangoEnabled();
 }
 
+let refreshInFlight: Promise<string | null> | null = null;
+let lastRefreshAt = 0;
+
 async function refreshAccessToken(refresh: string): Promise<string | null> {
-  const res = await fetch(`${API_BASE}/api/v1/auth/refresh/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Client': 'doctor-web' },
-    body: JSON.stringify({ refresh }),
-  });
-  const json = (await res.json()) as Envelope<{ access: string; refresh?: string }>;
-  if (!json.success || !json.data?.access) return null;
-  localStorage.setItem('anixi_jwt_access', json.data.access);
-  if (json.data.refresh) {
-    localStorage.setItem('anixi_jwt_refresh', json.data.refresh);
+  if (!API_BASE) return null;
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/auth/refresh/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Client': 'doctor-web' },
+      body: JSON.stringify({ refresh }),
+    });
+    if (!res.ok) return null;
+    const json = await readResponseJson<Envelope<{ access: string; refresh?: string }>>(res);
+    if (!json.success || !json.data?.access) return null;
+    localStorage.setItem('anixi_jwt_access', json.data.access);
+    if (json.data.refresh) {
+      localStorage.setItem('anixi_jwt_refresh', json.data.refresh);
+    }
+    return json.data.access;
+  } catch (error) {
+    console.warn('refreshAccessToken failed:', error);
+    return null;
   }
-  return json.data.access;
 }
 
 async function resolveAccessToken(forceRefresh = false): Promise<string> {
-  if (forceRefresh) {
-    localStorage.removeItem('anixi_jwt_access');
-  }
-
   const storedAccess = localStorage.getItem('anixi_jwt_access');
-  if (storedAccess && !forceRefresh) return storedAccess;
+  const recentlyRefreshed = Date.now() - lastRefreshAt < 4000;
+  if (storedAccess && (!forceRefresh || recentlyRefreshed)) return storedAccess;
 
-  const storedRefresh = localStorage.getItem('anixi_jwt_refresh');
-  if (storedRefresh) {
-    const refreshed = await refreshAccessToken(storedRefresh);
-    if (refreshed) return refreshed;
-    localStorage.removeItem('anixi_jwt_refresh');
+  if (!refreshInFlight) {
+    const storedRefresh = localStorage.getItem('anixi_jwt_refresh');
+    if (!storedRefresh) throw new Error('Not signed in');
+    refreshInFlight = refreshAccessToken(storedRefresh).finally(() => {
+      refreshInFlight = null;
+    });
   }
 
+  const refreshed = await refreshInFlight;
+  if (refreshed) {
+    lastRefreshAt = Date.now();
+    return refreshed;
+  }
+  localStorage.removeItem('anixi_jwt_access');
+  localStorage.removeItem('anixi_jwt_refresh');
   throw new Error('Not signed in');
 }
 
@@ -148,8 +190,7 @@ export async function djangoListDoctorDrafts() {
   if (!enabled()) return [];
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/api/v1/companion/drafts/`, { headers });
-  const json = (await res.json()) as Envelope<unknown[]>;
-  return json.data ?? [];
+  return (await djangoJson<unknown[]>(res)) ?? [];
 }
 
 export type DjangoDashboardWorkspace = {
@@ -170,11 +211,7 @@ export async function djangoGetDoctorDashboard(): Promise<DjangoDashboardWorkspa
   }
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/api/v1/companion/dashboard/`, { headers });
-  const json = (await res.json()) as Envelope<DjangoDashboardWorkspace>;
-  if (!res.ok || !json.success) {
-    throw new Error(formatDjangoError(json.error, 'Failed to load dashboard'));
-  }
-  return json.data ?? { activeBoardId: null, boards: [] };
+  return (await djangoJson<DjangoDashboardWorkspace>(res)) ?? { activeBoardId: null, boards: [] };
 }
 
 export async function djangoSaveDoctorDashboard(
@@ -192,11 +229,7 @@ export async function djangoSaveDoctorDashboard(
       boards: workspace.boards,
     }),
   });
-  const json = (await res.json()) as Envelope<DjangoDashboardWorkspace>;
-  if (!res.ok || !json.success) {
-    throw new Error(formatDjangoError(json.error, 'Failed to save dashboard'));
-  }
-  return json.data ?? workspace;
+  return (await djangoJson<DjangoDashboardWorkspace>(res)) ?? workspace;
 }
 
 export async function djangoResolveDoctorDraft(draftId: string, decision: 'approved' | 'rejected') {
@@ -207,8 +240,7 @@ export async function djangoResolveDoctorDraft(draftId: string, decision: 'appro
     headers,
     body: JSON.stringify({ decision }),
   });
-  const json = (await res.json()) as Envelope<{ status: string }>;
-  return json.data;
+  return djangoJson<{ status: string }>(res);
 }
 
 export async function djangoScribeTranscribe(audioBase64: string, mimeType: string) {
@@ -234,22 +266,29 @@ export async function djangoRegisterDevice(token: string, platform = 'web') {
 }
 
 export async function djangoListNotifications() {
-  if (!enabled()) return [];
-  const headers = await authHeaders();
-  const res = await fetch(`${API_BASE}/api/v1/notifications/`, { headers });
-  const json = (await res.json()) as Envelope<
-    Array<{
-      id: string;
-      type: string;
-      title: string;
-      body: string;
-      appointmentId?: string;
-      invoiceId?: string;
-      read: boolean;
-      createdAt: string;
-    }>
-  >;
-  return json.data ?? [];
+  if (!enabled() || !API_BASE) return [];
+  try {
+    const headers = await authHeaders();
+    const res = await fetch(`${API_BASE}/api/v1/notifications/`, { headers });
+    if (!res.ok) return [];
+    return (
+      (await djangoJson<
+        Array<{
+          id: string;
+          type: string;
+          title: string;
+          body: string;
+          appointmentId?: string;
+          invoiceId?: string;
+          read: boolean;
+          createdAt: string;
+        }>
+      >(res)) ?? []
+    );
+  } catch (error) {
+    console.warn('djangoListNotifications failed:', error);
+    return [];
+  }
 }
 
 export async function djangoCreateNotification(payload: {
@@ -274,7 +313,8 @@ export async function djangoSendTransactionalEmail(
     | 'doctor_onboarding_submitted'
     | 'delegate_invitation'
     | 'caregiver_invitation'
-    | 'clinic_live_staff_reminder',
+    | 'clinic_live_staff_reminder'
+    | 'patient_download_invite',
   to: string,
   context: Record<string, string>,
 ) {
@@ -306,14 +346,49 @@ export type DjangoPracticeInvite = {
   acceptedAt?: string;
 };
 
-async function djangoJson<T>(res: Response): Promise<T> {
+async function readResponseJson<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error('Empty response from API');
+  }
+  const contentType = res.headers.get('content-type') || '';
+  if (trimmed.startsWith('<') || contentType.includes('text/html')) {
+    throw new Error(
+      res.status >= 500
+        ? 'The API returned an error page. Confirm Django is running and migrated.'
+        : 'Could not reach the Anixi API. Confirm the backend is running on the configured URL.',
+    );
+  }
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    throw new Error('The API returned an unexpected response.');
+  }
+}
+
+async function djangoEnvelope<T>(
+  res: Response,
+): Promise<{ data: T; metadata: Record<string, unknown> | null }> {
   if (res.status === 401) {
     await resolveAccessToken(true);
-    throw new Error('Session refreshed — retry request');
+    throw new Error('Session refreshed. Retry request');
   }
-  const json = (await res.json()) as Envelope<T>;
+  const json = await readResponseJson<Envelope<T>>(res);
+  if (!json || typeof json !== 'object' || !('success' in json)) {
+    throw new Error('The API returned an unexpected response.');
+  }
   if (!json.success) throw new Error(formatDjangoError(json.error));
-  return json.data;
+  const metadata =
+    json.metadata && typeof json.metadata === 'object'
+      ? json.metadata
+      : null;
+  return { data: json.data, metadata };
+}
+
+async function djangoJson<T>(res: Response): Promise<T> {
+  const { data } = await djangoEnvelope<T>(res);
+  return data;
 }
 
 export async function djangoUploadDocument(
@@ -385,6 +460,20 @@ export async function djangoListPracticeInvites(
     { headers },
   );
   return djangoJson<DjangoPracticeInvite[]>(res);
+}
+
+export async function djangoPreviewPracticeInvite(
+  practiceId: string,
+  inviteId: string,
+  token: string,
+): Promise<DjangoPracticeInvite | null> {
+  if (!enabled()) return null;
+  const params = new URLSearchParams({ practiceId, inviteId, token });
+  const res = await fetch(`${API_BASE}/api/v1/practices/invites/preview/?${params.toString()}`, {
+    headers: { 'X-Client': 'doctor-web' },
+  });
+  if (res.status === 404) return null;
+  return djangoJson<DjangoPracticeInvite>(res);
 }
 
 export async function djangoGetPracticeInvite(
@@ -526,18 +615,71 @@ export async function djangoLogin(email: string, password: string) {
 }
 
 export async function djangoGetMe() {
-  if (!enabled()) return null;
+  if (!enabled() || !API_BASE) return null;
+  try {
+    const headers = await authHeaders();
+    const res = await fetch(`${API_BASE}/api/v1/auth/me/`, { headers });
+    if (!res.ok) return null;
+    return await djangoJson<Record<string, unknown>>(res);
+  } catch {
+    return null;
+  }
+}
+
+export async function djangoPatchMe(patch: Record<string, unknown>) {
+  if (!enabled()) throw new Error('Django API not configured');
   const headers = await authHeaders();
-  const res = await fetch(`${API_BASE}/api/v1/auth/me/`, { headers });
-  if (!res.ok) return null;
+  const res = await fetch(`${API_BASE}/api/v1/auth/me/`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(patch),
+  });
   return djangoJson<Record<string, unknown>>(res);
 }
 
-export async function djangoListAppointments(role: 'doctor' | 'patient' = 'doctor') {
-  if (!enabled()) return [];
-  const headers = await authHeaders();
-  const res = await fetch(`${API_BASE}/api/v1/appointments/?role=${role}`, { headers });
-  return djangoJson<Array<Record<string, unknown>>>(res);
+export type AppointmentListQuery = {
+  role?: 'doctor' | 'patient';
+  practiceId?: string;
+  fromDate?: string;
+  toDate?: string;
+  doctorId?: string;
+  limit?: number;
+};
+
+export function buildAppointmentListQuery(
+  opts: AppointmentListQuery | 'doctor' | 'patient' = 'doctor',
+): string {
+  const query = new URLSearchParams();
+  if (typeof opts === 'string') {
+    query.set('role', opts);
+    return query.toString();
+  }
+  if (opts.practiceId) {
+    query.set('practiceId', opts.practiceId);
+  } else {
+    query.set('role', opts.role || 'doctor');
+  }
+  if (opts.fromDate) query.set('fromDate', opts.fromDate);
+  if (opts.toDate) query.set('toDate', opts.toDate);
+  if (opts.doctorId) query.set('doctorId', opts.doctorId);
+  if (opts.limit) query.set('limit', String(opts.limit));
+  return query.toString();
+}
+
+export async function djangoListAppointments(
+  roleOrOpts: 'doctor' | 'patient' | AppointmentListQuery = 'doctor',
+) {
+  if (!enabled() || !API_BASE) return [];
+  try {
+    const headers = await authHeaders();
+    const qs = buildAppointmentListQuery(roleOrOpts);
+    const res = await fetch(`${API_BASE}/api/v1/appointments/?${qs}`, { headers });
+    if (!res.ok) return [];
+    return (await djangoJson<Array<Record<string, unknown>>>(res)) ?? [];
+  } catch (error) {
+    console.warn('djangoListAppointments failed:', error);
+    return [];
+  }
 }
 
 export async function djangoCancelAppointment(appointmentId: string) {
@@ -565,18 +707,42 @@ export async function djangoPatchAppointment(
   return djangoJson<{ updated: boolean }>(res);
 }
 
+export type DjangoPanelPatient = {
+  patientId: string;
+  displayName?: string;
+  email?: string;
+  phoneNumber?: string;
+  source?: string;
+  practiceId?: string | null;
+  status?: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
 export async function djangoListPatientPanel() {
-  if (!enabled()) return [];
-  const headers = await authHeaders();
-  const res = await fetch(`${API_BASE}/api/v1/patients/panel/`, { headers });
-  return djangoJson<Array<{ patientId: string; displayName: string; email: string; source: string }>>(res);
+  if (!enabled() || !API_BASE) return [];
+  try {
+    const headers = await authHeaders();
+    const res = await fetch(`${API_BASE}/api/v1/patients/panel/`, { headers });
+    if (!res.ok) return [];
+    return (await djangoJson<DjangoPanelPatient[]>(res)) ?? [];
+  } catch (error) {
+    console.warn('djangoListPatientPanel failed:', error);
+    return [];
+  }
 }
 
 export async function djangoListSharingRequests(role: 'clinician' | 'patient' = 'clinician') {
-  if (!enabled()) return [];
-  const headers = await authHeaders();
-  const res = await fetch(`${API_BASE}/api/v1/patients/sharing/?role=${role}`, { headers });
-  return djangoJson<Array<Record<string, unknown>>>(res);
+  if (!enabled() || !API_BASE) return [];
+  try {
+    const headers = await authHeaders();
+    const res = await fetch(`${API_BASE}/api/v1/patients/sharing/?role=${role}`, { headers });
+    if (!res.ok) return [];
+    return (await djangoJson<Array<Record<string, unknown>>>(res)) ?? [];
+  } catch (error) {
+    console.warn('djangoListSharingRequests failed:', error);
+    return [];
+  }
 }
 
 export async function djangoResolveSharing(requestId: string, decision: 'approved' | 'rejected') {
@@ -605,7 +771,7 @@ export async function djangoGetPracticeSession(): Promise<{
   if (!enabled()) return null;
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/api/v1/practices/mine/session/`, { headers });
-  if (res.status === 404) return null;
+  if (res.status === 404 || res.status === 403) return null;
   const body = await djangoJson<{
     practice: Record<string, unknown>;
     member: Record<string, unknown>;
@@ -614,11 +780,18 @@ export async function djangoGetPracticeSession(): Promise<{
   return body;
 }
 
-export async function djangoListInvoices() {
+export async function djangoListInvoices(practiceId?: string) {
   if (!enabled()) return [];
-  const headers = await authHeaders();
-  const res = await fetch(`${API_BASE}/api/v1/billing/invoices/`, { headers });
-  return djangoJson<Array<Record<string, unknown>>>(res);
+  try {
+    const headers = await authHeaders();
+    const qs = practiceId ? `?practiceId=${encodeURIComponent(practiceId)}` : '';
+    const res = await fetch(`${API_BASE}/api/v1/billing/invoices/${qs}`, { headers });
+    if (!res.ok) return [];
+    return (await djangoJson<Array<Record<string, unknown>>>(res)) ?? [];
+  } catch (error) {
+    console.warn('djangoListInvoices failed:', error);
+    return [];
+  }
 }
 
 export async function djangoCreateInvoice(payload: Record<string, unknown>) {
@@ -660,6 +833,41 @@ export async function djangoPatchInvoice(
   return djangoJson<Record<string, unknown>>(res);
 }
 
+export async function djangoListClaims(practiceId: string) {
+  if (!enabled()) return [];
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/billing/claims/?practiceId=${encodeURIComponent(practiceId)}`,
+    { headers },
+  );
+  return djangoJson<Array<Record<string, unknown>>>(res);
+}
+
+export async function djangoCreateClaim(payload: Record<string, unknown>) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/billing/claims/`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return djangoJson<Record<string, unknown>>(res);
+}
+
+export async function djangoPatchClaim(claimId: string, patch: Record<string, unknown>) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/billing/claims/${encodeURIComponent(claimId)}/`,
+    {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(patch),
+    },
+  );
+  return djangoJson<Record<string, unknown>>(res);
+}
+
 export async function djangoMarkConversationRead(conversationId: string) {
   if (!enabled()) return;
   const headers = await authHeaders();
@@ -670,14 +878,19 @@ export async function djangoMarkConversationRead(conversationId: string) {
 }
 
 export async function djangoListRecordShares(role: 'doctor' | 'patient' = 'doctor') {
-  if (!enabled()) return [];
-  const headers = await authHeaders();
-  const res = await fetch(
-    `${API_BASE}/api/v1/patients/record-shares/?role=${encodeURIComponent(role)}`,
-    { headers },
-  );
-  if (!res.ok) return [];
-  return djangoJson<Array<Record<string, unknown>>>(res);
+  if (!enabled() || !API_BASE) return [];
+  try {
+    const headers = await authHeaders();
+    const res = await fetch(
+      `${API_BASE}/api/v1/patients/record-shares/?role=${encodeURIComponent(role)}`,
+      { headers },
+    );
+    if (!res.ok) return [];
+    return (await djangoJson<Array<Record<string, unknown>>>(res)) ?? [];
+  } catch (error) {
+    console.warn('djangoListRecordShares failed:', error);
+    return [];
+  }
 }
 
 export async function djangoResolveRecordShare(
@@ -726,8 +939,67 @@ export async function djangoImportRoster(
     imported: number;
     skipped: number;
     practiceId?: string;
+    clinicCode?: string;
     rows: DjangoRosterImportRow[];
   }>(res);
+}
+
+export type DjangoBulkImportJob = {
+  jobId: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  totalRows: number;
+  processedRows: number;
+  importedCount: number;
+  skippedCount: number;
+  errorCount: number;
+  errors: Array<{ chunk?: string; message: string }>;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+};
+
+/** Upload a CSV file for batched Celery processing. Returns a job to poll. */
+export async function djangoImportRosterCsv(
+  file: File,
+  practiceId: string,
+): Promise<{ jobId: string; totalRows: number; skippedParse: number; status: string }> {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  delete (headers as Record<string, string>)['Content-Type'];
+
+  const form = new FormData();
+  form.append('file', file);
+  form.append('practiceId', practiceId);
+
+  const res = await fetch(`${API_BASE}/api/v1/patients/roster/import-csv/`, {
+    method: 'POST',
+    headers,
+    body: form,
+  });
+  return djangoJson<{ jobId: string; totalRows: number; skippedParse: number; status: string }>(res);
+}
+
+/** Poll a bulk import job's progress. */
+export async function djangoGetImportJobStatus(jobId: string): Promise<DjangoBulkImportJob> {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/patients/roster/import-jobs/${encodeURIComponent(jobId)}/`, { headers });
+  return djangoJson<DjangoBulkImportJob>(res);
+}
+
+/** Get the results CSV download URL for a completed job. */
+export function djangoImportJobResultsCsvUrl(jobId: string): string {
+  return `${API_BASE}/api/v1/patients/roster/import-jobs/${encodeURIComponent(jobId)}/results.csv`;
+}
+
+export async function djangoRotateClinicCode(practiceId: string): Promise<{ clinicCode: string; practiceName: string }> {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/practices/${encodeURIComponent(practiceId)}/clinic-code/rotate/`, {
+    method: 'POST',
+    headers,
+  });
+  return djangoJson<{ clinicCode: string; practiceName: string }>(res);
 }
 
 export type DjangoPracticePatient = {
@@ -738,18 +1010,60 @@ export type DjangoPracticePatient = {
   practiceId?: string | null;
   assignedDoctorId?: string | null;
   activationCode?: string | null;
+  clinicCode?: string | null;
   status?: string;
   source?: string;
+  isActive?: boolean;
+  dateOfBirth?: string | null;
+  gender?: string;
+  idNumber?: string;
+  medicalAidName?: string;
+  medicalAidNumber?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
-export async function djangoListPracticePatients(practiceId: string) {
-  if (!enabled()) return [];
+export type PracticePatientListQuery = {
+  q?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type PracticePatientListResult = {
+  rows: DjangoPracticePatient[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+export async function djangoListPracticePatients(
+  practiceId: string,
+  options?: PracticePatientListQuery,
+): Promise<PracticePatientListResult> {
+  const page = options?.page ?? 1;
+  const limit = options?.limit ?? 50;
+  if (!enabled()) {
+    return { rows: [], total: 0, page, limit };
+  }
   const headers = await authHeaders();
+  const params = new URLSearchParams();
+  params.set('page', String(page));
+  params.set('limit', String(limit));
+  if (options?.q?.trim()) params.set('q', options.q.trim());
   const res = await fetch(
-    `${API_BASE}/api/v1/patients/practice/${encodeURIComponent(practiceId)}/`,
+    `${API_BASE}/api/v1/patients/practice/${encodeURIComponent(practiceId)}/?${params}`,
     { headers },
   );
-  return djangoJson<DjangoPracticePatient[]>(res);
+  const { data, metadata } = await djangoEnvelope<DjangoPracticePatient[]>(res);
+  const rows = Array.isArray(data) ? data : [];
+  return {
+    rows,
+    total: Number(metadata?.total ?? rows.length) || 0,
+    page: Number(metadata?.page ?? page) || page,
+    limit: Number(metadata?.limit ?? limit) || limit,
+  };
 }
 
 export async function djangoAssignPracticePatient(
@@ -765,6 +1079,61 @@ export async function djangoAssignPracticePatient(
       method: 'PATCH',
       headers,
       body: JSON.stringify({ assignedDoctorId: assignedDoctorId ?? '' }),
+    },
+  );
+  return djangoJson<DjangoPracticePatient>(res);
+}
+
+export async function djangoBulkAssignPracticePatients(
+  practiceId: string,
+  payload: {
+    assignedDoctorId: string | null;
+    patientIds?: string[];
+    allMatching?: boolean;
+    q?: string;
+  },
+) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/patients/practice/${encodeURIComponent(practiceId)}/assign/`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        assignedDoctorId: payload.assignedDoctorId ?? '',
+        patientIds: payload.patientIds ?? [],
+        allMatching: Boolean(payload.allMatching),
+        q: payload.q ?? '',
+      }),
+    },
+  );
+  return djangoJson<{ assigned: number; assignedDoctorId: string | null }>(res);
+}
+
+export async function djangoGetPracticePatientAccount(practiceId: string, patientId: string) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/patients/practice/${encodeURIComponent(practiceId)}/${encodeURIComponent(patientId)}/`,
+    { headers },
+  );
+  return djangoJson<DjangoPracticePatient>(res);
+}
+
+export async function djangoPatchPracticePatientAccount(
+  practiceId: string,
+  patientId: string,
+  patch: Record<string, unknown>,
+) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/patients/practice/${encodeURIComponent(practiceId)}/${encodeURIComponent(patientId)}/`,
+    {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(patch),
     },
   );
   return djangoJson<DjangoPracticePatient>(res);
@@ -833,8 +1202,14 @@ export function clearDjangoTokens() {
 
 const clinicOnboardingKey = (userId: string) => `anixi_clinic_onboarding_complete_${userId}`;
 
-export function markClinicOnboardingComplete(userId: string) {
+export async function markClinicOnboardingComplete(userId: string) {
   localStorage.setItem(clinicOnboardingKey(userId), '1');
+  if (!enabled()) return;
+  try {
+    await djangoPatchMe({ clinicOnboardingComplete: true });
+  } catch (error) {
+    console.warn('markClinicOnboardingComplete failed to persist:', error);
+  }
 }
 
 export function readClinicOnboardingComplete(userId: string): boolean {
@@ -918,6 +1293,35 @@ export async function djangoFetchPractice(practiceId: string) {
   return djangoJson<Record<string, unknown>>(res);
 }
 
+async function djangoPublicJson<T>(res: Response): Promise<T> {
+  const json = await readResponseJson<Envelope<T>>(res);
+  if (!json || typeof json !== 'object' || !('success' in json)) {
+    throw new Error('The API returned an unexpected response.');
+  }
+  if (!json.success) throw new Error(formatDjangoError(json.error));
+  return json.data;
+}
+
+export async function djangoListPublicClinics(): Promise<Array<Record<string, unknown>>> {
+  if (!enabled() || !API_BASE) return [];
+  const res = await fetch(`${API_BASE}/api/v1/practices/public/`, {
+    headers: { 'X-Client': 'doctor-web' },
+  });
+  return djangoPublicJson<Array<Record<string, unknown>>>(res);
+}
+
+export async function djangoGetPublicClinic(
+  practiceId: string,
+): Promise<Record<string, unknown> | null> {
+  if (!enabled() || !API_BASE || !practiceId) return null;
+  const res = await fetch(
+    `${API_BASE}/api/v1/practices/public/${encodeURIComponent(practiceId)}/`,
+    { headers: { 'X-Client': 'doctor-web' } },
+  );
+  if (res.status === 404) return null;
+  return djangoPublicJson<Record<string, unknown>>(res);
+}
+
 export async function djangoPatchPractice(practiceId: string, patch: Record<string, unknown>) {
   if (!enabled()) throw new Error('Django API not configured');
   const headers = await authHeaders();
@@ -934,6 +1338,67 @@ export async function djangoFetchPracticeMembers(practiceId: string) {
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/api/v1/practices/${practiceId}/members/`, { headers });
   return djangoJson<Array<Record<string, unknown>>>(res);
+}
+
+export async function djangoGetPracticeMemberAccount(practiceId: string, userId: string) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/practices/${encodeURIComponent(practiceId)}/members/${encodeURIComponent(userId)}/`,
+    { headers },
+  );
+  return djangoJson<Record<string, unknown>>(res);
+}
+
+export async function djangoPatchPracticeMember(
+  practiceId: string,
+  userId: string,
+  patch: Record<string, unknown>,
+) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/practices/${encodeURIComponent(practiceId)}/members/${encodeURIComponent(userId)}/`,
+    {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(patch),
+    },
+  );
+  return djangoJson<Record<string, unknown>>(res);
+}
+
+export async function djangoDeactivatePracticeMember(practiceId: string, userId: string) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/practices/${encodeURIComponent(practiceId)}/members/${encodeURIComponent(userId)}/`,
+    { method: 'DELETE', headers },
+  );
+  return djangoJson<Record<string, unknown>>(res);
+}
+
+export async function djangoGetPracticeStats(practiceId: string) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/practices/${encodeURIComponent(practiceId)}/stats/`,
+    { headers },
+  );
+  return djangoJson<Record<string, unknown>>(res);
+}
+
+export async function djangoGetPracticeScheduleMap(practiceId: string) {
+  if (!enabled()) return { daySchedules: {}, weeklyHours: {} };
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/practices/${encodeURIComponent(practiceId)}/schedule/`,
+    { headers },
+  );
+  return djangoJson<{
+    daySchedules?: Record<string, Record<string, unknown>>;
+    weeklyHours?: Record<string, unknown>;
+  }>(res);
 }
 
 export async function djangoGetBookingPolicy(practiceId: string) {
@@ -1074,13 +1539,19 @@ export async function djangoGetPatientChart(patientId: string) {
 }
 
 export async function djangoListMedicalFiles(patientId: string) {
-  if (!enabled()) return [];
-  const headers = await authHeaders();
-  const res = await fetch(
-    `${API_BASE}/api/v1/documents/medical-files/?patientId=${encodeURIComponent(patientId)}`,
-    { headers },
-  );
-  return djangoJson<Array<Record<string, unknown>>>(res);
+  if (!enabled() || !API_BASE) return [];
+  try {
+    const headers = await authHeaders();
+    const res = await fetch(
+      `${API_BASE}/api/v1/documents/medical-files/?patientId=${encodeURIComponent(patientId)}`,
+      { headers },
+    );
+    if (!res.ok) return [];
+    return (await djangoJson<Array<Record<string, unknown>>>(res)) ?? [];
+  } catch (error) {
+    console.warn('djangoListMedicalFiles failed:', error);
+    return [];
+  }
 }
 
 export async function djangoAutoMatchRoster() {
@@ -1123,7 +1594,8 @@ export async function djangoListMyEmployers() {
 export async function djangoFetchDocumentUrl(storageKey: string): Promise<string | null> {
   if (!enabled() || !storageKey) return null;
   const token = await resolveAccessToken();
-  return `${API_BASE}/api/v1/documents/media/${encodeURIComponent(storageKey)}/?access=${encodeURIComponent(token)}`;
+  const key = extractMediaStorageKey(storageKey) || storageKey;
+  return `${API_BASE}/api/v1/documents/media/${encodeMediaStorageKey(key)}/?access=${encodeURIComponent(token)}`;
 }
 
 /** Extract the storage key from an API media URL (with or without ?access= token). */
@@ -1132,20 +1604,7 @@ export function djangoMediaUrlToStorageKey(
 ): string | undefined {
   const trimmed = url?.trim();
   if (!trimmed) return undefined;
-
-  const marker = '/api/v1/documents/media/';
-  if (!trimmed.includes(marker)) return trimmed;
-
-  const start = trimmed.indexOf(marker);
-  if (start === -1) return trimmed;
-
-  let storageKey = trimmed.slice(start + marker.length).split('?')[0].replace(/\/+$/, '');
-  try {
-    storageKey = decodeURIComponent(storageKey);
-  } catch {
-    // Keep the raw key when decoding fails.
-  }
-  return storageKey || undefined;
+  return extractMediaStorageKey(trimmed) ?? trimmed;
 }
 
 /** Append JWT access token to API media URLs so `<img>` tags can load protected files. */
@@ -1154,20 +1613,11 @@ export async function djangoResolveMediaUrl(
 ): Promise<string | undefined> {
   const trimmed = url?.trim();
   if (!trimmed) return undefined;
-  if (!trimmed.includes('/api/v1/documents/media/')) return trimmed;
+  if (isDirectBrowserMediaUrl(trimmed)) return trimmed;
 
-  const marker = '/api/v1/documents/media/';
-  const start = trimmed.indexOf(marker);
-  if (start === -1) return trimmed;
-
-  let storageKey = trimmed.slice(start + marker.length).replace(/\/+$/, '');
-  try {
-    storageKey = decodeURIComponent(storageKey);
-  } catch {
-    // Keep the raw key when decoding fails.
-  }
-
-  return (await djangoFetchDocumentUrl(storageKey)) ?? trimmed;
+  const key = extractMediaStorageKey(trimmed);
+  if (!key) return trimmed;
+  return (await djangoFetchDocumentUrl(key)) ?? trimmed;
 }
 
 export async function enrichDoctorMediaUrls<
@@ -1259,17 +1709,23 @@ export async function djangoListAdherence(
   },
 ): Promise<DjangoAdherenceRecord[]> {
   if (!enabled()) return [];
-  const headers = await authHeaders();
-  const qs = new URLSearchParams();
-  if (params?.fromDate) qs.set('fromDate', params.fromDate);
-  if (params?.toDate) qs.set('toDate', params.toDate);
-  if (params?.type) qs.set('type', params.type);
-  qs.set('limit', String(params?.limit ?? 200));
-  const res = await fetch(
-    `${API_BASE}/api/v1/clinical/${encodeURIComponent(patientId)}/adherence/?${qs}`,
-    { headers },
-  );
-  return djangoJson<DjangoAdherenceRecord[]>(res);
+  try {
+    const headers = await authHeaders();
+    const qs = new URLSearchParams();
+    if (params?.fromDate) qs.set('fromDate', params.fromDate);
+    if (params?.toDate) qs.set('toDate', params.toDate);
+    if (params?.type) qs.set('type', params.type);
+    qs.set('limit', String(params?.limit ?? 200));
+    const res = await fetch(
+      `${API_BASE}/api/v1/clinical/${encodeURIComponent(patientId)}/adherence/?${qs}`,
+      { headers },
+    );
+    if (!res.ok) return [];
+    return (await djangoJson<DjangoAdherenceRecord[]>(res)) ?? [];
+  } catch (error) {
+    console.warn('djangoListAdherence failed:', patientId, error);
+    return [];
+  }
 }
 
 export type DjangoMoodEntry = {
@@ -1385,6 +1841,20 @@ export async function djangoSetPracticeDailySchedule(
   );
   if (!res.ok) throw new Error(`Schedule save failed: ${res.status}`);
   return djangoJson<Record<string, unknown>>(res);
+}
+
+export async function djangoDeletePracticeDailySchedule(
+  practiceId: string,
+  date: string,
+) {
+  if (!enabled()) return { deleted: false };
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/practices/${encodeURIComponent(practiceId)}/schedule/${encodeURIComponent(date)}/`,
+    { method: 'DELETE', headers },
+  );
+  if (!res.ok) throw new Error(`Schedule delete failed: ${res.status}`);
+  return djangoJson<{ deleted: boolean }>(res);
 }
 
 export async function djangoSearchDoctors(filters: {

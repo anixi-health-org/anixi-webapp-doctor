@@ -15,6 +15,8 @@ import { Appointment, Patient } from '../types';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { convertTimestamp } from '../utils/dateFormatter';
 import { formatName } from '../utils/dataFormatter';
+import { patientContactLabel } from '../utils/patientContact';
+import { patientAccountStatus, patientAccountStatusLabel } from '../utils/patientRosterStatus';
 import { PatientProfileSkeleton } from '../components/ui';
 import {
   getPatientWearableSummary,
@@ -284,25 +286,12 @@ export const PatientProfile: React.FC = () => {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-lg font-bold text-[#0E2340]">{formattedName || 'Unnamed Patient'}</h2>
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                      patient.chronicDiseases?.length
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-emerald-50 text-emerald-700'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-1.5 w-1.5 rounded-full ${
-                        patient.chronicDiseases?.length ? 'bg-amber-500' : 'bg-emerald-500'
-                      }`}
-                    />
-                    {patient.chronicDiseases?.length ? 'Follow-up' : 'Stable'}
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">
+                    {patientAccountStatusLabel(patientAccountStatus(patient))}
                   </span>
                 </div>
                 <p className="mt-1 text-[13px] text-[#65758b]">
-                  {patient.id.slice(0, 8).toUpperCase()}
-                  {patient.gender ? ` · ${patient.gender}` : ''}
-                  {patient.email ? ` · ${patient.email}` : ''}
+                  {[patient.gender, patientContactLabel(patient.email)].filter(Boolean).join(' · ') || ' '}
                 </p>
               </div>
             </div>
@@ -313,7 +302,9 @@ export const PatientProfile: React.FC = () => {
               </div>
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-wider text-[#8FA0B6]">Email</p>
-                <p className="mt-0.5 truncate font-medium text-[#0E2340]">{patient.email || '-'}</p>
+                <p className="mt-0.5 truncate font-medium text-[#0E2340]">
+                  {patientContactLabel(patient.email) || '—'}
+                </p>
               </div>
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-wider text-[#8FA0B6]">Address</p>

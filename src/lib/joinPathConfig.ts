@@ -94,7 +94,7 @@ const INVITE_HERO: JoinPathHeroSlide[] = [
 export const JOIN_PATH_CONFIG: Record<JoinPath, JoinPathRegistrationConfig> = {
   clinic: {
     layoutTitle: 'Create your account',
-    layoutSubtitle: 'Registering as clinic owner — you’ll set up your organisation next',
+    layoutSubtitle: 'Registering as clinic owner. You’ll set up your organisation next',
     cardTitle: 'Clinic owner account',
     cardDescription:
       'Use the email you want for clinic admin login. You can invite doctors and staff after setup.',
@@ -153,7 +153,7 @@ export const JOIN_PATH_CONFIG: Record<JoinPath, JoinPathRegistrationConfig> = {
   },
   caregiver: {
     layoutTitle: 'Create your account',
-    layoutSubtitle: 'Registering as caregiver — support a linked patient',
+    layoutSubtitle: 'Registering as caregiver. Support a linked patient',
     cardTitle: 'Caregiver account',
     cardDescription:
       'After signup, a patient must link you from the Anixi mobile app before you can view their health data.',

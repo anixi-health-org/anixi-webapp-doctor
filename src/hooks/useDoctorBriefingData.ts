@@ -87,22 +87,22 @@ export function buildBriefingPrompt(snapshot: DoctorBriefingSnapshot): string {
     .slice(0, 40)
     .map((patient) => formatPatientLine(patient))
     .join('\n');
-  const notStable = snapshot.patients.filter((patient) => patient.status !== 'stable');
+  const pendingActivation = snapshot.patients.filter((patient) => patient.status === 'pending');
 
   return [
     'What do I need to know today? Give me my practice briefing.',
     'Use short section titles: TODAY, ATTENTION, UPCOMING, ONE THING TO DO.',
     'Plain text only. No markdown, no asterisks, no hashtags, no em-dashes.',
-    'Name patients from the panel below. Do not invent patients, results, medications, or findings.',
-    'If a count is zero, say so plainly.',
+    'Name patients from the panel below. Do not invent patients, results, medications, findings, or clinical status.',
+    'If a count is zero, say so plainly. If clinical status is not recorded, say it is not recorded.',
     '',
     `Total patients: ${snapshot.totalPatients}`,
-    `Stable patients: ${snapshot.stablePatients}`,
+    `Patients pending activation: ${pendingActivation.length}`,
     `Appointments today: ${snapshot.todayAppointments.length} (${todayList})`,
     `Pending appointment requests: ${snapshot.pendingAppointments}`,
     `Patients awaiting my approval: ${snapshot.pendingPatientRequests}`,
     snapshot.nextAppointment
-      ? `Next appointment: ${snapshot.nextAppointment.patientName || 'Patient'}${
+      ? `Next appointment: ${snapshot.nextAppointment.patientName || 'Unnamed'}${
           snapshot.nextAppointment.time ? ` at ${snapshot.nextAppointment.time}` : ''
         }`
       : 'Next appointment: none remaining today',
@@ -110,9 +110,9 @@ export function buildBriefingPrompt(snapshot: DoctorBriefingSnapshot): string {
     'Practice panel:',
     namedPanel || 'none',
     '',
-    'Not confirmed stable:',
-    notStable.length
-      ? notStable.map((patient) => formatPatientLine(patient)).join('\n')
+    'Pending activation:',
+    pendingActivation.length
+      ? pendingActivation.map((patient) => formatPatientLine(patient)).join('\n')
       : 'none',
   ].join('\n');
 }
@@ -225,7 +225,7 @@ export function useDoctorBriefingData() {
 
     const rosterPatients: PracticeSnapshotPatient[] = patients.map((patient) => ({
       id: patient.id,
-      displayName: patient.displayName || 'Patient',
+      displayName: patient.displayName || '',
       status: derivePatientRosterStatus(patient),
       chronicConditions: patient.chronicDiseases ?? [],
       allergies: patient.allergies ?? [],
@@ -268,24 +268,21 @@ export function useDoctorBriefingData() {
       });
     }
 
-    for (const patient of rosterPatients) {
-      if (patient.status === 'stable') continue;
+    const pendingActivation = rosterPatients.filter((patient) => patient.status === 'pending').length;
+    if (pendingActivation > 0) {
       attentionItems.push({
-        id: `status-${patient.id}`,
-        title: patient.displayName,
-        detail: patient.chronicConditions?.length
-          ? `${patient.status} · ${patient.chronicConditions.slice(0, 3).join(', ')}`
-          : `Roster status: ${patient.status}`,
-        prompt: `Who is ${patient.displayName} on my panel and why are they marked ${patient.status}? Use the practice panel and patient overview. Name the patient.`,
-        tone: patient.status === 'critical' ? 'urgent' : 'soon',
-        patientId: patient.id,
-        patientName: patient.displayName,
+        id: 'pending-activation',
+        title: `${pendingActivation} patient${pendingActivation === 1 ? '' : 's'} pending activation`,
+        detail: 'Clinic roster accounts that have not been claimed yet.',
+        prompt:
+          'Which of my patients are pending activation? Use the practice panel. Do not invent clinical status.',
+        tone: 'routine',
       });
     }
 
     return {
       totalPatients: patients.length,
-      stablePatients: rosterPatients.filter((p) => p.status === 'stable').length,
+      stablePatients: 0,
       todayAppointments,
       pendingAppointments,
       pendingPatientRequests,

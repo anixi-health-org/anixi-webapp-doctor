@@ -2,28 +2,15 @@ import jsPDF from 'jspdf';
 import { Invoice } from '../types';
 import { SA_VAT_RATE, computeVatBreakdown } from '../lib/southAfrica';
 import { resolvePracticeLogoUrl } from '../lib/doctorAvatar';
-import { djangoFetchDocumentUrl, djangoGetMe } from './djangoApiService';
+import type { DoctorLetterheadData } from '../lib/invoiceLetterhead';
+import { djangoFetchDocumentUrl, djangoGetMe, djangoResolveMediaUrl } from './djangoApiService';
 
-export interface DoctorLetterheadData {
-  doctorId?: string;
-  displayName: string;
-  specialty?: string;
-  licenseNumber?: string;
-  practiceNumberBhf?: string;
-  vatNumber?: string;
-  phoneNumber?: string;
-  email?: string;
-  officeAddress?: string;
-  logoUrl?: string;
-  /** Face photo, only used for letterhead when it is actually a stored practice logo. */
-  profileImageUrl?: string;
-  practiceName?: string;
-  /**
-   * Optional pre-encoded logo (data:image/...;base64,...). When set, PDF skips
-   * network logo loading, use this when the UI already has the logo on screen.
-   */
-  logoDataUrl?: string;
-}
+export type { DoctorLetterheadData } from '../lib/invoiceLetterhead';
+export {
+  buildDoctorLetterheadFromUser,
+  buildInvoiceLetterhead,
+  buildPracticeLetterhead,
+} from '../lib/invoiceLetterhead';
 
 const BRAND_RGB: [number, number, number] = [66, 89, 80];
 const BRAND_LIGHT_RGB: [number, number, number] = [238, 242, 240];
@@ -143,7 +130,8 @@ async function logoFromUrl(url: string): Promise<LogoImage | null> {
 async function loadPracticeLogoForPdf(
   doctorId: string | undefined,
   logoUrl?: string,
-  logoDataUrl?: string
+  logoDataUrl?: string,
+  options?: { skipDoctorLogoStore?: boolean }
 ): Promise<LogoImage | null> {
   const load = async () => {
     if (logoDataUrl) {
@@ -152,8 +140,12 @@ async function loadPracticeLogoForPdf(
     }
 
     const urls: string[] = [];
-    if (logoUrl) urls.push(logoUrl);
-    if (doctorId) {
+    if (logoUrl) {
+      const resolved = await djangoResolveMediaUrl(logoUrl);
+      if (resolved) urls.push(resolved);
+      if (resolved !== logoUrl) urls.push(logoUrl);
+    }
+    if (doctorId && !options?.skipDoctorLogoStore) {
       const djangoLogo = await djangoFetchDocumentUrl(`doctor-logos/${doctorId}/logo.jpg`);
       if (djangoLogo) urls.push(djangoLogo);
     }
@@ -202,43 +194,16 @@ function fitLogoBox(
 /** Public helper so the invoice page can pre-load the logo before PDF generation. */
 export async function fetchPracticeLogoDataUrl(
   doctorId: string | undefined,
-  logoUrl?: string | null
+  logoUrl?: string | null,
+  options?: { skipDoctorLogoStore?: boolean }
 ): Promise<string | undefined> {
   const logo = await loadPracticeLogoForPdf(
     doctorId,
-    logoUrl?.trim() || undefined
+    logoUrl?.trim() || undefined,
+    undefined,
+    options
   );
   return logo?.data;
-}
-
-export function buildDoctorLetterheadFromUser(doctor: {
-  id?: string;
-  displayName?: string;
-  specialty?: string;
-  licenseNumber?: string;
-  practiceNumberBhf?: string;
-  vatNumber?: string;
-  phoneNumber?: string;
-  email?: string;
-  officeAddress?: string;
-  logoUrl?: string;
-  profileImageUrl?: string;
-  practiceName?: string;
-} | null | undefined): DoctorLetterheadData {
-  return {
-    doctorId: doctor?.id,
-    displayName: doctor?.displayName || 'Doctor',
-    specialty: doctor?.specialty,
-    licenseNumber: doctor?.licenseNumber,
-    practiceNumberBhf: doctor?.practiceNumberBhf,
-    vatNumber: doctor?.vatNumber,
-    phoneNumber: doctor?.phoneNumber,
-    email: doctor?.email,
-    officeAddress: doctor?.officeAddress,
-    logoUrl: doctor?.logoUrl,
-    profileImageUrl: doctor?.profileImageUrl,
-    practiceName: doctor?.practiceName,
-  };
 }
 
 /** Refresh letterhead from Django profile so PDF generation has current branding. */
@@ -248,6 +213,7 @@ async function enrichLetterhead(
   const doctorId = doctor.doctorId?.trim();
   if (!doctorId) return doctor;
 
+  const lockPracticeBranding = doctor.brandingSource === 'practice';
   let logoUrl = doctor.logoUrl;
   let practiceName = doctor.practiceName;
   let specialty = doctor.specialty;
@@ -263,11 +229,23 @@ async function enrichLetterhead(
   try {
     const me = await withTimeout(djangoGetMe(), 5000, 'letterhead enrich');
     const profile = (me?.doctorProfile as Record<string, unknown> | undefined) ?? {};
-    logoUrl = resolvePracticeLogoUrl(
-      (profile.logoUrl as string | undefined) || logoUrl,
-      (profile.profileImageUrl as string | undefined) || profileImageUrl,
-    );
-    practiceName = (profile.practiceName as string | undefined) || practiceName;
+    if (!lockPracticeBranding) {
+      logoUrl = resolvePracticeLogoUrl(
+        (profile.logoUrl as string | undefined) || logoUrl,
+        (profile.profileImageUrl as string | undefined) || profileImageUrl,
+      );
+      practiceName = (profile.practiceName as string | undefined) || practiceName;
+      practiceNumberBhf =
+        (profile.practiceNumberBhf as string | undefined) ||
+        (profile.practiceNumber as string | undefined) ||
+        practiceNumberBhf;
+      vatNumber = (profile.vatNumber as string | undefined) || vatNumber;
+      officeAddress =
+        (profile.officeAddress as string | undefined) ||
+        (profile.practiceAddress as string | undefined) ||
+        officeAddress;
+      profileImageUrl = (profile.profileImageUrl as string | undefined) || profileImageUrl;
+    }
     specialty =
       (profile.specialty as string | undefined) ||
       (profile.medicalSpecialty as string | undefined) ||
@@ -276,19 +254,9 @@ async function enrichLetterhead(
       (profile.licenseNumber as string | undefined) ||
       (profile.hpcsaRegistrationNumber as string | undefined) ||
       licenseNumber;
-    practiceNumberBhf =
-      (profile.practiceNumberBhf as string | undefined) ||
-      (profile.practiceNumber as string | undefined) ||
-      practiceNumberBhf;
-    vatNumber = (profile.vatNumber as string | undefined) || vatNumber;
     phoneNumber = (me?.phoneNumber as string | undefined) || phoneNumber;
     email = (me?.email as string | undefined) || email;
-    officeAddress =
-      (profile.officeAddress as string | undefined) ||
-      (profile.practiceAddress as string | undefined) ||
-      officeAddress;
     displayName = (me?.displayName as string | undefined) || displayName;
-    profileImageUrl = (profile.profileImageUrl as string | undefined) || profileImageUrl;
   } catch (error) {
     console.warn('[invoicePdf] enrich letterhead failed', error);
   }
@@ -308,6 +276,7 @@ async function enrichLetterhead(
     profileImageUrl,
     practiceName,
     logoDataUrl: doctor.logoDataUrl,
+    brandingSource: doctor.brandingSource,
   };
 }
 
@@ -325,9 +294,10 @@ export async function generateInvoicePDF(
   const practiceName = (doctor.practiceName || doctor.displayName).trim();
   const logoUrl = resolveLogoUrl(doctor);
   const logoImg = await loadPracticeLogoForPdf(
-    doctor.doctorId,
+    doctor.brandingSource === 'practice' ? undefined : doctor.doctorId,
     logoUrl,
-    doctor.logoDataUrl || doctorInput.logoDataUrl
+    doctor.logoDataUrl || doctorInput.logoDataUrl,
+    { skipDoctorLogoStore: doctor.brandingSource === 'practice' }
   );
 
   // ── Letterhead ────────────────────────────────────────────────────────────

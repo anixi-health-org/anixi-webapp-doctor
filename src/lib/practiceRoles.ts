@@ -148,9 +148,20 @@ export const INVITABLE_ROLES: PracticeRole[] = [
   'billing_clerk',
 ];
 
-/** Bookable clinicians, appear in doctor lists and can hold diaries */
+/** Clinical roles that hold a patient diary. Ops staff are never in this set. */
 export function isClinicianRole(role: PracticeRole): boolean {
   return role === 'doctor' || role === 'nurse' || role === 'allied_health' || role === 'locum';
+}
+
+/** People who appear in schedule/booking doctor pickers. */
+export function isBookableClinician(member: {
+  role: PracticeRole;
+  status?: 'active' | 'inactive' | 'invited';
+  isClinician?: boolean;
+}): boolean {
+  if (member.status && member.status !== 'active') return false;
+  if (!isClinicianRole(member.role)) return false;
+  return member.isClinician !== false;
 }
 
 export function permissionsForRole(role: PracticeRole): PracticePermissions {

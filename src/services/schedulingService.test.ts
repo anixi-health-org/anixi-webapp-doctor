@@ -256,6 +256,17 @@ describe('schedulingService', () => {
     );
     expect(slots.length).toBeGreaterThan(0);
   });
+
+  it('keeps weekly hours when there is no daily exception', async () => {
+    mockedGetDaily.mockResolvedValue(null);
+    const slots = await getAvailableSlots(
+      practiceId,
+      doctorId,
+      new Date('2026-05-11T00:00:00'),
+      'initial',
+    );
+    expect(slots.length).toBeGreaterThan(0);
+  });
 });
 
 describe('generateRawSlots closed exception', () => {

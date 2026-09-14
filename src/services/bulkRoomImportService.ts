@@ -122,7 +122,7 @@ export function resolveLocationId(
   const byName = locations.find((loc) => loc.name.trim().toLowerCase() === lower);
   if (byName) return { locationId: byName.id };
 
-  return { issue: `Unknown location "${needle}" — use a clinic location name or leave blank.` };
+  return { issue: `Unknown location "${needle}". Use a clinic location name or leave blank.` };
 }
 
 export function parseRoomBulkCsv(

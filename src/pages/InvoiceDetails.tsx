@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { getInvoiceById, updateInvoiceRecord, updateInvoiceStatus } from '../services/invoiceService';
 import {
-  buildDoctorLetterheadFromUser,
+  buildInvoiceLetterhead,
   fetchPracticeLogoDataUrl,
   generateInvoicePDF,
 } from '../services/invoicePdfService';
@@ -20,8 +20,9 @@ const statusLabel = (status: string) =>
 const InvoiceDetails: React.FC = () => {
   const { invoiceId } = useParams<{ invoiceId: string }>();
   const { navigateBack } = useNavigateWithFallback();
-  const { user } = useAuth();
+  const { user, practiceSession } = useAuth();
   const doctor = user?.role === 'doctor' ? (user as Doctor) : null;
+  const practice = practiceSession?.practice;
   const [invoice, setInvoice] = useState<(Invoice & { patientName?: string }) | null>(null);
   const [editing, setEditing] = useState(false);
   const [desc, setDesc] = useState('');
@@ -103,8 +104,14 @@ const InvoiceDetails: React.FC = () => {
   const vatAmount = invoice.vatAmount ?? vatBreakdown.vatAmount;
   const totalIncl = invoice.totalAmount ?? vatBreakdown.total;
   const currency = invoice.currency || 'ZAR';
-  const logoUrl = resolvePracticeLogoUrl(doctor?.logoUrl, doctor?.profileImageUrl);
-  const practiceName = doctor?.practiceName || doctor?.displayName || 'Practice';
+  const isClinicInvoice = practice?.orgType === 'clinic';
+  const logoUrl = resolvePracticeLogoUrl(
+    isClinicInvoice ? practice?.logoUrl : doctor?.logoUrl,
+    isClinicInvoice ? undefined : doctor?.profileImageUrl
+  );
+  const practiceName = isClinicInvoice
+    ? practice?.tradingName || practice?.name || 'Clinic'
+    : doctor?.practiceName || doctor?.displayName || 'Practice';
   const monogram = practiceName.charAt(0).toUpperCase();
 
   const handleSaveEdit = async () => {
@@ -141,17 +148,24 @@ const InvoiceDetails: React.FC = () => {
     setPdfBusy(true);
     setError(null);
     try {
-      const letterhead = buildDoctorLetterheadFromUser(doctor);
+      const letterhead = buildInvoiceLetterhead({
+        doctor,
+        practice,
+        treatingClinicianName: invoice.doctorName,
+      });
       const logoDataUrl = await fetchPracticeLogoDataUrl(
-        doctor?.id,
-        logoUrl || doctor?.logoUrl
+        isClinicInvoice ? undefined : doctor?.id,
+        logoUrl || (isClinicInvoice ? practice?.logoUrl : doctor?.logoUrl),
+        { skipDoctorLogoStore: isClinicInvoice }
       );
       await Promise.race([
         generateInvoicePDF(invoice, {
           ...letterhead,
           logoDataUrl,
           licenseNumber: invoice.hpcsaNumber || doctor?.licenseNumber,
-          practiceNumberBhf: invoice.bhfPracticeNumber || doctor?.practiceNumberBhf,
+          practiceNumberBhf:
+            invoice.bhfPracticeNumber ||
+            (isClinicInvoice ? practice?.bhfPracticeNumber : doctor?.practiceNumberBhf),
           vatNumber: invoice.vatNumber || doctor?.vatNumber,
         }),
         new Promise<never>((_, reject) =>
@@ -163,7 +177,7 @@ const InvoiceDetails: React.FC = () => {
       ]);
       if (!logoDataUrl) {
         setError(
-          'PDF downloaded, but the practice logo could not be embedded. Re-upload your logo under Practice Settings → Letterhead & logo, then try again.'
+          `PDF downloaded, but the ${isClinicInvoice ? 'clinic' : 'practice'} logo could not be embedded. Re-upload the logo under ${isClinicInvoice ? 'Clinic settings' : 'Practice Settings'} → Letterhead & logo, then try again.`
         );
       }
     } catch (err) {
