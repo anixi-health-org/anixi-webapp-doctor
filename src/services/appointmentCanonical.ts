@@ -283,6 +283,34 @@ export function shouldAutoMarkNoShow(
   return now.getTime() > endAt.getTime();
 }
 
+/** Past confirmed visits should not stay Confirmed on doctor lists. */
+export function resolveElapsedAppointmentStatus(
+  appointment: AppointmentSlotTiming & {
+    status?: string | null;
+    teleconsult?: {
+      status?: string | null;
+      doctorJoinedAt?: Date | null;
+      patientJoinedAt?: Date | null;
+      roomName?: string | null;
+      provider?: string | null;
+    } | null;
+    postConsultActions?: unknown[] | null;
+  },
+  now: Date = new Date()
+): CanonicalAppointmentStatus | null {
+  const parsed = parseAppointmentStatus(appointment.status);
+  if (!parsed) return null;
+  if (isTerminalAppointmentStatus(parsed)) return parsed;
+
+  const endAt = resolveAppointmentEndAt(appointment);
+  if (!endAt || now.getTime() <= endAt.getTime()) return parsed;
+
+  if (parsed === 'confirmed') {
+    return hasConsultBeenStarted(appointment) ? 'completed' : 'no_show';
+  }
+  return parsed;
+}
+
 export function formatAppointmentStatusLabel(
   status: CanonicalAppointmentStatus | string | null | undefined
 ): string {

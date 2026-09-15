@@ -18,6 +18,9 @@ export interface IncomingSharingRequest {
   id: string;
   patientId: string;
   patientName: string;
+  patientEmail?: string;
+  patientPhone?: string;
+  message?: string;
   status: SharingRequestStatus;
   createdAt: Date;
   approvedAt?: Date;

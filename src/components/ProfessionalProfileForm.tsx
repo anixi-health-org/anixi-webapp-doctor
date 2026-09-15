@@ -362,6 +362,26 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
         }
       );
 
+      const reloaded = await getDoctorProfileFormData(doctor.id);
+      if (reloaded) {
+        const inherited =
+          clinicEmployed && practiceSession?.practice
+            ? inheritClinicPracticeFields(practiceSession.practice)
+            : {};
+        setFormData({
+          ...reloaded,
+          ...inherited,
+          emailAddress: reloaded.emailAddress || payload.emailAddress,
+          fullName: reloaded.fullName || payload.fullName,
+          profileImageUrl: profileImageUrl || reloaded.profileImageUrl,
+          logoUrl: logoUrl || reloaded.logoUrl,
+        });
+        if (reloaded.logoUrl || logoUrl) setLogoPreview(logoUrl || reloaded.logoUrl);
+        if (reloaded.profileImageUrl || profileImageUrl) {
+          setPhotoPreview(profileImageUrl || reloaded.profileImageUrl);
+        }
+      }
+
       const practiceId = practiceSession?.practice?.id;
       if (
         !clinicEmployed &&
@@ -375,15 +395,6 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
           ...(payload.timezone.trim() ? { timezone: payload.timezone.trim() } : {}),
         });
         await refreshPracticeSession();
-      }
-
-      if (logoUrl) {
-        setFormData((prev) => ({ ...prev, logoUrl: logoUrl as string }));
-        setLogoPreview(logoUrl);
-      }
-      if (profileImageUrl) {
-        setFormData((prev) => ({ ...prev, profileImageUrl: profileImageUrl as string }));
-        setPhotoPreview(profileImageUrl);
       }
 
       setLogoFile(null);

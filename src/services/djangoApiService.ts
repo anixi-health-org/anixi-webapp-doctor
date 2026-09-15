@@ -614,6 +614,28 @@ export async function djangoLogin(email: string, password: string) {
   return json.data;
 }
 
+export async function djangoPasswordResetRequest(email: string) {
+  if (!enabled()) throw new Error('Django API not configured');
+  assertApiReachable();
+  const res = await djangoFetch(`${API_BASE}/api/v1/auth/password-reset/request/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Client': 'doctor-web' },
+    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+  });
+  await djangoJson<{ sent: boolean }>(res);
+}
+
+export async function djangoPasswordResetConfirm(oobCode: string, newPassword: string) {
+  if (!enabled()) throw new Error('Django API not configured');
+  assertApiReachable();
+  const res = await djangoFetch(`${API_BASE}/api/v1/auth/password-reset/confirm/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Client': 'doctor-web' },
+    body: JSON.stringify({ oob_code: oobCode, new_password: newPassword }),
+  });
+  return djangoJson<{ changed: boolean }>(res);
+}
+
 export async function djangoGetMe() {
   if (!enabled() || !API_BASE) return null;
   try {
@@ -1021,6 +1043,21 @@ export type DjangoPracticePatient = {
   medicalAidNumber?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
+  address?: string;
+  bloodGroup?: string;
+  weight?: string;
+  allergies?: string[];
+  previousHealthConditions?: string[];
+  previousSurgeries?: string[];
+  previousMedications?: string[];
+  preferredHospital?: string;
+  language?: string;
+  maritalStatus?: string;
+  occupation?: string;
+  employmentStatus?: string;
+  planOption?: string;
+  hasCaregiver?: boolean;
+  caregiverEmail?: string;
   createdAt?: string | null;
   updatedAt?: string | null;
 };

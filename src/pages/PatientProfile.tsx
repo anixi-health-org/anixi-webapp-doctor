@@ -14,7 +14,7 @@ import { getPatientForDoctorView } from '../services/patientManagementService';
 import { Appointment, Patient } from '../types';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { convertTimestamp } from '../utils/dateFormatter';
-import { formatName } from '../utils/dataFormatter';
+import { formatGender, formatName } from '../utils/dataFormatter';
 import { patientContactLabel } from '../utils/patientContact';
 import { patientAccountStatus, patientAccountStatusLabel } from '../utils/patientRosterStatus';
 import { PatientProfileSkeleton } from '../components/ui';
@@ -291,7 +291,7 @@ export const PatientProfile: React.FC = () => {
                   </span>
                 </div>
                 <p className="mt-1 text-[13px] text-[#65758b]">
-                  {[patient.gender, patientContactLabel(patient.email)].filter(Boolean).join(' · ') || ' '}
+                  {[formatGender(patient.gender), patientContactLabel(patient.email)].filter(Boolean).join(' · ') || ' '}
                 </p>
               </div>
             </div>

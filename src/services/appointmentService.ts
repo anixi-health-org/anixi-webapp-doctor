@@ -11,8 +11,8 @@ import {
   assertAppointmentStatus,
   effectiveAppointmentStatus,
   formatAppointmentClock,
-  hasConsultBeenStarted,
   parseAppointmentStatus,
+  resolveElapsedAppointmentStatus,
   resolveScheduledAt,
 } from './appointmentCanonical';
 import { calendarDateKeyInTimeZone } from '../lib/timezones';
@@ -190,6 +190,14 @@ const mapAppointmentFields = (
   const postConsultActions = normalizePostConsultActions(
     data.postConsultActions ?? data.post_consult_actions
   );
+  const startAt = convertTimestamp(data.startAt) || undefined;
+  const endAt = convertTimestamp(data.endAt) || undefined;
+  const durationMinutes =
+    typeof data.durationMinutes === 'number' &&
+    Number.isFinite(data.durationMinutes) &&
+    data.durationMinutes > 0
+      ? data.durationMinutes
+      : undefined;
   const teleconsultConsent = data.teleconsultConsent ?? data.teleconsult_consent
     ? {
         obtained: Boolean((data.teleconsultConsent ?? data.teleconsult_consent).obtained),
@@ -203,17 +211,16 @@ const mapAppointmentFields = (
       }
     : undefined;
 
-  let status = displayStatus;
-  if (
-    status === 'no_show' &&
-    hasConsultBeenStarted({
-      status,
+  const status =
+    resolveElapsedAppointmentStatus({
+      status: displayStatus,
+      scheduledAt: instant,
+      startAt,
+      endAt,
+      durationMinutes,
       teleconsult,
       postConsultActions,
-    })
-  ) {
-    status = 'completed';
-  }
+    }) ?? displayStatus;
 
   return {
     id,
@@ -237,14 +244,9 @@ const mapAppointmentFields = (
     teleconsult,
     teleconsultConsent,
     virtualMeetingLink: typeof data.virtualMeetingLink === 'string' ? data.virtualMeetingLink : undefined,
-    startAt: convertTimestamp(data.startAt) || undefined,
-    endAt: convertTimestamp(data.endAt) || undefined,
-    durationMinutes:
-      typeof data.durationMinutes === 'number' &&
-      Number.isFinite(data.durationMinutes) &&
-      data.durationMinutes > 0
-        ? data.durationMinutes
-        : undefined,
+    startAt,
+    endAt,
+    durationMinutes,
     requestedByRole: data.requestedByRole || undefined,
     arrivalStatus: data.arrivalStatus || 'expected',
     checkedInAt: convertTimestamp(data.checkedInAt) || undefined,

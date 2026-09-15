@@ -4,6 +4,8 @@ import {
   CheckCircle2,
   Clock3,
   Inbox,
+  Mail,
+  Phone,
   UserRound,
   XCircle,
 } from 'lucide-react';
@@ -113,9 +115,11 @@ export const SharingRequestsList: React.FC<SharingRequestsListProps> = ({
       )}
 
       {pendingRequests.map((request) => {
-        const patientName = request.patientName || 'Patient';
+        const patientName = request.patientName || request.patientEmail || 'Patient';
         const dateLabel = formatSentDate(request.createdAt);
         const isProcessing = loadingId === request.id;
+        const subtitle =
+          request.message?.trim() || 'Wants to share their health record';
 
         return (
           <article
@@ -126,8 +130,8 @@ export const SharingRequestsList: React.FC<SharingRequestsListProps> = ({
               <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <p className="truncate text-base font-semibold text-foreground">{patientName}</p>
                 <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                  <UserRound className="h-4 w-4" />
-                  <span>Patient request</span>
+                  <UserRound className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{subtitle}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2 rounded-full bg-yellow-100 px-3 py-1">
@@ -135,6 +139,23 @@ export const SharingRequestsList: React.FC<SharingRequestsListProps> = ({
                 <span className="text-sm font-medium text-yellow-700">Pending</span>
               </div>
             </div>
+
+            {(request.patientEmail || request.patientPhone) && (
+              <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+                {request.patientEmail && (
+                  <div className="flex items-center gap-1">
+                    <Mail className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{request.patientEmail}</span>
+                  </div>
+                )}
+                {request.patientPhone && (
+                  <div className="flex items-center gap-1">
+                    <Phone className="h-4 w-4 shrink-0" />
+                    <span>{request.patientPhone}</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex items-center gap-1 text-sm text-muted-foreground">
               <CalendarDays className="h-4 w-4" />
