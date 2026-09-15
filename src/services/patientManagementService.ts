@@ -65,37 +65,37 @@ async function loadPatientRecordForDoctor(
 ): Promise<Patient | null> {
   if (!isDjangoApiEnabled()) return null;
 
-  try {
-    const panel = await djangoListPatientPanel();
-    const row = panel.find((entry) => entry.patientId === patientId);
-    if (row) {
-      return mapPatientRecord(
-        patientId,
-        undefined,
-        { displayName: row.displayName || '', email: row.email || '' },
-        doctorId,
-      );
-    }
-  } catch {
-    return null;
-  }
+  const [panel, chart] = await Promise.all([
+    djangoListPatientPanel().catch(() => [] as DjangoPanelPatient[]),
+    djangoGetPatientChart(patientId).catch(() => null),
+  ]);
+  const row = panel.find((entry) => entry.patientId === patientId);
+  return patientFromPanelAndChart(patientId, row, chart, doctorId);
+}
 
-  try {
-    const chart = await djangoGetPatientChart(patientId);
-    if (!chart) return null;
-    const profile = (chart.profile as Record<string, unknown> | undefined) ?? {};
-    return mapPatientRecord(
-      patientId,
-      undefined,
-      {
-        displayName: String(profile.fullName ?? profile.displayName ?? 'Patient'),
-        email: String(profile.email ?? ''),
-      },
-      doctorId,
-    );
-  } catch {
-    return null;
-  }
+export function patientFromPanelAndChart(
+  patientId: string,
+  panel: DjangoPanelPatient | undefined,
+  chart: Record<string, unknown> | null | undefined,
+  doctorId?: string,
+): Patient | null {
+  const profile = (chart?.profile as Record<string, unknown> | undefined) ?? {};
+  if (!panel && !chart) return null;
+
+  return mapPatientRecord(
+    patientId,
+    {
+      ...profile,
+      rosterStatus: panel?.status,
+      practiceId: panel?.practiceId ?? profile.practiceId,
+    },
+    {
+      displayName: panel?.displayName || '',
+      email: panel?.email || '',
+      phoneNumber: panel?.phoneNumber || '',
+    },
+    doctorId,
+  );
 }
 
 /**

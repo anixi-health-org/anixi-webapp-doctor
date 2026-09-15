@@ -9,6 +9,8 @@ import AyahPage from './pages/AyahPage';
 import AppointmentSummary from './pages/AppointmentSummary';
 import TeleconsultPage from './pages/TeleconsultPage';
 import { Login } from './pages/Login';
+import { ForgotPassword } from './pages/ForgotPassword';
+import { ResetPassword } from './pages/ResetPassword';
 import { Join } from './pages/Join';
 import { Register } from './pages/Register';
 import { CaregiverDashboard } from './components/caregiver/CaregiverDashboard';
@@ -91,6 +93,10 @@ function App() {
           <Route path="/join" element={<Join />} />
           <Route path="/join/invite" element={<InviteAcceptPage />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset/:code" element={<ResetPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/set-password" element={<ResetPassword />} />
           <Route path="/register" element={<Register />} />
           <Route
             path="/register/caregiver"

@@ -13,6 +13,11 @@ import { queueDoctorOnboardingSubmittedEmail } from './onboardingEmailService';
 import { DashboardStats, Doctor, Patient } from '../types';
 import type { ProfessionalProfileFormData } from '../types/doctorProfile';
 import { resolveDoctorProfilePhotoUrl } from '../lib/doctorAvatar';
+import {
+  firestoreToFormData,
+  djangoMeToFormRecord,
+  yearsOfExperienceToNumber,
+} from '../lib/doctorProfileMapper';
 
 export const getDoctorProfile = async (doctorId: string): Promise<Doctor | null> => {
     try {
@@ -29,10 +34,18 @@ export const getDoctorProfile = async (doctorId: string): Promise<Doctor | null>
 };
 
 export const getDoctorProfileFormData = async (
-    _doctorId: string
+    doctorId: string
 ): Promise<ProfessionalProfileFormData | null> => {
-    // TODO: replace with a Django doctor-profile endpoint once available.
-    return null;
+    if (!isDjangoApiEnabled()) return null;
+    const me = await djangoGetMe();
+    if (!me || String(me.id) !== doctorId) return null;
+    const form = firestoreToFormData(djangoMeToFormRecord(me));
+    const doctor = await enrichDoctorMediaUrls(mapDjangoMeToDoctor(me));
+    return {
+      ...form,
+      logoUrl: doctor.logoUrl || form.logoUrl,
+      profileImageUrl: doctor.profileImageUrl || form.profileImageUrl,
+    };
 };
 
 export async function uploadPracticeLogo(doctorId: string, file: File): Promise<string> {
@@ -68,6 +81,7 @@ export const saveDoctorProfileForm = async (
         const resolvedPhoto = djangoMediaUrlToStorageKey(
             resolveDoctorProfilePhotoUrl(form.profileImageUrl, resolvedLogo),
         );
+        const years = yearsOfExperienceToNumber(form.yearsOfExperience);
         await djangoPatchDoctorProfile({
             display_name: form.fullName,
             phone_number: form.phoneNumber,
@@ -81,11 +95,12 @@ export const saveDoctorProfileForm = async (
             city: form.city,
             office_address: form.practiceAddress,
             nationality: form.nationality,
-            title: form.title,
-            gender: form.gender,
             id_or_passport: form.idOrPassport,
             practice_number_bhf: form.practiceNumber,
             vat_number: form.vatNumber,
+            ...(form.title.trim() ? { title: form.title } : {}),
+            ...(form.gender.trim() ? { gender: form.gender } : {}),
+            ...(years != null ? { years_of_experience: years } : {}),
             ...(resolvedLogo ? { logo_url: resolvedLogo } : {}),
             ...(resolvedPhoto ? { profile_image_url: resolvedPhoto } : {}),
             ...(options?.submitForReview ? { submit_for_review: true } : {}),

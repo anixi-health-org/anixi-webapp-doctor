@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { PageHeader, PageShell } from '../../components/page-layout';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -14,6 +15,21 @@ import type { PracticeMember } from '../../types';
 
 const fieldClass =
   'mt-1 w-full rounded-xl border border-[#e1e7ef] bg-white px-3 py-2.5 text-sm text-[#344256] focus:border-anixi-green focus:outline-none focus:ring-2 focus:ring-anixi-green/20';
+
+const readOnlyClass =
+  'mt-1 w-full rounded-xl border border-[#e1e7ef] bg-[#f8fafc] px-3 py-2.5 text-sm text-[#344256]';
+
+function formatList(value?: string[] | string | null): string {
+  if (Array.isArray(value)) return value.filter(Boolean).join(', ');
+  return (value || '').trim();
+}
+
+const ReadOnlyField: React.FC<{ label: string; value?: string | null }> = ({ label, value }) => (
+  <div>
+    <p className="text-xs font-medium text-[#65758b]">{label}</p>
+    <p className={readOnlyClass}>{value?.trim() || '—'}</p>
+  </div>
+);
 
 export const ClinicAdminPatientAccountPage: React.FC = () => {
   const { patientId = '' } = useParams();
@@ -62,7 +78,7 @@ export const ClinicAdminPatientAccountPage: React.FC = () => {
           email: row.email || '',
           phoneNumber: row.phoneNumber || '',
           dateOfBirth: row.dateOfBirth || '',
-          gender: row.gender || '',
+          gender: (row.gender || '').toLowerCase(),
           idNumber: row.idNumber || '',
           medicalAidName: row.medicalAidName || '',
           medicalAidNumber: row.medicalAidNumber || '',
@@ -136,11 +152,20 @@ export const ClinicAdminPatientAccountPage: React.FC = () => {
 
   if (!practice) return null;
 
+  const caregiverValue = account?.hasCaregiver
+    ? ['Yes', account.caregiverEmail].filter(Boolean).join(' · ')
+    : account?.caregiverEmail || '';
+
   return (
     <PageShell className="py-6 sm:py-8">
-      <Link to="/clinic/patients" className="text-sm font-semibold text-anixi-green hover:underline">
+      <button
+        type="button"
+        onClick={() => navigate('/clinic/patients')}
+        className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#e1e7ef] bg-white px-3.5 text-sm font-medium text-[#344256] shadow-sm transition hover:border-[#c5cdd8] hover:text-[#0E2340]"
+      >
+        <ArrowLeftIcon className="h-4 w-4" />
         Back to roster
-      </Link>
+      </button>
       <PageHeader
         className="mt-3"
         title={account?.displayName || 'Patient account'}
@@ -263,6 +288,46 @@ export const ClinicAdminPatientAccountPage: React.FC = () => {
                   onChange={(e) => setDraft((current) => ({ ...current, medicalAidNumber: e.target.value }))}
                 />
               </label>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                Patient app record
+              </p>
+              <p className="text-xs text-[#8FA0B6]">Read-only · updated by the patient in the app</p>
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <ReadOnlyField label="Address" value={account?.address} />
+              <ReadOnlyField label="Language" value={account?.language} />
+              <ReadOnlyField label="Marital status" value={account?.maritalStatus} />
+              <ReadOnlyField label="Occupation" value={account?.occupation} />
+              <ReadOnlyField label="Employment status" value={account?.employmentStatus} />
+              <ReadOnlyField label="Blood group" value={account?.bloodGroup} />
+              <ReadOnlyField
+                label="Weight"
+                value={
+                  account?.weight
+                    ? /kg|lb/i.test(account.weight)
+                      ? account.weight
+                      : `${account.weight} kg`
+                    : ''
+                }
+              />
+              <ReadOnlyField label="Allergies" value={formatList(account?.allergies)} />
+              <ReadOnlyField
+                label="Conditions"
+                value={formatList(account?.previousHealthConditions)}
+              />
+              <ReadOnlyField label="Previous surgeries" value={formatList(account?.previousSurgeries)} />
+              <ReadOnlyField
+                label="Previous medications"
+                value={formatList(account?.previousMedications)}
+              />
+              <ReadOnlyField label="Preferred hospital" value={account?.preferredHospital} />
+              <ReadOnlyField label="Plan option" value={account?.planOption} />
+              <ReadOnlyField label="Caregiver" value={caregiverValue} />
             </div>
           </section>
 

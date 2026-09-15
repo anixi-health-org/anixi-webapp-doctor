@@ -288,9 +288,13 @@ export const NotificationsPage: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-[#344256]">
-                      {req.patientName || 'Patient'}
+                      {req.patientName || req.patientEmail || 'Patient'}
                     </p>
-                    <p className="text-xs text-[#65758b]">Wants to share health data with you</p>
+                    <p className="text-xs text-[#65758b]">
+                      {req.patientEmail
+                        ? req.patientEmail
+                        : 'Wants to share health data with you'}
+                    </p>
                   </div>
                 </div>
                 <div className="flex gap-2">
