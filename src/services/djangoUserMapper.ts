@@ -53,7 +53,12 @@ export function mapDjangoMeToDoctor(me: DjangoMe): Doctor {
 }
 
 export function mapDjangoMeToProfessionalUser(me: DjangoMe): ProfessionalUser {
-  const role = String(me.role ?? 'doctor');
+  const role = String(me.role ?? '');
+  if (role === 'admin' || role === 'patient') {
+    throw new Error(
+      'This account cannot sign in to the doctor portal. Use the Anixi Health admin portal.',
+    );
+  }
   if (role === 'staff') {
     return {
       id: String(me.id),
