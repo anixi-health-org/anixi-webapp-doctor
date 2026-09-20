@@ -12,11 +12,18 @@ export type AskAnixiContext = {
   practiceId?: string;
   practiceSnapshot?: Record<string, unknown>;
   patientSnapshot?: Record<string, unknown>;
+  dashboardIntent?: string;
   clinicDate?: string;
   clinicTimezone?: string;
   onboardingFlow?: string;
   onboardingStep?: string | number;
   onboardingStepLabel?: string;
+  /** When set, Ayah returns here after the doctor approves a clinical_report draft. */
+  returnPath?: string;
+  /** Signals Ayah to run the H&P report drafting workflow. */
+  draftIntent?: 'clinical_report' | 'clinical_note' | 'message_reply';
+  visitNote?: string;
+  scribeSummary?: string;
 };
 
 export type DoctorAgentDraft = {
@@ -39,6 +46,22 @@ export type ResolvedDoctorDraftResult = {
   status?: string;
   sent?: boolean;
 };
+
+function normalizeDoctorDraft(row: Record<string, unknown>): DoctorAgentDraft {
+  const preview =
+    (typeof row.preview === 'string' && row.preview) ||
+    (typeof row.content === 'string' && row.content) ||
+    '';
+  return {
+    id: String(row.id),
+    type: String(row.type ?? ''),
+    status: String(row.status ?? ''),
+    preview,
+    payload: (row.payload as Record<string, unknown> | undefined) ?? {},
+    patientId: row.patientId != null ? String(row.patientId) : undefined,
+    appointmentId: row.appointmentId != null ? String(row.appointmentId) : undefined,
+  };
+}
 
 export function formatAskAnixiError(err: unknown): string {
   if (err instanceof Error) {
@@ -89,7 +112,8 @@ export async function streamAskAnixi(params: {
 
 export async function listDoctorPendingDrafts(): Promise<DoctorAgentDraft[]> {
   if (isDjangoApiEnabled()) {
-    return (await djangoListDoctorDrafts()) as DoctorAgentDraft[];
+    const rows = (await djangoListDoctorDrafts()) as Record<string, unknown>[];
+    return rows.map(normalizeDoctorDraft);
   }
   // Firebase Functions path removed.
   return [];
@@ -101,7 +125,16 @@ export async function resolveDoctorDraft(
 ): Promise<ResolvedDoctorDraftResult> {
   if (isDjangoApiEnabled()) {
     const result = await djangoResolveDoctorDraft(draftId, decision);
-    return { draftId, status: result?.status, type: undefined };
+    return {
+      draftId,
+      status: result?.status,
+      type: result?.type,
+      preview: result?.preview,
+      payload: result?.payload,
+      patientId: result?.patientId ?? null,
+      appointmentId: result?.appointmentId ?? null,
+      sent: result?.sent,
+    };
   }
   // Firebase Functions path removed.
   return { draftId, status: decision === 'approved' ? 'approved' : 'rejected' };

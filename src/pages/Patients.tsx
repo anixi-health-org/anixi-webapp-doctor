@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PlusIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, UserGroupIcon, InboxIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 import { useAuth } from '../hooks/useAuth';
 import { usePermissions } from '../hooks/usePermissions';
@@ -10,9 +10,9 @@ import { DoctorPatientRecordsTable } from '../components/patients/DoctorPatientR
 import { PatientsPageSkeleton } from '../components/ui';
 import { PageHeader, PageShell } from '../components/page-layout';
 import { Patient } from '../types';
-import { listenToDoctorPatients } from '../services/patientManagementService';
-import { syncDoctorPatientRoster } from '../services/patientRosterSync';
+import { getDoctorPatients, listenToDoctorPatients } from '../services/patientManagementService';
 import { listPracticePatientsPage } from '../services/practicePatientService';
+import { isThrottledMessage, parseRetrySeconds } from '../utils/apiThrottle';
 import { listPracticeClinicians } from '../services/practiceSettingsService';
 import { patientAccountStatus, type PatientAccountStatus } from '../utils/patientRosterStatus';
 import {
@@ -64,7 +64,6 @@ export const Patients: React.FC = () => {
 
   useEffect(() => {
     if (!doctorId) return;
-    void syncDoctorPatientRoster(doctorId);
     const unsubscribe = listenToDoctorPatients(
       doctorId,
       (nextPatients) => {
@@ -131,9 +130,41 @@ export const Patients: React.FC = () => {
   }, [showClinicRoster, practice?.id, debouncedRosterQuery, rosterPage]);
 
   useEffect(() => {
-    if (!showClinicRoster) return;
+    if (!showClinicRoster || activeTab !== 'roster') return;
     void loadRoster();
-  }, [showClinicRoster, loadRoster]);
+  }, [showClinicRoster, activeTab, loadRoster]);
+
+  useEffect(() => {
+    if (!rosterError || activeTab !== 'roster' || !isThrottledMessage(rosterError)) return;
+    const retrySeconds = parseRetrySeconds(rosterError) ?? 12;
+    const timer = window.setTimeout(() => {
+      void loadRoster();
+    }, retrySeconds * 1000);
+    return () => window.clearTimeout(timer);
+  }, [rosterError, activeTab, loadRoster]);
+
+  const refreshAssignedPatients = useCallback(async () => {
+    if (!doctorId) return;
+    setPatientsLoading(true);
+    setPatientsError(null);
+    try {
+      const nextPatients = await getDoctorPatients(doctorId);
+      setPatients(nextPatients);
+    } catch (err) {
+      setPatientsError(err instanceof Error ? err.message : 'Could not load assigned patients');
+    } finally {
+      setPatientsLoading(false);
+    }
+  }, [doctorId]);
+
+  useEffect(() => {
+    if (!patientsError || activeTab !== 'assigned' || !isThrottledMessage(patientsError)) return;
+    const retrySeconds = parseRetrySeconds(patientsError) ?? 12;
+    const timer = window.setTimeout(() => {
+      void refreshAssignedPatients();
+    }, retrySeconds * 1000);
+    return () => window.clearTimeout(timer);
+  }, [patientsError, activeTab, refreshAssignedPatients]);
 
   const pendingCount = sharingRequests.filter((r) => r.status === 'pending').length;
 
@@ -184,6 +215,37 @@ export const Patients: React.FC = () => {
   const openPatient = (patientId: string) => {
     navigate(`/patient-profile/${patientId}`);
   };
+
+  const renderErrorBanner = (
+    message: string,
+    onRetry?: () => void,
+  ) => (
+    <div className="mb-4 flex flex-col gap-3 rounded-[12px] border border-red-200 bg-red-50 p-4 text-red-700 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p className="font-medium">{message}</p>
+        {isThrottledMessage(message) ? (
+          <p className="mt-1 text-sm text-red-600/90">
+            {(() => {
+              const retrySeconds = parseRetrySeconds(message);
+              return retrySeconds
+                ? `Retrying automatically in ${retrySeconds} seconds…`
+                : 'Retrying automatically in a moment…';
+            })()}
+          </p>
+        ) : null}
+      </div>
+      {onRetry ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex items-center gap-2 self-start rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 sm:self-center"
+        >
+          <ArrowPathIcon className="h-4 w-4" />
+          Retry now
+        </button>
+      ) : null}
+    </div>
+  );
 
   if (patientsLoading && activeTab === 'assigned') {
     return (
@@ -294,12 +356,16 @@ export const Patients: React.FC = () => {
         </button>
       </div>
 
-      {patientsError && activeTab === 'assigned' ? (
-        <div className="mb-4 rounded-[12px] border border-red-200 bg-red-50 p-4 text-red-700">{patientsError}</div>
-      ) : null}
-      {rosterError && activeTab === 'roster' ? (
-        <div className="mb-4 rounded-[12px] border border-red-200 bg-red-50 p-4 text-red-700">{rosterError}</div>
-      ) : null}
+      {patientsError && activeTab === 'assigned'
+        ? renderErrorBanner(patientsError, () => {
+            void refreshAssignedPatients();
+          })
+        : null}
+      {rosterError && activeTab === 'roster'
+        ? renderErrorBanner(rosterError, () => {
+            void loadRoster();
+          })
+        : null}
       {sharingRequestsError && activeTab === 'requests' ? (
         <div className="mb-4 rounded-[12px] border border-red-200 bg-red-50 p-4 text-red-700">
           {sharingRequestsError.message}
@@ -329,11 +395,33 @@ export const Patients: React.FC = () => {
               </select>
             </div>
           </div>
-          <DoctorPatientRecordsTable
-            patients={filteredPatients}
-            emptyMessage="No assigned patients match your filters."
-            onOpen={openPatient}
-          />
+          {filteredPatients.length === 0 && !query && statusFilter === 'all' ? (
+            <div className="flex flex-col items-center px-6 py-14 text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#eef4f0] text-[#427160]">
+                <UserGroupIcon className="h-7 w-7" />
+              </div>
+              <p className="text-base font-semibold text-[#344256]">No patients assigned yet</p>
+              <p className="mt-2 max-w-md text-sm text-[#65758b]">
+                Patients linked to you through sharing requests, appointments, or clinic roster assignment will appear here.
+              </p>
+              {!isClinicEmployedClinician ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAddPatient(true)}
+                  className="btn-primary mt-5 h-10 px-4"
+                >
+                  <PlusIcon className="h-4 w-4" />
+                  Add patient
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <DoctorPatientRecordsTable
+              patients={filteredPatients}
+              emptyMessage="No assigned patients match your filters."
+              onOpen={openPatient}
+            />
+          )}
         </div>
       ) : null}
 
@@ -353,16 +441,28 @@ export const Patients: React.FC = () => {
           ) : (
             <>
               <div className={rosterLoading ? 'opacity-60' : undefined}>
-                <DoctorPatientRecordsTable
-                  patients={rosterPatients}
-                  emptyMessage={
-                    debouncedRosterQuery
-                      ? 'No clinic patients match your search.'
-                      : 'No patients on the clinic roster yet.'
-                  }
-                  onOpen={openPatient}
-                  assignedDoctorName={assignedDoctorName}
-                />
+                {rosterPatients.length === 0 && !debouncedRosterQuery ? (
+                  <div className="flex flex-col items-center px-6 py-14 text-center">
+                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#eef4f0] text-[#427160]">
+                      <UserGroupIcon className="h-7 w-7" />
+                    </div>
+                    <p className="text-base font-semibold text-[#344256]">Clinic roster is empty</p>
+                    <p className="mt-2 max-w-md text-sm text-[#65758b]">
+                      Bulk-imported patients from your clinic admin will show up here once they are linked to this practice.
+                    </p>
+                  </div>
+                ) : (
+                  <DoctorPatientRecordsTable
+                    patients={rosterPatients}
+                    emptyMessage={
+                      debouncedRosterQuery
+                        ? 'No clinic patients match your search.'
+                        : 'No patients on the clinic roster yet.'
+                    }
+                    onOpen={openPatient}
+                    assignedDoctorName={assignedDoctorName}
+                  />
+                )}
               </div>
               <div className="flex flex-col gap-3 border-t border-[#eef2f6] px-4 py-3 text-sm text-[#65758b] sm:flex-row sm:items-center sm:justify-between">
                 <p>
@@ -396,8 +496,19 @@ export const Patients: React.FC = () => {
       ) : null}
 
       {activeTab === 'requests' ? (
-        <div className="rounded-[12px] border border-[#e1e7ef] bg-white p-6 shadow-sm">
-          <h3 className="mb-4 text-base font-semibold text-[#344256]">Pending Requests</h3>
+        <div className="overflow-hidden rounded-[12px] border border-[#e1e7ef] bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-[#e1e7ef] px-4 py-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eef4f0] text-[#427160]">
+                <InboxIcon className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-[#344256]">Pending Requests</h3>
+                <p className="text-sm text-[#65758b]">Approve or decline patient access requests</p>
+              </div>
+            </div>
+          </div>
+          <div className="p-4 sm:p-6">
           <SharingRequestsList
             requests={sharingRequests}
             loading={sharingRequestsLoading}
@@ -409,6 +520,7 @@ export const Patients: React.FC = () => {
             }}
             refreshing={approveMutation.isPending || rejectMutation.isPending}
           />
+          </div>
         </div>
       ) : null}
 

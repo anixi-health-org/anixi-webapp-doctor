@@ -80,9 +80,9 @@ export const Support: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 gap-4 mb-12">
-        <a href="mailto:support@anixi.health" className="p-6 bg-anixi-card rounded-lg shadow-sm hover:shadow transition-shadow border-l-4 border-purple-600">
+        <a href="mailto:support@anixihealth.com" className="p-6 bg-anixi-card rounded-lg shadow-sm hover:shadow transition-shadow border-l-4 border-purple-600">
           <h3 className="font-semibold text-gray-900 mb-1">Email Support</h3>
-          <p className="text-sm text-gray-600">support@anixi.health</p>
+          <p className="text-sm text-gray-600">support@anixihealth.com</p>
         </a>
       </div>
 

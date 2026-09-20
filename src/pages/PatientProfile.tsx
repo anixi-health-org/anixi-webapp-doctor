@@ -22,12 +22,14 @@ import {
   getPatientWearableSummary,
   type PatientWearableSummary,
 } from '../services/wearableService';
+import { usePatientMedicalVaultAccess } from '../hooks/usePatientMedicalVaultAccess';
 
 export const PatientProfile: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { patientId } = useParams<{ patientId: string }>();
-  const { user } = useAuth();
+  const { user, practiceSession } = useAuth();
+  const practiceId = practiceSession?.practice?.id;
 
   const contextState = (location.state ?? {}) as {
     appointmentId?: string;
@@ -62,6 +64,7 @@ export const PatientProfile: React.FC = () => {
     void logPatientActivity({
       doctorId: user.id,
       patientId: patient.id,
+      practiceId,
       appointmentId: appointmentContextId,
       actionType,
       description,
@@ -180,6 +183,7 @@ export const PatientProfile: React.FC = () => {
     patient?.id,
     user?.id
   );
+  const { canAccess: canViewMedicalVault } = usePatientMedicalVaultAccess(patient);
 
   const appointmentStats = useMemo(() => {
     const today = new Date();
@@ -495,6 +499,17 @@ export const PatientProfile: React.FC = () => {
                 logActivity('open_vitals_history', 'Opened vitals history from patient profile.');
                 navigate(`/patient-profile/${patient.id}/vitals-history`);
               }}
+              onMedicalVault={
+                canViewMedicalVault
+                  ? () => {
+                      logActivity(
+                        'open_medical_vault',
+                        'Opened patient medical record vault from profile.',
+                      );
+                      navigate(`/patient-profile/${patient.id}/medical-records`);
+                    }
+                  : undefined
+              }
               onWearableData={() => {
                 logActivity('open_wearable_data', 'Opened wearable data from patient profile.');
                 navigate(`/patient-profile/${patient.id}/wearable`);

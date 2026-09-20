@@ -2,14 +2,14 @@ import { useMemo, useEffect, useState } from 'react';
 import { getDoctorPatientGrowth, type DoctorPatientGrowth } from '../services/patientManagementService';
 import { useDoctorBriefingData } from './useDoctorBriefingData';
 import { useAuth } from './useAuth';
+import {
+  allOpenAppointments,
+  toDashboardAppointmentItem,
+  type DashboardListItem,
+} from '../lib/dashboardAppointmentItems';
+import { detectBrowserTimezone } from '../lib/timezones';
 
-export type DashboardListItem = {
-  id: string;
-  title: string;
-  subtitle?: string;
-  badge?: string;
-  tone?: 'urgent' | 'soon' | 'routine' | 'neutral';
-};
+export type { DashboardListItem };
 
 export type DashboardResolvedData = {
   stats: Record<string, string | number>;
@@ -18,9 +18,11 @@ export type DashboardResolvedData = {
 };
 
 export function useDoctorDashboardData() {
-  const { user } = useAuth();
+  const { user, practiceSession } = useAuth();
   const { snapshot, loading: briefingLoading } = useDoctorBriefingData();
   const [growth, setGrowth] = useState<DoctorPatientGrowth | null>(null);
+  const timeZone =
+    practiceSession?.practice?.timezone?.trim() || detectBrowserTimezone();
 
   useEffect(() => {
     if (!user?.id) return;
@@ -64,6 +66,14 @@ export function useDoctorDashboardData() {
           ? `+${growth.addedThisMonth}`
           : '-';
 
+    const booked = [
+      ...snapshot.todayAppointments,
+      ...snapshot.upcomingAppointments,
+    ].filter(
+      (apt, index, rows) => rows.findIndex((row) => row.id === apt.id) === index,
+    );
+    const allOpen = allOpenAppointments(booked);
+
     const stats: Record<string, string | number> = {
       patient_count: snapshot.totalPatients,
       stable_patients: snapshot.stablePatients,
@@ -75,27 +85,23 @@ export function useDoctorDashboardData() {
       attendance_rate: `${attendanceRate}%`,
       attention_count: snapshot.attentionItems.length,
       today_appointment_count: snapshot.todayAppointments.length,
-      upcoming_appointment_count: snapshot.todayAppointments.filter(
-        (a) => a.status !== 'completed' && a.status !== 'cancelled',
-      ).length,
+      upcoming_appointment_count: snapshot.upcomingAppointments.length,
+      week_appointment_count: snapshot.weekAppointments.length,
+      all_appointment_count: allOpen.length,
     };
 
-    const todayItems: DashboardListItem[] = snapshot.todayAppointments.map((apt) => ({
-      id: apt.id,
-      title: apt.patientName || 'Patient',
-      subtitle: apt.time ? `${apt.time} · ${apt.status}` : apt.status,
-      badge: apt.status,
-      tone: apt.status === 'pending' ? 'soon' : 'neutral',
-    }));
-
-    const upcomingItems: DashboardListItem[] = snapshot.todayAppointments
-      .filter((a) => a.status !== 'completed' && a.status !== 'cancelled')
-      .map((apt) => ({
-        id: apt.id,
-        title: apt.patientName || 'Patient',
-        subtitle: apt.time || apt.status,
-        badge: apt.status,
-      }));
+    const todayItems = snapshot.todayAppointments.map((apt) =>
+      toDashboardAppointmentItem(apt, timeZone, false),
+    );
+    const upcomingItems = snapshot.upcomingAppointments.map((apt) =>
+      toDashboardAppointmentItem(apt, timeZone, true),
+    );
+    const weekItems = snapshot.weekAppointments.map((apt) =>
+      toDashboardAppointmentItem(apt, timeZone, true),
+    );
+    const allItems = allOpen.map((apt) =>
+      toDashboardAppointmentItem(apt, timeZone, true),
+    );
 
     const attentionItems: DashboardListItem[] = snapshot.attentionItems.map((item) => ({
       id: item.id,
@@ -130,6 +136,8 @@ export function useDoctorDashboardData() {
     const lists: Record<string, DashboardListItem[]> = {
       today_appointments: todayItems,
       upcoming_appointments: upcomingItems,
+      week_appointments: weekItems,
+      all_appointments: allItems,
       attention_items: attentionItems,
       recent_patients: recentPatients,
       next_patient: nextPatient,
@@ -142,6 +150,7 @@ export function useDoctorDashboardData() {
     growth,
     inactiveCount,
     snapshot,
+    timeZone,
   ]);
 
   return { resolved, loading: briefingLoading, snapshot };
@@ -169,7 +178,7 @@ export function resolveWidgetList(
   config: Record<string, unknown> | undefined,
   resolved: DashboardResolvedData,
 ): DashboardListItem[] {
-  if (binding && resolved.lists[binding]?.length) {
+  if (binding && Object.prototype.hasOwnProperty.call(resolved.lists, binding)) {
     return resolved.lists[binding];
   }
   const items = config?.items;

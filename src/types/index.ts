@@ -159,7 +159,8 @@ export type ClinicAuditAction =
     | 'queue.room_assigned'
     | 'settings.updated'
     | 'claim.submitted'
-    | 'invoice.paid';
+    | 'invoice.paid'
+    | 'patient.activity';
 
 export interface ClinicAuditLogEntry {
     id: string;
@@ -545,6 +546,7 @@ export interface AppointmentDocument {
 export type PostConsultActionType =
     | 'prescription_draft'
     | 'doctor_letter_draft'
+    | 'clinical_report_draft'
     | 'medical_document'
     | 'session_recording'
     | 'post_consult_note';

@@ -97,10 +97,30 @@ async function refreshAccessToken(refresh: string): Promise<string | null> {
   }
 }
 
+function isJwtExpired(token: string, skewSeconds = 30): boolean {
+  try {
+    const payloadPart = token.split('.')[1];
+    if (!payloadPart) return true;
+    const payload = JSON.parse(
+      atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/')),
+    ) as { exp?: number };
+    if (!payload.exp) return false;
+    return payload.exp * 1000 <= Date.now() + skewSeconds * 1000;
+  } catch {
+    return true;
+  }
+}
+
 async function resolveAccessToken(forceRefresh = false): Promise<string> {
   const storedAccess = localStorage.getItem('anixi_jwt_access');
   const recentlyRefreshed = Date.now() - lastRefreshAt < 4000;
-  if (storedAccess && (!forceRefresh || recentlyRefreshed)) return storedAccess;
+  if (
+    storedAccess &&
+    !isJwtExpired(storedAccess) &&
+    (!forceRefresh || recentlyRefreshed)
+  ) {
+    return storedAccess;
+  }
 
   if (!refreshInFlight) {
     const storedRefresh = localStorage.getItem('anixi_jwt_refresh');
@@ -186,6 +206,117 @@ export async function djangoCompanionStream(params: {
   }
 }
 
+export type DjangoVoiceTurnResult = {
+  transcript: string;
+  replyText: string;
+  audioBase64?: string | null;
+  mimeType?: string | null;
+};
+
+export async function djangoVoiceTurn(params: {
+  audioBase64?: string;
+  mimeType?: string;
+  transcript?: string;
+  languageCode?: string;
+  threadId?: string;
+  speakReply?: boolean;
+  context?: Record<string, unknown>;
+}): Promise<DjangoVoiceTurnResult> {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/companion/voice/turn/`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      ...params,
+      agentId: 'doctor-practice-partner',
+    }),
+  });
+  return djangoJson<DjangoVoiceTurnResult>(res);
+}
+
+export type DjangoVoiceStreamEvent =
+  | { type: 'transcript'; text: string }
+  | { type: 'text-delta'; delta: string }
+  | {
+      type: 'audio';
+      sentenceIndex: number;
+      text: string;
+      audioBase64: string;
+      mimeType: string;
+    }
+  | { type: 'done'; replyText: string }
+  | { type: 'error'; message: string };
+
+export async function djangoVoiceStream(params: {
+  audioBase64?: string;
+  mimeType?: string;
+  transcript?: string;
+  languageCode?: string;
+  threadId?: string;
+  speakReply?: boolean;
+  context?: Record<string, unknown>;
+  onEvent: (event: DjangoVoiceStreamEvent) => void;
+  signal?: AbortSignal;
+}): Promise<void> {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/companion/voice/stream/`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      audioBase64: params.audioBase64,
+      mimeType: params.mimeType,
+      transcript: params.transcript,
+      languageCode: params.languageCode,
+      threadId: params.threadId,
+      speakReply: params.speakReply,
+      context: params.context,
+      agentId: 'doctor-practice-partner',
+    }),
+    signal: params.signal,
+  });
+  if (!res.ok || !res.body) throw new Error(`Voice stream failed: ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split('\n\n');
+    buffer = parts.pop() ?? '';
+    for (const part of parts) {
+      for (const rawLine of part.split('\n')) {
+        const line = rawLine.trim();
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') return;
+        const parsed = JSON.parse(payload) as DjangoVoiceStreamEvent;
+        params.onEvent(parsed);
+        if (parsed.type === 'error') {
+          throw new Error(parsed.message);
+        }
+      }
+    }
+  }
+}
+
+export async function djangoSpeakText(params: {
+  text: string;
+  languageCode?: string;
+}): Promise<{ audioBase64: string; mimeType: string }> {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/companion/speak/`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(params),
+  });
+  return djangoJson<{ audioBase64: string; mimeType: string }>(res);
+}
+
 export async function djangoListDoctorDrafts() {
   if (!enabled()) return [];
   const headers = await authHeaders();
@@ -240,7 +371,16 @@ export async function djangoResolveDoctorDraft(draftId: string, decision: 'appro
     headers,
     body: JSON.stringify({ decision }),
   });
-  return djangoJson<{ status: string }>(res);
+  return djangoJson<{
+    draftId: string;
+    type: string;
+    status: string;
+    preview?: string;
+    payload?: Record<string, unknown>;
+    patientId?: string | null;
+    appointmentId?: string | null;
+    sent?: boolean;
+  }>(res);
 }
 
 export async function djangoScribeTranscribe(audioBase64: string, mimeType: string) {
@@ -367,6 +507,16 @@ async function readResponseJson<T>(res: Response): Promise<T> {
   }
 }
 
+function formatApiDetail(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const detail = (payload as { detail?: unknown }).detail;
+  if (typeof detail === 'string' && detail.trim()) return detail.trim();
+  if (Array.isArray(detail) && detail.length) {
+    return detail.map((entry) => String(entry)).join(' ');
+  }
+  return null;
+}
+
 async function djangoEnvelope<T>(
   res: Response,
 ): Promise<{ data: T; metadata: Record<string, unknown> | null }> {
@@ -374,8 +524,13 @@ async function djangoEnvelope<T>(
     await resolveAccessToken(true);
     throw new Error('Session refreshed. Retry request');
   }
-  const json = await readResponseJson<Envelope<T>>(res);
+  const json = await readResponseJson<Envelope<T> & { detail?: unknown }>(res);
   if (!json || typeof json !== 'object' || !('success' in json)) {
+    const detail = formatApiDetail(json);
+    if (res.status === 429) {
+      throw new Error(detail || 'Too many requests. Please wait a moment and try again.');
+    }
+    if (detail) throw new Error(detail);
     throw new Error('The API returned an unexpected response.');
   }
   if (!json.success) throw new Error(formatDjangoError(json.error));
@@ -743,15 +898,51 @@ export type DjangoPanelPatient = {
 
 export async function djangoListPatientPanel() {
   if (!enabled() || !API_BASE) return [];
-  try {
-    const headers = await authHeaders();
-    const res = await fetch(`${API_BASE}/api/v1/patients/panel/`, { headers });
-    if (!res.ok) return [];
-    return (await djangoJson<DjangoPanelPatient[]>(res)) ?? [];
-  } catch (error) {
-    console.warn('djangoListPatientPanel failed:', error);
-    return [];
-  }
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/patients/panel/`, { headers });
+  return (await djangoJson<DjangoPanelPatient[]>(res)) ?? [];
+}
+
+export async function djangoRemoveFromPanel(patientId: string) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/patients/panel/`, {
+    method: 'DELETE',
+    headers,
+    body: JSON.stringify({ patientId }),
+  });
+  return djangoJson<{ removed: boolean; links: number }>(res);
+}
+
+export async function djangoListCareMessages() {
+  if (!enabled() || !API_BASE) return [];
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/messaging/care-messages/`, { headers });
+  if (!res.ok) return [];
+  return (await djangoJson<Array<Record<string, unknown>>>(res)) ?? [];
+}
+
+export async function djangoSendCareMessage(params: {
+  patientId: string;
+  subject?: string;
+  body: string;
+}) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/messaging/care-messages/`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(params),
+  });
+  return djangoJson<Record<string, unknown>>(res);
+}
+
+export async function djangoListCaregiverLinkedPatients() {
+  if (!enabled() || !API_BASE) return [];
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/patients/caregiver/linked-patients/`, { headers });
+  if (!res.ok) return [];
+  return (await djangoJson<Array<Record<string, unknown>>>(res)) ?? [];
 }
 
 export async function djangoListSharingRequests(role: 'clinician' | 'patient' = 'clinician') {
@@ -1628,11 +1819,72 @@ export async function djangoListMyEmployers() {
   return djangoJson<Array<Record<string, unknown>>>(res);
 }
 
-export async function djangoFetchDocumentUrl(storageKey: string): Promise<string | null> {
+export async function djangoCreateEmployer(input: {
+  name: string;
+  industry?: string;
+  city?: string;
+  province?: string;
+  employeeTarget?: number;
+}) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/employers/`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(input),
+  });
+  return djangoJson<Record<string, unknown>>(res);
+}
+
+export async function djangoListEmployerEnrollments(employerId: string) {
+  if (!enabled()) return [];
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/employers/${encodeURIComponent(employerId)}/enrollments/`,
+    { headers },
+  );
+  if (!res.ok) return [];
+  return djangoJson<Array<Record<string, unknown>>>(res);
+}
+
+export async function djangoAddEmployerEnrollment(
+  employerId: string,
+  input: { email: string; displayName?: string },
+) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/employers/${encodeURIComponent(employerId)}/enrollments/`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(input),
+    },
+  );
+  return djangoJson<Record<string, unknown>>(res);
+}
+
+export async function djangoFetchDocumentUrl(
+  storageKey: string,
+  forceRefresh = false,
+): Promise<string | null> {
   if (!enabled() || !storageKey) return null;
-  const token = await resolveAccessToken();
+  const token = await resolveAccessToken(forceRefresh);
   const key = extractMediaStorageKey(storageKey) || storageKey;
   return `${API_BASE}/api/v1/documents/media/${encodeMediaStorageKey(key)}/?access=${encodeURIComponent(token)}`;
+}
+
+/** Open a protected document in a new tab with a fresh access token. */
+export async function djangoOpenMediaDocument(
+  urlOrKey: string | null | undefined,
+): Promise<void> {
+  const trimmed = urlOrKey?.trim();
+  if (!trimmed) return;
+
+  const key = extractMediaStorageKey(trimmed) ?? trimmed;
+  const url = await djangoFetchDocumentUrl(key, true);
+  if (!url) return;
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 /** Extract the storage key from an API media URL (with or without ?access= token). */

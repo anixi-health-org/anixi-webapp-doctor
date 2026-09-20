@@ -82,6 +82,7 @@ type Props = {
   pendingDrafts?: DoctorAgentDraft[];
   onResolveDraft?: (draft: DoctorAgentDraft, decision: 'approved' | 'rejected') => void;
   scrollRef?: React.RefObject<HTMLDivElement | null>;
+  onVoiceMode?: () => void;
 };
 
 function fileKind(type: AyahFileUpload['type']) {
@@ -171,6 +172,7 @@ export function AyahWorkspace({
   pendingDrafts = [],
   onResolveDraft,
   scrollRef,
+  onVoiceMode,
 }: Props) {
   const [showMore, setShowMore] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -255,6 +257,7 @@ export function AyahWorkspace({
       : null,
     onClearFile: () => setPendingFile(null),
     onPickFile: () => fileInputRef.current?.click(),
+    onVoiceMode,
   };
 
   return (
@@ -353,7 +356,7 @@ export function AyahWorkspace({
                       `flex items-end gap-2.5 ${isUser ? 'justify-end' : 'justify-start'}`,
                     )}
                   >
-                    {!isUser ? <AyahAvatar size="md" className="mb-5 hidden sm:block" /> : null}
+                    {!isUser ? <AyahAvatar size="md" className="mb-5 shrink-0" /> : null}
                     <div className={`min-w-0 max-w-[92%] ${isUser ? 'text-right' : 'text-left'}`}>
                       <div
                         className={

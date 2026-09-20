@@ -16,7 +16,10 @@ import {
   type PatientUploadedFile,
 } from '../../services/patientDocumentService';
 import { getPatientsSharingRecords } from '../../services/medicalRecordShareService';
-import { userFacingLoadError } from '../../services/djangoApiService';
+import {
+  djangoOpenMediaDocument,
+  userFacingLoadError,
+} from '../../services/djangoApiService';
 import { PendingRecordShares } from '../../components/records/PendingRecordShares';
 import { useIncomingRecordShares } from '../../hooks/useIncomingRecordShares';
 import { Appointment, AppointmentDocument, PostConsultAction } from '../../types';
@@ -29,8 +32,9 @@ type RecordItem =
       subtitle: string;
       patientId: string;
       patientName: string;
-      date: Date;
+      date: Date | null;
       href?: string;
+      storageKey?: string;
       appointmentId: string;
     }
   | {
@@ -40,7 +44,7 @@ type RecordItem =
       subtitle: string;
       patientId: string;
       patientName: string;
-      date: Date;
+      date: Date | null;
       content: string;
       appointmentId: string;
       type: string;
@@ -52,6 +56,8 @@ const actionLabel = (type: string) => {
       return 'Prescription';
     case 'doctor_letter_draft':
       return 'Doctor letter';
+    case 'clinical_report_draft':
+      return 'Consultation report (H&P)';
     case 'medical_document':
       return 'Medical document';
     case 'session_recording':
@@ -179,17 +185,20 @@ export const MedicalRecordsPage: React.FC = () => {
         kind: 'document',
         id: `patient-file-${file.id}`,
         title: file.name,
-        subtitle: `${patientFileCategoryLabel(file.category)} · uploaded by patient`,
+        subtitle: file.subtitle || `${patientFileCategoryLabel(file.category)} · uploaded by patient`,
         patientId: file.patientId,
         patientName: patientNames.get(file.patientId) ?? 'Patient',
-        date: file.uploadedAt ?? new Date(0),
+        date: file.uploadedAt,
         href: file.url,
+        storageKey: file.storageKey,
         appointmentId: '',
       });
     });
     items.sort((a, b) => {
-      const left = a.date instanceof Date && !Number.isNaN(a.date.getTime()) ? a.date.getTime() : 0;
-      const right = b.date instanceof Date && !Number.isNaN(b.date.getTime()) ? b.date.getTime() : 0;
+      const left =
+        a.date instanceof Date && !Number.isNaN(a.date.getTime()) ? a.date.getTime() : -1;
+      const right =
+        b.date instanceof Date && !Number.isNaN(b.date.getTime()) ? b.date.getTime() : -1;
       return right - left;
     });
     return items;
@@ -319,28 +328,31 @@ export const MedicalRecordsPage: React.FC = () => {
                     <p className="mt-0.5 text-sm text-[#65758b]">
                       {item.patientName} · {item.subtitle}
                     </p>
-                    <p className="mt-0.5 text-xs text-[#94a3b8]">
-                      {item.date.toLocaleDateString('en-GB', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
-                    </p>
+                    {item.date && !Number.isNaN(item.date.getTime()) && (
+                      <p className="mt-0.5 text-xs text-[#94a3b8]">
+                        {item.date.toLocaleDateString('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </p>
+                    )}
                     {item.kind === 'note' && (
                       <p className="mt-2 line-clamp-2 text-sm text-[#65758b]">{item.content}</p>
                     )}
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  {item.kind === 'document' && item.href && (
-                    <a
-                      href={item.href}
-                      target="_blank"
-                      rel="noreferrer"
+                  {item.kind === 'document' && (item.href || item.storageKey) && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void djangoOpenMediaDocument(item.storageKey || item.href)
+                      }
                       className="inline-flex h-9 items-center rounded-[10px] border border-[#e1e7ef] bg-white px-3 text-sm font-medium text-[#344256] hover:border-[#427160]/40 hover:text-[#427160]"
                     >
                       Open
-                    </a>
+                    </button>
                   )}
                   <button
                     type="button"

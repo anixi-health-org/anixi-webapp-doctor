@@ -4,26 +4,22 @@ import React, {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { formatAyahMessageContent } from '../lib/formatAyahReply';
 import {
-  hasAyahBriefing,
-  loadAyahChat,
-  saveAyahChat,
-  type StoredAyahMessage,
-} from '../lib/ayahChatStorage';
+  buildAyahDoctorWelcomeMessage,
+  isLegacyAutoBriefSession,
+} from '../lib/ayahDoctorWelcome';
+import { formatAyahMessageContent } from '../lib/formatAyahReply';
+import { loadAyahChat, saveAyahChat, type StoredAyahMessage } from '../lib/ayahChatStorage';
 
 type AyahChatContextValue = {
   messages: StoredAyahMessage[];
   hydrated: boolean;
-  briefingBootstrapped: boolean;
   setMessages: React.Dispatch<React.SetStateAction<StoredAyahMessage[]>>;
-  markBriefingBootstrapped: () => void;
-  shouldAutoBrief: () => boolean;
+  resetToWelcome: (options?: { displayName?: string; patientName?: string }) => void;
 };
 
 const AyahChatContext = createContext<AyahChatContextValue | null>(null);
@@ -39,49 +35,47 @@ export function AyahChatProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<StoredAyahMessage[]>([]);
   const [hydrated, setHydrated] = useState(false);
-  const briefingBootstrappedRef = useRef(false);
+
+  const resetToWelcome = useCallback(
+    (options?: { displayName?: string; patientName?: string }) => {
+      setMessages([
+        buildAyahDoctorWelcomeMessage({
+          displayName: options?.displayName ?? user?.displayName,
+          patientName: options?.patientName,
+        }),
+      ]);
+    },
+    [user?.displayName],
+  );
 
   useEffect(() => {
     if (!user?.id) {
       setMessages([]);
       setHydrated(false);
-      briefingBootstrappedRef.current = false;
       return;
     }
 
     const loaded = sanitizeMessages(loadAyahChat(user.id));
-    setMessages(loaded);
-    setHydrated(true);
-    briefingBootstrappedRef.current = loaded.some(
-      (message) => message.role === 'assistant' && message.content.trim().length > 0,
+    const welcome = buildAyahDoctorWelcomeMessage({ displayName: user.displayName });
+    setMessages(
+      loaded.length === 0 || isLegacyAutoBriefSession(loaded) ? [welcome] : loaded,
     );
-  }, [user?.id]);
+    setHydrated(true);
+  }, [user?.id, user?.displayName]);
 
   useEffect(() => {
     if (!user?.id || !hydrated) return;
     saveAyahChat(user.id, messages);
   }, [messages, user?.id, hydrated]);
 
-  const markBriefingBootstrapped = useCallback(() => {
-    briefingBootstrappedRef.current = true;
-  }, []);
-
-  const shouldAutoBrief = useCallback(() => {
-    if (!user?.id || !hydrated) return false;
-    if (briefingBootstrappedRef.current) return false;
-    return !hasAyahBriefing(user.id);
-  }, [hydrated, user?.id]);
-
   const value = useMemo(
     () => ({
       messages,
       hydrated,
-      briefingBootstrapped: briefingBootstrappedRef.current,
       setMessages,
-      markBriefingBootstrapped,
-      shouldAutoBrief,
+      resetToWelcome,
     }),
-    [messages, hydrated, markBriefingBootstrapped, shouldAutoBrief],
+    [messages, hydrated, resetToWelcome],
   );
 
   return <AyahChatContext.Provider value={value}>{children}</AyahChatContext.Provider>;

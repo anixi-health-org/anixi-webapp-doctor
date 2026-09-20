@@ -8,6 +8,7 @@ import React, {
   type ReactNode,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 import type { AskAnixiContext } from '../services/askAnixiService';
 
 type AskAnixiOpenOptions = {
@@ -42,6 +43,7 @@ const Ctx = createContext<AskAnixiContextValue | null>(null);
 
 export function AskAnixiProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const { practiceSession } = useAuth();
   const [context, setContext] = useState<AskAnixiContext>({});
   const [initialPrompt, setInitialPrompt] = useState('');
   const [autoSend, setAutoSend] = useState(false);
@@ -49,12 +51,16 @@ export function AskAnixiProvider({ children }: { children: ReactNode }) {
 
   const openAskAnixi = useCallback(
     (options?: AskAnixiOpenOptions) => {
-      setContext(options?.context ?? {});
+      const practiceId = options?.context?.practiceId ?? practiceSession?.practice?.id;
+      setContext({
+        ...(practiceId ? { practiceId } : {}),
+        ...(options?.context ?? {}),
+      });
       setInitialPrompt(options?.prompt ?? '');
       setAutoSend(options?.autoSend ?? Boolean(options?.prompt));
       navigate('/ayah');
     },
-    [navigate],
+    [navigate, practiceSession?.practice?.id],
   );
 
   const setAskContext = useCallback((next: AskAnixiContext) => {

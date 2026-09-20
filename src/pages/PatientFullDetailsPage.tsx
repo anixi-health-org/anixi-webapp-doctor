@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { PageShell } from '../components/page-layout';
 import { PatientProfileSkeleton } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
+import { usePatientMedicalVaultAccess } from '../hooks/usePatientMedicalVaultAccess';
 import { getPatientForDoctorView, removePatientFromDoctor } from '../services/patientManagementService';
 import { Patient } from '../types';
 import {
@@ -78,6 +79,7 @@ export const PatientFullDetailsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
+  const { canAccess: canViewMedicalVault } = usePatientMedicalVaultAccess(patient);
 
   useEffect(() => {
     const load = async () => {
@@ -353,6 +355,9 @@ export const PatientFullDetailsPage: React.FC = () => {
               { label: 'Adherence logs', path: 'adherence-logs' },
               { label: 'Vitals history', path: 'vitals-history' },
               { label: 'Wearable data', path: 'wearable' },
+              ...(canViewMedicalVault
+                ? [{ label: 'Medical record vault', path: 'medical-records' }]
+                : []),
             ].map((link) => (
               <button
                 key={link.path}

@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/AuthContext';
 import { AppShellSkeleton } from './ui/Skeleton';
 import {
+  canSwitchWorkspaces,
   clinicAdminHomePath,
   getDoctorAccessState,
   isClinicOwner,
@@ -69,7 +70,9 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     return <Navigate to={CLINIC_SETUP_PATH} replace />;
   }
 
-  if (clinicOwner || clinicAdmin) {
+  const workspaceSwitcher = canSwitchWorkspaces(practiceSession);
+
+  if ((clinicOwner || clinicAdmin) && !workspaceSwitcher) {
     // Only clinic owners must finish the setup wizard.
     if (clinicOwner && !clinicOnboardingComplete) {
       if (path === CLINIC_SETUP_PATH) {
@@ -87,6 +90,18 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     }
 
     return <Navigate to={clinicAdminHomePath()} replace />;
+  }
+
+  if (workspaceSwitcher && (clinicOwner || clinicAdmin)) {
+    if (clinicOwner && !clinicOnboardingComplete && path !== CLINIC_SETUP_PATH) {
+      return <Navigate to={CLINIC_SETUP_PATH} replace />;
+    }
+    if (path === ONBOARDING_PATH || path === REVIEW_PATH) {
+      return <Navigate to={clinicAdminHomePath()} replace />;
+    }
+    if (isClinicAdminPath || path === CLINIC_SETUP_PATH || access === 'full') {
+      return <>{children}</>;
+    }
   }
 
   if (path === CLINIC_SETUP_PATH && !practiceSession) {

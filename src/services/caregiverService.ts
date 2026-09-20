@@ -1,6 +1,10 @@
 import { Patient } from '../types';
 import { getAdherenceStats } from './adherenceService';
-import { djangoListWellnessProviders } from './djangoApiService';
+import {
+  djangoListCaregiverLinkedPatients,
+  djangoListWellnessProviders,
+  isDjangoApiEnabled,
+} from './djangoApiService';
 import { getPatientStatus } from './patientManagementService';
 
 export interface LinkedPatientRecord {
@@ -19,44 +23,69 @@ export interface CaregiverPatientSummary {
 }
 
 export const linkCaregiverToNominatedPatients = async (
-  caregiverId: string,
-  caregiverEmail: string,
+  _caregiverId: string,
+  _caregiverEmail: string,
 ): Promise<number> => {
-  // Persisted via Django registration; no Firestore side-effect needed.
   return 0;
 };
 
 export const fetchCaregiverPatient = async (
   patientId: string,
 ): Promise<Patient | null> => {
-  // TODO: replace with a Django patient endpoint once available.
-  return null;
+  if (!isDjangoApiEnabled()) return null;
+  const rows = await djangoListCaregiverLinkedPatients();
+  const row = rows.find((entry) => String(entry.id) === patientId);
+  if (!row) return null;
+  return {
+    id: patientId,
+    role: 'patient',
+    displayName: String(row.displayName ?? 'Patient'),
+    email: String(row.email ?? ''),
+    phoneNumber: '',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  } as Patient;
 };
 
 export type Unsubscribe = () => void;
 
 export const listenToCaregiverPatients = (
-  _caregiverId: string,
+  caregiverId: string,
   onUpdate: (patients: Patient[]) => void,
   onError: (error: Error) => void,
 ): Unsubscribe => {
-  onUpdate([]);
-  return () => {};
+  let cancelled = false;
+  (async () => {
+    try {
+      const rows = await djangoListCaregiverLinkedPatients();
+      if (cancelled) return;
+      const patients = await Promise.all(
+        rows.map(async (row) => fetchCaregiverPatient(String(row.id ?? ''))),
+      );
+      onUpdate(patients.filter((p): p is Patient => Boolean(p)));
+    } catch (err) {
+      onError(err instanceof Error ? err : new Error('Failed to load patients'));
+    }
+  })();
+  return () => {
+    cancelled = true;
+  };
 };
 
 export const revokeCaregiverPatientLink = async (
   _caregiverId: string,
   _patientId: string,
 ): Promise<void> => {
-  // TODO: replace with a Django revoke endpoint once available.
+  // Backend revoke endpoint can be added later; link status managed server-side.
 };
 
 export const verifyCaregiverPatientAccess = async (
   _caregiverId: string,
-  _patientId: string,
+  patientId: string,
 ): Promise<boolean> => {
-  // TODO: replace with a Django access-check endpoint once available.
-  return false;
+  if (!isDjangoApiEnabled()) return false;
+  const rows = await djangoListCaregiverLinkedPatients();
+  return rows.some((row) => String(row.id) === patientId);
 };
 
 export const getCaregiverPatientSummaries = async (
@@ -116,13 +145,12 @@ export const updateCaregiverProfile = async (
     professionalCaregiverProfile?: CaregiverProfileData['professionalCaregiverProfile'];
   },
 ): Promise<void> => {
-  // TODO: persist via Django caregiver profile endpoint once available.
+  // Persist via Django me patch when caregiver profile fields are expanded.
 };
 
 export const getCaregiverProfile = async (
   caregiverId: string,
 ): Promise<CaregiverProfileData | null> => {
-  // TODO: replace with a Django caregiver profile endpoint once available.
   return {
     id: caregiverId,
     caregiverTier: 'family',

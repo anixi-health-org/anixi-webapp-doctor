@@ -10,6 +10,10 @@ import {
   getCalendarRangeInTimeZone,
   instantInCalendarRange,
 } from '../lib/timezones';
+import {
+  upcomingAppointments as selectUpcomingAppointments,
+  weekAppointments as selectWeekAppointments,
+} from '../lib/dashboardAppointmentItems';
 
 export type AttentionItem = {
   id: string;
@@ -42,6 +46,21 @@ export type PracticeSnapshot = {
     startAt?: string;
     time?: string;
   }>;
+  upcomingAppointments: Array<{
+    id: string;
+    patientName: string;
+    status: string;
+    startAt?: string;
+    time?: string;
+  }>;
+  counts?: {
+    today: number;
+    upcoming: number;
+    week: number;
+    pendingAppointments: number;
+    patients: number;
+    attention: number;
+  };
   pendingAppointments: number;
   pendingPatientRequests: number;
 };
@@ -50,6 +69,8 @@ export type DoctorBriefingSnapshot = {
   totalPatients: number;
   stablePatients: number;
   todayAppointments: Appointment[];
+  upcomingAppointments: Appointment[];
+  weekAppointments: Appointment[];
   pendingAppointments: number;
   pendingPatientRequests: number;
   unreadMessages?: number;
@@ -133,6 +154,21 @@ export function buildPracticeSnapshot(
       startAt: (apt.startAt ?? apt.scheduledAt)?.toISOString?.() ?? undefined,
       time: apt.time,
     })),
+    upcomingAppointments: snapshot.upcomingAppointments.slice(0, 12).map((apt) => ({
+      id: apt.id,
+      patientName: apt.patientName,
+      status: apt.status,
+      startAt: (apt.startAt ?? apt.scheduledAt)?.toISOString?.() ?? undefined,
+      time: apt.time,
+    })),
+    counts: {
+      today: snapshot.todayAppointments.length,
+      upcoming: snapshot.upcomingAppointments.length,
+      week: snapshot.weekAppointments.length,
+      pendingAppointments: snapshot.pendingAppointments,
+      patients: snapshot.totalPatients,
+      attention: snapshot.attentionItems.length,
+    },
     pendingAppointments: snapshot.pendingAppointments,
     pendingPatientRequests: snapshot.pendingPatientRequests,
   };
@@ -202,6 +238,8 @@ export function useDoctorBriefingData() {
         ? instantInCalendarRange(appointmentInstant(apt)!, startKey, endKey, timeZone)
         : false,
     );
+    const upcomingAppointments = selectUpcomingAppointments(appointments);
+    const weekAppointments = selectWeekAppointments(appointments, timeZone);
 
     const pendingPatientRequests = sharingRequests.filter(
       (r) => r.status === 'pending',
@@ -284,6 +322,8 @@ export function useDoctorBriefingData() {
       totalPatients: patients.length,
       stablePatients: 0,
       todayAppointments,
+      upcomingAppointments,
+      weekAppointments,
       pendingAppointments,
       pendingPatientRequests,
       nextAppointment,

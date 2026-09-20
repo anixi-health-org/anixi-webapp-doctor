@@ -28,6 +28,7 @@ import {
   listenToDoctorConversations,
 } from '../services/conversationService';
 import { NotificationBell } from './notifications/NotificationBell';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { GlobalPatientSearch } from './ui/GlobalPatientSearch';
 import { UserProfileMenu } from './page-layout/UserProfileMenu';
 import { AnixiLogo } from './brand/AnixiLogo';
@@ -236,6 +237,7 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
               <div className="md:hidden">
                 <GlobalPatientSearch />
               </div>
+              <WorkspaceSwitcher className="hidden sm:inline-flex" />
               <NotificationBell />
               <UserProfileMenu
                 subtitle="Physician"
