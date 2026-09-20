@@ -7,6 +7,9 @@ import { getPatientForDoctorView } from './patientManagementService';
 export type AyahPatientChartSnapshot = {
   patientId: string;
   displayName: string;
+  language?: string;
+  preferredLanguage?: string;
+  voiceLanguage?: string;
   chronicConditions: string[];
   allergies: string[];
   medications: Array<{ name: string; dosage?: string }>;

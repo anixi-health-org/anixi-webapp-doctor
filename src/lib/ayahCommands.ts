@@ -154,6 +154,14 @@ export const PATIENT_COMMANDS: AyahCommand[] = [
     needsPatient: true,
   },
   {
+    id: 'draft-hp-report',
+    label: 'Draft H&P report',
+    hint: 'Structured report',
+    prompt:
+      'Draft a History & Physical consultation report. Call get-patient-overview and get-doctor-patient-medications first, then draft-clinical-report. Use chart data only; leave sections blank if unknown. Tell me to approve the draft to apply it.',
+    needsPatient: true,
+  },
+  {
     id: 'draft-message',
     label: 'Draft a message',
     hint: 'Patient-facing',

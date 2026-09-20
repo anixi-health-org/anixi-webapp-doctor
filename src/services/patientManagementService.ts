@@ -12,6 +12,7 @@ import {
   djangoImportRoster,
   djangoListPatientPanel,
   djangoListSharingRequests,
+  djangoRemoveFromPanel,
   djangoResolveSharing,
   djangoSendTransactionalEmail,
   isDjangoApiEnabled,
@@ -166,12 +167,8 @@ export function mapPanelPatient(row: DjangoPanelPatient): Patient {
 export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> => {
   void doctorId;
   if (isDjangoApiEnabled()) {
-    try {
-      const panel = await djangoListPatientPanel();
-      return panel.map(mapPanelPatient);
-    } catch {
-      return [];
-    }
+    const panel = await djangoListPatientPanel();
+    return panel.map(mapPanelPatient);
   }
 
   return [];
@@ -186,10 +183,18 @@ export interface PatientRequest {
   patientInfo?: Patient;
 }
 export const getDoctorPatientRequests = async (
-  _doctorId: string,
+  doctorId: string,
 ): Promise<PatientRequest[]> => {
-  // TODO: replace with a Django patient-request endpoint once available.
-  return [];
+  const sharing = await getDoctorSharingRequests(doctorId);
+  return sharing
+    .filter((row) => row.status === 'pending')
+    .map((row) => ({
+      id: row.id,
+      patientId: row.patientId,
+      doctorId,
+      status: row.status as PatientRequest['status'],
+      requestedAt: row.createdAt ?? new Date(),
+    }));
 };
 export const debugListAllPatientRequests = async (
   _doctorId: string,
@@ -201,14 +206,13 @@ export const acceptPatientRequest = async (
   requestId: string,
   patientId: string,
 ): Promise<void> => {
-  await linkDoctorPatientAccess(doctorId, patientId);
-  // TODO: persist acceptance via Django patient-request endpoint once available.
+  await acceptSharingRequest(patientId, doctorId, requestId);
 };
 export const rejectPatientRequest = async (
-  _doctorId: string,
+  doctorId: string,
   requestId: string,
 ): Promise<void> => {
-  // TODO: persist rejection via Django patient-request endpoint once available.
+  await rejectSharingRequest('', doctorId, requestId);
 };
 export const sendPatientRequest = async (
   patientId: string,
@@ -220,7 +224,13 @@ export const sendPatientRequest = async (
   if (!doctorId || doctorId.trim() === '') {
     throw new Error('Doctor ID is required');
   }
-  // TODO: persist via Django patient-request endpoint once available.
+  if (isDjangoApiEnabled()) {
+    const result = await djangoCreateSharingRequest({
+      clinicianId: doctorId,
+      patientId,
+    });
+    return String(result.id);
+  }
   return `patient-request-${Date.now()}`;
 };export const calculateAge = (dateOfBirth: Date | undefined | null): number | null => {
   if (!dateOfBirth) return null;
@@ -365,8 +375,11 @@ export const removePatientFromDoctor = async (
   if (!patientId || patientId.trim() === '') {
     throw new Error('Patient ID is required');
   }
+  if (isDjangoApiEnabled()) {
+    await djangoRemoveFromPanel(patientId);
+    return;
+  }
   await linkDoctorPatientAccess(doctorId, patientId);
-  // TODO: persist removal via Django patient endpoint once available.
 };
 
 export const getDoctorSharingRequests = async (doctorId: string): Promise<SharingRequest[]> => {
@@ -514,6 +527,7 @@ export const listenToDoctorPatients = (
   if (isDjangoApiEnabled()) {
     let cancelled = false;
     const poll = async () => {
+      if (cancelled || document.visibilityState === 'hidden') return;
       try {
         const patients = await getDoctorPatients(doctorId);
         if (!cancelled) onPatientsUpdate(patients);
@@ -524,10 +538,17 @@ export const listenToDoctorPatients = (
       }
     };
     void poll();
-    const timer = setInterval(poll, 30_000);
+    const timer = setInterval(poll, 60_000);
+    const onVisible = () => {
+      if (!cancelled && document.visibilityState === 'visible') {
+        void poll();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       cancelled = true;
       clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }
 

@@ -68,6 +68,7 @@ import AdherenceCalendarPage from './pages/AdherenceCalendarPage';
 import AdherenceLogsPage from './pages/AdherenceLogsPage';
 import AdherenceDailyPage from './pages/AdherenceDailyPage';
 import VitalsHistoryPage from './pages/VitalsHistoryPage';
+import { PatientMedicalVaultPage } from './pages/PatientMedicalVaultPage';
 import WearableDataPage from './pages/WearableDataPage';
 import PostConsultPage from './pages/PostConsultPage';
 import InvoicesPage from './pages/InvoicesPage';
@@ -280,6 +281,7 @@ function App() {
                     <Route path="/patient-profile/:patientId/adherence-logs" element={<AdherenceLogsPage />} />
                     <Route path="/patient-profile/:patientId/adherence-daily/:date" element={<AdherenceDailyPage />} />
                     <Route path="/patient-profile/:patientId/vitals-history" element={<VitalsHistoryPage />} />
+                    <Route path="/patient-profile/:patientId/medical-records" element={<PatientMedicalVaultPage />} />
                     <Route path="/patient-profile/:patientId/wearable" element={<WearableDataPage />} />
                     <Route path="/patients" element={<Patients />} />
                     <Route path="/appointments" element={<AppointmentsPage />} />

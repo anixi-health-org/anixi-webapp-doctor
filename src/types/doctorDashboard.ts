@@ -28,7 +28,11 @@ export type DashboardDataBinding =
   | 'attendance_rate'
   | 'attention_count'
   | 'today_appointment_count'
-  | 'upcoming_appointment_count';
+  | 'upcoming_appointment_count'
+  | 'week_appointments'
+  | 'week_appointment_count'
+  | 'all_appointments'
+  | 'all_appointment_count';
 
 export type DoctorDashboardWidget = {
   id: string;

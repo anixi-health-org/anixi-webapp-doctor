@@ -103,6 +103,7 @@ const normalizePostConsultActions = (value: any): PostConsultAction[] => {
   const validTypes: PostConsultActionType[] = [
     'prescription_draft',
     'doctor_letter_draft',
+    'clinical_report_draft',
     'medical_document',
     'session_recording',
     'post_consult_note',

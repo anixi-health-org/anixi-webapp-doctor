@@ -23,6 +23,7 @@ import { usePermissions } from '../hooks/usePermissions';
 import { AnixiLogo } from './brand/AnixiLogo';
 import { ClinicErrorBoundary } from './clinic/ClinicErrorBoundary';
 import { UserProfileMenu } from './page-layout/UserProfileMenu';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
 type NavItem = {
   name: string;
@@ -216,6 +217,7 @@ const ClinicAdminShell: React.FC = () => {
                 {clinicName}
               </h1>
             </div>
+            <WorkspaceSwitcher />
             <UserProfileMenu subtitle="Clinic admin" displayLabel={firstName} />
           </div>
         </header>

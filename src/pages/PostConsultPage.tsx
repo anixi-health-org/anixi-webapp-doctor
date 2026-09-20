@@ -40,6 +40,25 @@ import {
 } from '../services/consultScribeService';
 import { scribeNoteFromAction } from '../lib/consultScribeNote';
 import { AyahScribeSummaryCard } from '../components/teleconsult/AyahScribeSummaryCard';
+import { ClinicalReportModal } from '../components/clinical/ClinicalReportModal';
+import {
+  downloadClinicalReportDocx,
+  downloadClinicalReportPdf,
+} from '../lib/clinicalReportExport';
+import {
+  buildIdentificationPrefill,
+  CLINICAL_REPORT_FORMAT,
+  emptyClinicalReportSections,
+  formatClinicalReportText,
+  parseClinicalReportSections,
+  sectionsFromAyahDraft,
+  type ClinicalReportSections,
+} from '../lib/clinicalReportFormat';
+import {
+  buildClinicalReportAyahPrompt,
+  consumeClinicalReportDraftForAppointment,
+  persistClinicalReportDraftForAppointment,
+} from '../lib/clinicalReportAyahBridge';
 
 type DocumentMode = 'scan' | 'upload';
 
@@ -106,9 +125,18 @@ const doctor = user?.role === 'doctor' ? user : null;
   const [letterIcd10Code, setLetterIcd10Code] = useState('');
   const [letterIcd10Custom, setLetterIcd10Custom] = useState('');
   const [isSavingDoctorLetter, setIsSavingDoctorLetter] = useState(false);
+  const [showClinicalReportModal, setShowClinicalReportModal] = useState(false);
+  const [clinicalReportSections, setClinicalReportSections] = useState<ClinicalReportSections>(
+    emptyClinicalReportSections(),
+  );
+  const [reportIcd10Code, setReportIcd10Code] = useState('');
+  const [reportIcd10Custom, setReportIcd10Custom] = useState('');
+  const [isSavingClinicalReport, setIsSavingClinicalReport] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
-  const [previewPdfType, setPreviewPdfType] = useState<'prescription' | 'doctor-letter' | 'manual-documents'>('prescription');
+  const [previewPdfType, setPreviewPdfType] = useState<
+    'prescription' | 'doctor-letter' | 'clinical-report' | 'manual-documents'
+  >('prescription');
   const [isCompletingVisit, setIsCompletingVisit] = useState(false);
   const [isSendingInvite, setIsSendingInvite] = useState(false);
   const [teleconsultConsentChecked, setTeleconsultConsentChecked] = useState(false);
@@ -254,29 +282,79 @@ const doctor = user?.role === 'doctor' ? user : null;
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
   }, [appointment?.postConsultActions]);
 
+  const latestClinicalReport = useMemo(() => {
+    const actions = appointment?.postConsultActions ?? [];
+    return actions
+      .filter((action) => action.type === 'clinical_report_draft' && action.content.trim().length > 0)
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
+  }, [appointment?.postConsultActions]);
+
   useEffect(() => {
     return subscribeDraftApproved((resolved) => {
-      if (resolved.type !== 'clinical_note') return;
       if (resolved.appointmentId && resolved.appointmentId !== appointmentId) return;
 
-      const payload = resolved.payload;
-      const parts = [
-        payload.subjective ? `S: ${String(payload.subjective)}` : null,
-        payload.objective ? `O: ${String(payload.objective)}` : null,
-        payload.assessment ? `A: ${String(payload.assessment)}` : null,
-        payload.plan ? `P: ${String(payload.plan)}` : null,
-      ].filter(Boolean);
-      const text = parts.length ? parts.join('\n') : resolved.preview;
-      if (!text.trim()) return;
+      if (resolved.type === 'clinical_note') {
+        const payload = resolved.payload;
+        const parts = [
+          payload.subjective ? `S: ${String(payload.subjective)}` : null,
+          payload.objective ? `O: ${String(payload.objective)}` : null,
+          payload.assessment ? `A: ${String(payload.assessment)}` : null,
+          payload.plan ? `P: ${String(payload.plan)}` : null,
+        ].filter(Boolean);
+        const text = parts.length ? parts.join('\n') : resolved.preview;
+        if (!text.trim()) return;
 
-      setNoteValue(text);
-      setToast({
-        visible: true,
-        message: 'Clinical note draft applied, review and save when ready.',
-        type: 'success',
-      });
+        setNoteValue(text);
+        setToast({
+          visible: true,
+          message: 'Clinical note draft applied, review and save when ready.',
+          type: 'success',
+        });
+        return;
+      }
+
+      if (resolved.type === 'clinical_report') {
+        const apptId = resolved.appointmentId ?? appointmentId;
+        if (apptId) {
+          persistClinicalReportDraftForAppointment(apptId, resolved.payload);
+        }
+        const next = sectionsFromAyahDraft(resolved.payload);
+        if (appointment?.patientName) {
+          next.identification = buildIdentificationPrefill({
+            patientName: appointment.patientName,
+            doctorName: user?.displayName,
+          });
+        }
+        setClinicalReportSections(next);
+        setShowClinicalReportModal(true);
+        setToast({
+          visible: true,
+          message: 'H&P report draft applied — review each section and save when ready.',
+          type: 'success',
+        });
+      }
     });
-  }, [appointmentId, subscribeDraftApproved]);
+  }, [appointment?.patientName, appointmentId, subscribeDraftApproved, user?.displayName]);
+
+  useEffect(() => {
+    if (!appointmentId) return;
+    const pending = consumeClinicalReportDraftForAppointment(appointmentId);
+    if (!pending) return;
+    const next = sectionsFromAyahDraft(pending);
+    if (appointment?.patientName) {
+      next.identification = buildIdentificationPrefill({
+        patientName: appointment.patientName,
+        doctorName: user?.displayName,
+      });
+    }
+    setClinicalReportSections(next);
+    setShowClinicalReportModal(true);
+    setToast({
+      visible: true,
+      message: 'Ayah H&P draft applied — review each section and save when ready.',
+      type: 'success',
+    });
+  }, [appointment?.patientName, appointmentId, user?.displayName]);
 
   const handleOpenSuggestIcd = () => {
     if (!appointment) return;
@@ -305,6 +383,45 @@ const doctor = user?.role === 'doctor' ? user : null;
         ? `Draft a SOAP clinical note for ${appointment.patientName} using draft-clinical-note. Base it on this working text:\n${noteValue.trim()}`
         : `Help me draft a SOAP clinical note for ${appointment.patientName} using draft-clinical-note. Ask me for visit details if you need them.`,
     });
+  };
+
+  const handleOpenDraftReport = () => {
+    if (!appointment) return;
+    openAskAnixi({
+      autoSend: true,
+      context: {
+        patientId: appointment.patientId,
+        appointmentId: appointment.id,
+        patientName: appointment.patientName,
+        returnPath: `/appointments/${appointment.id}/post-consult`,
+        draftIntent: 'clinical_report',
+        visitNote: noteValue.trim() || undefined,
+        scribeSummary: ayahScribeParsed?.fullText,
+      },
+      prompt: buildClinicalReportAyahPrompt({
+        patientName: appointment.patientName,
+        patientId: appointment.patientId,
+        appointmentId: appointment.id,
+        visitNote: noteValue.trim(),
+        scribeSummary: ayahScribeParsed?.fullText,
+        existingReportText: formatClinicalReportText(clinicalReportSections),
+      }),
+    });
+  };
+
+  const openClinicalReportModal = () => {
+    if (!latestClinicalReport && appointment) {
+      const seeded = emptyClinicalReportSections();
+      seeded.identification = buildIdentificationPrefill({
+        patientName: appointment.patientName,
+        doctorName: user?.displayName,
+      });
+      if (noteValue.trim()) {
+        seeded.historyOfPresentIllness = noteValue.trim();
+      }
+      setClinicalReportSections(seeded);
+    }
+    setShowClinicalReportModal(true);
   };
 
   const handleSendToPharmacy = async () => {
@@ -349,6 +466,24 @@ const doctor = user?.role === 'doctor' ? user : null;
       setDoctorLetterDraft(latestDoctorLetter.content);
     }
   }, [latestDoctorLetter]);
+
+  useEffect(() => {
+    if (latestClinicalReport) {
+      setClinicalReportSections(
+        parseClinicalReportSections(latestClinicalReport.content, latestClinicalReport.metadata),
+      );
+      const icd = latestClinicalReport.metadata?.icd10Code;
+      if (typeof icd === 'string' && icd.trim()) {
+        const known = COMMON_ICD10_CODES.some((entry) => entry.code === icd);
+        if (known) {
+          setReportIcd10Code(icd);
+        } else {
+          setReportIcd10Code('__custom__');
+          setReportIcd10Custom(icd);
+        }
+      }
+    }
+  }, [latestClinicalReport]);
 
   const closeDocumentModal = () => {
     setShowDocumentModal(false);
@@ -821,6 +956,8 @@ const doctor = user?.role === 'doctor' ? user : null;
     icd10Code === '__custom__' ? icd10Custom.trim() : icd10Code.trim();
   const resolvedLetterIcd10 =
     letterIcd10Code === '__custom__' ? letterIcd10Custom.trim() : letterIcd10Code.trim();
+  const resolvedReportIcd10 =
+    reportIcd10Code === '__custom__' ? reportIcd10Custom.trim() : reportIcd10Code.trim();
 
   const savePrescriptionDraft = async () => {
     if (!prescriptionDraft.trim()) {
@@ -870,6 +1007,32 @@ const doctor = user?.role === 'doctor' ? user : null;
       setToast({ visible: true, message: 'Failed to save doctor letter draft.', type: 'error' });
     } finally {
       setIsSavingDoctorLetter(false);
+    }
+  };
+
+  const saveClinicalReportDraft = async () => {
+    const content = formatClinicalReportText(clinicalReportSections);
+    if (!content.trim()) {
+      setToast({ visible: true, message: 'Complete at least one report section.', type: 'error' });
+      return;
+    }
+
+    try {
+      setIsSavingClinicalReport(true);
+      await appendPostConsultAction('clinical_report_draft', {
+        title: 'Consultation report (H&P)',
+        content,
+        metadata: {
+          format: CLINICAL_REPORT_FORMAT,
+          sections: JSON.stringify(clinicalReportSections),
+          ...(resolvedReportIcd10 ? { icd10Code: resolvedReportIcd10 } : {}),
+        },
+      });
+      setToast({ visible: true, message: 'Consultation report saved.', type: 'success' });
+    } catch {
+      setToast({ visible: true, message: 'Failed to save consultation report.', type: 'error' });
+    } finally {
+      setIsSavingClinicalReport(false);
     }
   };
 
@@ -1109,7 +1272,10 @@ const doctor = user?.role === 'doctor' ? user : null;
     return URL.createObjectURL(doc.output('blob'));
   };
 
-  const openPdfPreview = (blobUrl: string, type: 'prescription' | 'doctor-letter' | 'manual-documents') => {
+  const openPdfPreview = (
+    blobUrl: string,
+    type: 'prescription' | 'doctor-letter' | 'clinical-report' | 'manual-documents',
+  ) => {
     if (previewPdfUrl) {
       URL.revokeObjectURL(previewPdfUrl);
     }
@@ -1185,9 +1351,43 @@ const doctor = user?.role === 'doctor' ? user : null;
     }, 450);
   };
 
+  const clinicalReportExportParams = {
+    sections: clinicalReportSections,
+    patientName: appointment?.patientName,
+    doctorName: user?.displayName,
+    doctorLicense: doctor?.licenseNumber,
+    doctorBhf: doctor?.practiceNumberBhf,
+    appointmentDate: appointment?.date
+      ? new Date(appointment.date).toLocaleDateString('en-ZA', {
+          month: 'short',
+          day: '2-digit',
+          year: 'numeric',
+        })
+      : undefined,
+    icd10Code: resolvedReportIcd10 || undefined,
+  };
+
+  const handlePreviewExportDocx = async () => {
+    if (previewPdfType !== 'clinical-report') return;
+    try {
+      await downloadClinicalReportDocx(clinicalReportExportParams);
+      setToast({ visible: true, message: 'Consultation report DOCX downloaded.', type: 'success' });
+      closePreviewModal();
+    } catch {
+      setToast({ visible: true, message: 'Failed to generate DOCX.', type: 'error' });
+    }
+  };
+
   const handlePreviewExport = () => {
     if (previewPdfType === 'doctor-letter') {
       exportDoctorLetter();
+      closePreviewModal();
+      return;
+    }
+
+    if (previewPdfType === 'clinical-report') {
+      downloadClinicalReportPdf(clinicalReportExportParams);
+      setToast({ visible: true, message: 'Consultation report PDF downloaded.', type: 'success' });
       closePreviewModal();
       return;
     }
@@ -1304,6 +1504,14 @@ const doctor = user?.role === 'doctor' ? user : null;
   const hasClinicalNote = Boolean(callNotes?.content?.trim() || noteValue.trim());
   const hasPrescription = Boolean(latestPrescriptionDraft);
   const hasLetter = Boolean(latestDoctorLetter);
+  const hasClinicalReport = Boolean(latestClinicalReport);
+  const reportAppointmentDate = appointment?.date
+    ? new Date(appointment.date).toLocaleDateString('en-ZA', {
+        month: 'short',
+        day: '2-digit',
+        year: 'numeric',
+      })
+    : undefined;
   const hasDocuments = documents.length > 0;
 
   const startVideoCall = () => {
@@ -1657,6 +1865,27 @@ const doctor = user?.role === 'doctor' ? user : null;
                   </div>
                   <span className="shrink-0 rounded-lg border border-[#e1e7ef] bg-white px-3 py-1.5 text-xs font-semibold text-[#344256] shadow-sm transition group-hover:border-anixi-green group-hover:text-anixi-green">
                     {hasLetter ? 'Edit' : 'Add'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={openClinicalReportModal}
+                  className="group flex w-full items-center gap-4 py-3.5 text-left transition"
+                >
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700 transition group-hover:bg-teal-100">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M12 4h9"/><path d="M4 9h16"/><path d="M4 15h16"/><path d="M4 4h2v16H4z"/></svg>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-[#0E2340]">Consultation report (H&amp;P)</p>
+                    <p className="mt-0.5 text-xs text-[#65758b]">
+                      {hasClinicalReport
+                        ? 'Structured report on file — review or update'
+                        : 'Full History & Physical report with PDF export'}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-lg border border-[#e1e7ef] bg-white px-3 py-1.5 text-xs font-semibold text-[#344256] shadow-sm transition group-hover:border-anixi-green group-hover:text-anixi-green">
+                    {hasClinicalReport ? 'Edit' : 'Add'}
                   </span>
                 </button>
 
@@ -2049,6 +2278,27 @@ const doctor = user?.role === 'doctor' ? user : null;
         </div>
       )}
 
+      <ClinicalReportModal
+        open={showClinicalReportModal}
+        onClose={() => setShowClinicalReportModal(false)}
+        sections={clinicalReportSections}
+        onChange={setClinicalReportSections}
+        onSave={saveClinicalReportDraft}
+        saving={isSavingClinicalReport}
+        patientName={appointment?.patientName}
+        doctorName={user?.displayName}
+        doctorLicense={doctor?.licenseNumber}
+        doctorBhf={doctor?.practiceNumberBhf}
+        appointmentDate={reportAppointmentDate}
+        icd10Code={resolvedReportIcd10 || undefined}
+        icd10SelectValue={reportIcd10Code}
+        icd10CustomValue={reportIcd10Custom}
+        onIcd10SelectChange={setReportIcd10Code}
+        onIcd10CustomChange={setReportIcd10Custom}
+        onDraftWithAyah={handleOpenDraftReport}
+        onPreviewPdf={(blobUrl) => openPdfPreview(blobUrl, 'clinical-report')}
+      />
+
       {showDoctorLetterModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[1px]">
           <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-[#e1e7ef] bg-white shadow-xl">
@@ -2329,6 +2579,7 @@ const doctor = user?.role === 'doctor' ? user : null;
             <div className="relative px-6 pt-6 pb-4">
               <h2 className="text-xl font-bold text-gray-900">
                 {previewPdfType === 'doctor-letter' && 'Doctor Letter Preview'}
+                {previewPdfType === 'clinical-report' && 'Consultation Report Preview'}
                 {previewPdfType === 'manual-documents' && 'Document Preview'}
                 {previewPdfType === 'prescription' && 'Prescription Preview'}
               </h2>
@@ -2373,8 +2624,18 @@ const doctor = user?.role === 'doctor' ? user : null;
                 className="flex-1 inline-flex items-center justify-center gap-2 rounded-[10px] bg-anixi-green px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-anixi-green/90"
               >
                 <Download className="h-4 w-4" />
-                Export PDF
+                {previewPdfType === 'clinical-report' ? 'Download PDF' : 'Export PDF'}
               </button>
+              {previewPdfType === 'clinical-report' ? (
+                <button
+                  type="button"
+                  onClick={() => void handlePreviewExportDocx()}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-[10px] border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <Download className="h-4 w-4" />
+                  Download DOCX
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

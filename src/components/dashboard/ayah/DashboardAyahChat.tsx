@@ -4,6 +4,10 @@ import {
   inferDashboardLayout,
   prepareDashboardWidgets,
 } from '../../../lib/dashboardPresets';
+import {
+  buildDashboardAyahBrief,
+  classifyDashboardIntent,
+} from '../../../lib/dashboardIntent';
 import { DASHBOARD_STARTERS } from '../../../lib/dashboardStarterPrompts';
 import {
   fetchDoctorDashboardWorkspace,
@@ -91,6 +95,7 @@ export function DashboardAyahChat({
   const { user } = useAuth();
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
   const lastSentRef = useRef<string | null>(null);
   const seededRef = useRef(false);
 
@@ -100,13 +105,15 @@ export function DashboardAyahChat({
     if (lastSentRef.current === trimmed) return;
     lastSentRef.current = trimmed;
 
-    const preset = inferDashboardLayout(trimmed);
-    const isReset = preset && preset.widgets.length === 0;
+    const intent = classifyDashboardIntent(trimmed);
+    const preset = intent.applyPreset ? inferDashboardLayout(trimmed) : null;
+    const isReset = intent.kind === 'reset';
 
     if (!isReset && mode === 'landing') {
       onCreatingChange?.(true);
     }
     setBusy(true);
+    setStreamError(null);
     setInput('');
 
     const persistPreset = async (): Promise<boolean> => {
@@ -147,11 +154,11 @@ export function DashboardAyahChat({
       return;
     }
 
-    const dashboardPrompt = `${trimmed}
-
-You are helping the doctor design their Anixi dashboard. Use get-doctor-dashboard first, then upsert-doctor-dashboard to save the layout.
-Use widget dataBinding values for live practice data (today_appointments, patient_count, attention_items, etc.).
-Keep replies brief. Confirm what you built, no JSON in chat.`;
+    const dashboardPrompt = buildDashboardAyahBrief(
+      trimmed,
+      intent,
+      practiceSnapshot,
+    );
 
     try {
       await streamAskAnixi({
@@ -159,6 +166,7 @@ Keep replies brief. Confirm what you built, no JSON in chat.`;
         context: {
           practiceId: practiceSnapshot?.practiceId as string | undefined,
           practiceSnapshot,
+          dashboardIntent: intent.kind,
         },
         threadId: `${user.id}:dashboard`,
         onChunk: () => {},
@@ -169,7 +177,9 @@ Keep replies brief. Confirm what you built, no JSON in chat.`;
         onWorkspaceSaved?.(workspace);
       }
     } catch (err) {
-      console.warn('[DashboardAyahChat] Ayah stream failed', formatAskAnixiError(err));
+      const message = formatAskAnixiError(err);
+      setStreamError(message);
+      console.warn('[DashboardAyahChat] Ayah stream failed', message);
       try {
         const workspace = await fetchDoctorDashboardWorkspace(user.id);
         if (workspace.boards.length > 0) {
@@ -232,6 +242,12 @@ Keep replies brief. Confirm what you built, no JSON in chat.`;
 
         <StarterPills onSelect={(prompt) => void runPrompt(prompt)} disabled={busy} centered />
 
+        {streamError ? (
+          <p className="rounded-lg border border-[#f3d4d4] bg-[#fff5f5] px-3 py-2 text-center text-sm text-[#9b2c2c]">
+            {streamError}
+          </p>
+        ) : null}
+
         {composer}
       </div>
     );
@@ -241,6 +257,11 @@ Keep replies brief. Confirm what you built, no JSON in chat.`;
     <footer className="shrink-0 border-t border-[#eceae6] bg-white/95 backdrop-blur-sm">
       <div className="mx-auto max-w-2xl px-3 py-2.5 sm:px-4">
         <div className="flex flex-col items-center gap-2">
+          {streamError ? (
+            <p className="w-full rounded-lg border border-[#f3d4d4] bg-[#fff5f5] px-3 py-2 text-center text-xs text-[#9b2c2c]">
+              {streamError}
+            </p>
+          ) : null}
           <StarterPills
             onSelect={(prompt) => void runPrompt(prompt)}
             disabled={busy}

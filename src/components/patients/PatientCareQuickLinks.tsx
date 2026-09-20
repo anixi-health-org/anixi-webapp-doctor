@@ -5,6 +5,7 @@ import {
   ChartBarIcon,
   ClipboardDocumentListIcon,
   FaceSmileIcon,
+  FolderOpenIcon,
   HeartIcon,
 } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
@@ -24,6 +25,7 @@ interface PatientCareQuickLinksProps {
   onAdherenceCalendar: () => void;
   onAdherenceLogs: () => void;
   onVitalsHistory: () => void;
+  onMedicalVault?: () => void;
   onWearableData: () => void;
   onScheduleFollowUp: () => void;
 }
@@ -33,6 +35,7 @@ export const PatientCareQuickLinks: React.FC<PatientCareQuickLinksProps> = ({
   onAdherenceCalendar,
   onAdherenceLogs,
   onVitalsHistory,
+  onMedicalVault,
   onWearableData,
   onScheduleFollowUp,
 }) => {
@@ -82,6 +85,19 @@ export const PatientCareQuickLinks: React.FC<PatientCareQuickLinksProps> = ({
       accent: 'hover:border-teal-200 hover:bg-teal-50/50',
       iconBg: 'bg-teal-50 text-teal-700',
     },
+    ...(onMedicalVault
+      ? [
+          {
+            id: 'vault',
+            title: 'Medical record vault',
+            description: 'Documents uploaded by the patient',
+            icon: FolderOpenIcon,
+            onClick: onMedicalVault,
+            accent: 'hover:border-amber-200 hover:bg-amber-50/50',
+            iconBg: 'bg-amber-50 text-amber-800',
+          } satisfies QuickLink,
+        ]
+      : []),
   ];
 
   return (

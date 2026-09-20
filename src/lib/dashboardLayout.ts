@@ -42,7 +42,8 @@ export function normalizeDashboardLayout(widgets: DoctorDashboardWidget[]): Doct
 
   const panels = merged.filter((widget) => PANEL_TYPES.has(widget.type));
   const panelCount = panels.length;
-  const hasSchedule = panels.some((panel) => panel.type === 'schedule');
+  const scheduleCount = panels.filter((panel) => panel.type === 'schedule').length;
+  const hasSchedule = scheduleCount > 0;
 
   return merged.map((widget) => {
     if (widget.type === 'stat' || widget.type === 'stat_row') {
@@ -57,6 +58,10 @@ export function normalizeDashboardLayout(widgets: DoctorDashboardWidget[]): Doct
       return { ...widget, span: 12 };
     }
 
+    if (scheduleCount >= 2 && widget.type === 'schedule') {
+      return { ...widget, span: 6 };
+    }
+
     if (panelCount === 2) {
       if (hasSchedule && widget.type === 'schedule') {
         return { ...widget, span: 8 };
@@ -65,6 +70,10 @@ export function normalizeDashboardLayout(widgets: DoctorDashboardWidget[]): Doct
         return { ...widget, span: 4 };
       }
       return { ...widget, span: 6 };
+    }
+
+    if (scheduleCount >= 2) {
+      return { ...widget, span: 12 };
     }
 
     if (widget.type === 'attention') {

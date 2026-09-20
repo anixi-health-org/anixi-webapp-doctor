@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AyahCommandBoard } from '../components/ayah/AyahCommandBoard';
 import { AyahWorkspace, type AyahFileUpload } from '../components/ayah/AyahWorkspace';
 import { useAyahChat } from '../context/AyahChatContext';
@@ -25,10 +26,14 @@ import {
   parsePatientBulkCsv,
   importPracticePatientsBulk,
 } from '../services/bulkPatientImportService';
+import { AyahVoicePanel } from '../components/ayah/AyahVoicePanel';
+import { useAyahVoiceConversation } from '../hooks/useAyahVoiceConversation';
+import { persistClinicalReportDraftForAppointment } from '../lib/clinicalReportAyahBridge';
 import {
   parseDoctorBulkCsv,
   createPracticeInvitesBulk,
 } from '../services/bulkInviteService';
+import { resolveAyahVoiceLanguage } from '../lib/resolveAyahVoiceLanguage';
 
 function formatTime(): string {
   const now = new Date();
@@ -38,27 +43,81 @@ function formatTime(): string {
 }
 
 export const AyahPage: React.FC = () => {
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, practiceSession } = useAuth();
   const { context, initialPrompt, autoSend, notifyDraftApproved, clearSessionPrompt, setContext } =
     useAskAnixi();
-  const { loading: briefingLoading, snapshot, practiceSnapshot } =
-    useDoctorBriefingData();
+  const { loading: briefingLoading, snapshot, practiceSnapshot } = useDoctorBriefingData();
   const practiceSnapshotRef = useRef(practiceSnapshot);
   practiceSnapshotRef.current = practiceSnapshot;
   const patientChart = useAyahPatientChart(user?.id, context.patientId);
   const patientChartRef = useRef(patientChart);
   patientChartRef.current = patientChart;
-  const { messages, hydrated, setMessages, markBriefingBootstrapped } =
-    useAyahChat();
+  const { messages, hydrated, setMessages, resetToWelcome } = useAyahChat();
 
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   const [pendingDrafts, setPendingDrafts] = useState<DoctorAgentDraft[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastFileUploadRef = useRef<AyahFileUpload | null>(null);
   const contextRef = useRef(context);
   contextRef.current = context;
+
+  const buildVoiceContext = useCallback(() => {
+    const nextContext = contextRef.current;
+    const clinicTimezone =
+      (typeof practiceSnapshotRef.current?.timezone === 'string' &&
+        practiceSnapshotRef.current.timezone) ||
+      'Africa/Johannesburg';
+    const clinicDate = new Date().toLocaleDateString('en-CA', {
+      timeZone: clinicTimezone,
+    });
+    const chart =
+      patientChartRef.current &&
+      (!nextContext.patientId || patientChartRef.current.patientId === nextContext.patientId)
+        ? patientChartRef.current
+        : undefined;
+    const voiceLanguage = resolveAyahVoiceLanguage({
+      patientSnapshot: chart,
+      fallback: 'en-ZA',
+    });
+    return {
+      ...nextContext,
+      practiceSnapshot: practiceSnapshotRef.current as unknown as Record<string, unknown>,
+      patientSnapshot: chart as unknown as Record<string, unknown> | undefined,
+      clinicDate,
+      clinicTimezone,
+      voiceLanguage,
+    };
+  }, []);
+
+  const voiceConversation = useAyahVoiceConversation({
+    threadId: user?.id,
+    languageCode: resolveAyahVoiceLanguage({
+      patientSnapshot: patientChart,
+      fallback: 'en-ZA',
+    }),
+    getContext: buildVoiceContext,
+    onTurn: ({ transcript, replyText }) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-vu`,
+          role: 'user',
+          content: transcript,
+          time: formatTime(),
+        },
+        {
+          id: `${Date.now()}-va`,
+          role: 'assistant',
+          content: formatAyahReply(replyText),
+          time: formatTime(),
+        },
+      ]);
+    },
+  });
 
   const firstName = clinicianGivenName(user?.displayName);
   const greeting =
@@ -226,24 +285,27 @@ export const AyahPage: React.FC = () => {
   );
 
   useEffect(() => {
+    const practiceId = practiceSession?.practice?.id;
+    if (!practiceId || contextRef.current.practiceId === practiceId) return;
+    applyPatientContext({ ...contextRef.current, practiceId });
+  }, [practiceSession?.practice?.id, applyPatientContext]);
+
+  useEffect(() => {
     if (!autoSend || !initialPrompt || !user) return;
     void sendMessage(initialPrompt);
     clearSessionPrompt();
   }, [autoSend, initialPrompt, user, sendMessage, clearSessionPrompt]);
-
-  useEffect(() => {
-    if (hydrated) markBriefingBootstrapped();
-  }, [hydrated, markBriefingBootstrapped]);
 
   const onResolveDraft = async (
     draft: DoctorAgentDraft,
     decision: 'approved' | 'rejected',
   ) => {
     const resolved = await resolveDoctorDraft(draft.id, decision);
-    if (decision === 'approved' && resolved.type) {
+    const draftType = resolved.type ?? draft.type;
+    if (decision === 'approved' && draftType) {
       notifyDraftApproved({
         draftId: draft.id,
-        type: resolved.type,
+        type: draftType,
         preview: resolved.preview ?? draft.preview ?? '',
         payload: resolved.payload ?? draft.payload ?? {},
         patientId: resolved.patientId ?? draft.patientId ?? null,
@@ -252,7 +314,7 @@ export const AyahPage: React.FC = () => {
           (draft as { appointmentId?: string }).appointmentId ??
           null,
       });
-      if (resolved.type === 'message_reply' && (resolved as { sent?: boolean }).sent) {
+      if (draftType === 'message_reply' && resolved.sent) {
         setMessages((prev) => [
           ...prev,
           {
@@ -262,6 +324,34 @@ export const AyahPage: React.FC = () => {
             time: formatTime(),
           },
         ]);
+      }
+
+      if (draftType === 'clinical_report') {
+        const apptId =
+          resolved.appointmentId ??
+          draft.appointmentId ??
+          contextRef.current.appointmentId ??
+          null;
+        if (apptId) {
+          persistClinicalReportDraftForAppointment(
+            String(apptId),
+            (resolved.payload ?? draft.payload ?? {}) as Record<string, unknown>,
+          );
+        }
+        const returnPath = contextRef.current.returnPath;
+        if (returnPath) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `${Date.now()}-report`,
+              role: 'assistant',
+              content:
+                'H&P report draft applied. Taking you back to post-consult to review each section before saving.',
+              time: formatTime(),
+            },
+          ]);
+          navigate(returnPath);
+        }
       }
     }
     await loadDrafts();
@@ -471,11 +561,34 @@ export const AyahPage: React.FC = () => {
         onSend={(text) => void handleSendWithFile(text)}
         onCommand={runCommand}
         onClearPatient={() => applyPatientContext({})}
-        onNewConversation={() => setMessages([])}
+        onNewConversation={() =>
+          resetToWelcome({
+            displayName: user?.displayName,
+            patientName: context.patientName,
+          })
+        }
         onFileUpload={handleFileUpload}
         pendingDrafts={pendingDrafts}
         onResolveDraft={(draft, decision) => void onResolveDraft(draft, decision)}
         scrollRef={scrollRef}
+        onVoiceMode={() => {
+          setVoiceModeOpen(true);
+          void voiceConversation.startConversation();
+        }}
+      />
+
+      <AyahVoicePanel
+        open={voiceModeOpen}
+        phase={voiceConversation.phase}
+        error={voiceConversation.error}
+        lastTranscript={voiceConversation.lastTranscript}
+        lastReply={voiceConversation.lastReply}
+        partialReply={voiceConversation.partialReply}
+        onClose={() => {
+          setVoiceModeOpen(false);
+          void voiceConversation.stopConversation();
+        }}
+        onToggleListening={() => void voiceConversation.toggleListening()}
       />
     </div>
   );

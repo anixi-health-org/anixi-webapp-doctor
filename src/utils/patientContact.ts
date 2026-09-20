@@ -3,6 +3,8 @@ export const isPlaceholderPatientEmail = (email?: string): boolean =>
     email &&
       (email === 'N/A' ||
         /pending\.anixi\.health$/i.test(email) ||
+        /internal\.anixi\.health$/i.test(email) ||
+        /users\.anixihealth\.com$/i.test(email) ||
         email.toLowerCase().startsWith('roster+')),
   );
 
