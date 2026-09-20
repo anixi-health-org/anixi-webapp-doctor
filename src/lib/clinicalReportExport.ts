@@ -1,12 +1,5 @@
 import { jsPDF } from 'jspdf';
 import {
-  Document,
-  HeadingLevel,
-  Packer,
-  Paragraph,
-  TextRun,
-} from 'docx';
-import {
   CLINICAL_REPORT_SECTIONS,
   clinicalReportFileName,
   type ClinicalReportSections,
@@ -21,6 +14,14 @@ export type ClinicalReportExportParams = {
   appointmentDate?: string;
   icd10Code?: string;
 };
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 function headerLines(params: ClinicalReportExportParams): string[] {
   return [
@@ -104,50 +105,49 @@ export function createClinicalReportPdfBlobUrl(params: ClinicalReportExportParam
   return URL.createObjectURL(doc.output('blob'));
 }
 
+function buildClinicalReportWordHtml(params: ClinicalReportExportParams): string {
+  const headerHtml = headerLines(params)
+    .map((line) => `<p style="margin:0 0 6pt 0;font-size:11pt;">${escapeHtml(line)}</p>`)
+    .join('');
+
+  const sectionHtml = CLINICAL_REPORT_SECTIONS.map((section) => {
+    const body = params.sections[section.id]?.trim();
+    if (!body) return '';
+
+    const paragraphs = body
+      .split('\n')
+      .map((line) => `<p style="margin:0 0 6pt 0;font-size:11pt;">${escapeHtml(line.trim() || ' ')}</p>`)
+      .join('');
+
+    return `<h2 style="font-size:12pt;margin:12pt 0 6pt 0;">${escapeHtml(section.title)}</h2>${paragraphs}`;
+  }).join('');
+
+  return `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<title>Consultation Report</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+</head>
+<body style="font-family:Calibri,Arial,sans-serif;color:#111827;">
+  <h1 style="font-size:16pt;margin:0 0 12pt 0;">Consultation Report (History &amp; Physical)</h1>
+  ${headerHtml}
+  <hr style="border:none;border-top:1px solid #dcdcdc;margin:12pt 0;" />
+  ${sectionHtml}
+</body>
+</html>`;
+}
+
 export async function buildClinicalReportDocx(
   params: ClinicalReportExportParams,
 ): Promise<{ blob: Blob; fileName: string }> {
-  const children: Paragraph[] = [
-    new Paragraph({
-      text: 'Consultation Report (History & Physical)',
-      heading: HeadingLevel.HEADING_1,
-    }),
-    ...headerLines(params).map(
-      (line) =>
-        new Paragraph({
-          children: [new TextRun({ text: line, size: 22 })],
-        }),
-    ),
-    new Paragraph({ text: '' }),
-  ];
-
-  for (const section of CLINICAL_REPORT_SECTIONS) {
-    const body = params.sections[section.id]?.trim();
-    if (!body) continue;
-
-    children.push(
-      new Paragraph({
-        text: section.title,
-        heading: HeadingLevel.HEADING_2,
-      }),
-    );
-
-    for (const line of body.split('\n')) {
-      children.push(
-        new Paragraph({
-          children: [new TextRun({ text: line.trim() || ' ', size: 22 })],
-        }),
-      );
-    }
-
-    children.push(new Paragraph({ text: '' }));
-  }
-
-  const document = new Document({
-    sections: [{ children }],
+  const html = buildClinicalReportWordHtml(params);
+  const blob = new Blob(['\ufeff', html], {
+    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   });
 
-  const blob = await Packer.toBlob(document);
   return {
     blob,
     fileName: clinicalReportFileName(params.patientName, 'docx'),
