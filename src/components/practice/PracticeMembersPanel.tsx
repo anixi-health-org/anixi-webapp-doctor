@@ -123,7 +123,9 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
       });
       setInviteForm({ email: '', displayName: '', role: 'doctor' });
       setShowInvite(false);
-      setSuccess('Invitation sent. They will get an email with a one-click join link.');
+      setSuccess(
+        'Invitation emailed from info@anixihealth.com. They create a password via Accept invite.',
+      );
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send invite');

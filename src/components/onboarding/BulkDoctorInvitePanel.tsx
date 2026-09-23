@@ -90,8 +90,8 @@ export const BulkDoctorInvitePanel: React.FC<BulkDoctorInvitePanelProps> = ({
           <div>
             <p className="text-sm font-semibold text-[#344256]">Invite your doctors & team</p>
             <p className="text-xs text-[#65758b]">
-              Download the template, fill in your staff, then upload the CSV. Each person receives
-              an email to create their login.
+              Download the template, fill in your staff, then upload the CSV. Each person gets an
+              email from info@anixihealth.com to accept the invite and create their password.
             </p>
           </div>
         </div>
@@ -217,8 +217,9 @@ export const BulkDoctorInvitePanel: React.FC<BulkDoctorInvitePanelProps> = ({
 
         {summary && (
           <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            {summary.sent} activation email{summary.sent !== 1 ? 's' : ''} sent. Each doctor
-            receives a link to create their login and join {practiceName}.
+            {summary.sent} invitation email{summary.sent !== 1 ? 's' : ''} sent from
+            info@anixihealth.com. Each person opens Accept invite, creates a password, and joins{' '}
+            {practiceName}.
             {summary.failed > 0 ? ` ${summary.failed} could not be sent.` : ''}
           </p>
         )}

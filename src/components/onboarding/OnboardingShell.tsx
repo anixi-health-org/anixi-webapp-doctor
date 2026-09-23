@@ -4,6 +4,7 @@ import { AnixiLogo } from '../brand/AnixiLogo';
 import {
   OnboardingNavProgress,
   OnboardingStepSidebar,
+  getOnboardingSteps,
   type OnboardingFlow,
   type OnboardingStepSidebarProps,
 } from './OnboardingProgress';
@@ -89,7 +90,11 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
           <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-anixi-green">
-                {flow === 'clinic' ? 'Clinic onboarding' : 'Doctor onboarding'}
+                {flow === 'clinic'
+                  ? 'Clinic onboarding'
+                  : flow === 'market_partner'
+                    ? 'Market Partner onboarding'
+                    : 'Doctor onboarding'}
               </p>
               <h1 className="mt-1.5 font-heading text-2xl font-bold tracking-tight text-[#344256] sm:text-[1.75rem]">
                 {title}
@@ -128,10 +133,9 @@ const MobileStepPills: React.FC<{ flow: OnboardingFlow; currentStep: number }> =
   flow,
   currentStep,
 }) => {
-  const steps =
-    flow === 'clinic'
-      ? ['Clinic', 'Doctors', 'Patients', 'Launch']
-      : ['Profile', 'Review'];
+  const steps = getOnboardingSteps(flow).map(
+    (step) => step.shortLabel || step.label,
+  );
 
   return (
     <div className="flex gap-2">

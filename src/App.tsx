@@ -37,7 +37,17 @@ import { DoctorOnboardingPage } from './pages/DoctorOnboardingPage';
 import { AccountUnderReviewPage } from './pages/AccountUnderReviewPage';
 import ClinicSetupPage from './pages/ClinicSetupPage';
 import InviteAcceptPage from './pages/InviteAcceptPage';
+import PendingInvitesPage from './pages/PendingInvitesPage';
 import CaregiverOnboardingPage from './pages/CaregiverOnboardingPage';
+import { MarketPartnerOnboardingPage } from './pages/MarketPartnerOnboardingPage';
+import { MarketPartnerReviewPage } from './pages/MarketPartnerReviewPage';
+import { PartnerLayout } from './components/PartnerLayout';
+import { PartnerRoute } from './components/PartnerRoute';
+import { PartnerOverviewPage } from './pages/partner/PartnerOverviewPage';
+import { PartnerListingPage } from './pages/partner/PartnerListingPage';
+import { PartnerOfferingsPage } from './pages/partner/PartnerOfferingsPage';
+import { PartnerOrdersPage } from './pages/partner/PartnerOrdersPage';
+import { PartnerAccountPage } from './pages/partner/PartnerAccountPage';
 import { ClinicAdminLayout } from './components/ClinicAdminLayout';
 import { ClinicAdminRoute } from './components/ClinicAdminRoute';
 import { ClinicPermissionGate } from './components/ClinicPermissionGate';
@@ -93,6 +103,7 @@ function App() {
         <Routes>
           <Route path="/join" element={<Join />} />
           <Route path="/join/invite" element={<InviteAcceptPage />} />
+          <Route path="/invites/pending" element={<PendingInvitesPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset/:code" element={<ResetPassword />} />
@@ -107,6 +118,38 @@ function App() {
           <Route path="/delegate/accept" element={<DelegateAccept />} />
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route
+            path="/market-partner/onboarding"
+            element={
+              <ProtectedRoute>
+                <MarketPartnerOnboardingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/market-partner/review"
+            element={
+              <ProtectedRoute>
+                <MarketPartnerReviewPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/partner"
+            element={
+              <ProtectedRoute>
+                <PartnerRoute>
+                  <PartnerLayout />
+                </PartnerRoute>
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<PartnerOverviewPage />} />
+            <Route path="listing" element={<PartnerListingPage />} />
+            <Route path="offerings" element={<PartnerOfferingsPage />} />
+            <Route path="orders" element={<PartnerOrdersPage />} />
+            <Route path="account" element={<PartnerAccountPage />} />
+          </Route>
           <Route
             path="/clinic-setup"
             element={

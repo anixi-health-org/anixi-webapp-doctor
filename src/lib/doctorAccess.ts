@@ -288,8 +288,11 @@ export function professionalHomePath(
   }
 
   if (user.role === 'staff') {
+    if (options?.joinIntent === 'market_partner') {
+      return '/partner';
+    }
     if (!options?.hasPractice && !session) {
-      return '/join/invite';
+      return '/invites/pending';
     }
     if (clinicAdmin) {
       return clinicAdminHomePath();
@@ -312,7 +315,7 @@ export function professionalHomePath(
 
   if (!options?.hasPractice) {
     if (joinIntent === 'invite') {
-      return '/join/invite';
+      return '/invites/pending';
     }
   }
 

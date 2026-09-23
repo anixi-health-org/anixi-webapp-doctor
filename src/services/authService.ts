@@ -15,7 +15,7 @@ export const registerProfessional = async (
   displayName: string,
   role: AuthRole,
   _countryCode?: string,
-  _joinPath?: JoinPath,
+  joinPath?: JoinPath,
 ): Promise<void> => {
   const djangoRole =
     role === 'staff' ? 'staff' : role === 'caregiver' ? 'caregiver' : 'doctor';
@@ -24,6 +24,13 @@ export const registerProfessional = async (
     password,
     displayName,
     role: djangoRole,
+    joinIntent: joinPath === 'market_partner'
+      ? 'market_partner'
+      : joinPath === 'clinic'
+        ? 'clinic'
+        : joinPath === 'invite'
+          ? 'invite'
+          : undefined,
   });
 };
 
