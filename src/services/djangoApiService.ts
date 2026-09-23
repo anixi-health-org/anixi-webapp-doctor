@@ -617,6 +617,18 @@ export async function djangoListPracticeInvites(
   return djangoJson<DjangoPracticeInvite[]>(res);
 }
 
+export async function djangoListMyPracticeInvites(
+  status = 'pending',
+): Promise<DjangoPracticeInvite[]> {
+  if (!enabled()) return [];
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/practices/invites/mine/?status=${encodeURIComponent(status)}`,
+    { headers },
+  );
+  return djangoJson<DjangoPracticeInvite[]>(res);
+}
+
 export async function djangoPreviewPracticeInvite(
   practiceId: string,
   inviteId: string,
@@ -715,6 +727,7 @@ export async function djangoRegister(params: {
   displayName: string;
   role: 'doctor' | 'patient' | 'caregiver' | 'staff';
   phoneNumber?: string;
+  joinIntent?: string;
 }) {
   if (!enabled()) throw new Error('Django API not configured');
   assertApiReachable();
@@ -727,6 +740,7 @@ export async function djangoRegister(params: {
       display_name: params.displayName,
       role: params.role,
       phone_number: params.phoneNumber ?? '',
+      ...(params.joinIntent ? { joinIntent: params.joinIntent } : {}),
     }),
   });
   const json = (await res.json()) as Envelope<{
@@ -2163,4 +2177,151 @@ export async function djangoSearchDoctors(filters: {
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/api/v1/auth/doctors/directory/?${params}`, { headers });
   return djangoJson<Array<Record<string, unknown>>>(res);
+}
+
+export type MarketplacePartnerApplication = {
+  id: string;
+  partnerType: 'wellness' | 'pharmacy';
+  businessName: string;
+  category?: string | null;
+  tagline?: string | null;
+  description?: string | null;
+  email: string;
+  phone?: string | null;
+  city?: string | null;
+  province?: string | null;
+  address?: string | null;
+  deliveryAvailable?: boolean;
+  offerings?: Array<{ name: string; description?: string; price?: string | null }>;
+  status: 'pending' | 'approved' | 'rejected';
+  rejectionReason?: string | null;
+  createdAt?: string | null;
+};
+
+export async function djangoSubmitMarketplacePartnerApplication(
+  payload: Record<string, unknown>,
+) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/marketplace/partner-applications/`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return djangoJson<MarketplacePartnerApplication>(res);
+}
+
+export async function djangoGetMyMarketplacePartnerApplication() {
+  if (!enabled()) return null;
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/marketplace/partner-applications/me/`, {
+    headers,
+  });
+  return djangoJson<MarketplacePartnerApplication | null>(res);
+}
+
+export type PartnerOffering = {
+  name: string;
+  description?: string;
+  price?: string | null;
+};
+
+export type PartnerListing = {
+  applicationId: string;
+  partnerType: 'wellness' | 'pharmacy';
+  listingId: string;
+  businessName: string;
+  category?: string | null;
+  tagline?: string | null;
+  description?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  city?: string | null;
+  province?: string | null;
+  address?: string | null;
+  deliveryAvailable?: boolean;
+  published: boolean;
+  verified: boolean;
+  offerings: PartnerOffering[];
+  website?: string | null;
+  registrationNumber?: string | null;
+  operatingHours?: string | null;
+  country?: string | null;
+  status: string;
+};
+
+export type PartnerOrder = {
+  id: string;
+  pharmacyId?: string | null;
+  pharmacyName?: string | null;
+  pharmacyEmail?: string | null;
+  status?: string | null;
+  source?: string | null;
+  prescriptionText?: string | null;
+  lineItems?: Array<{
+    name: string;
+    description?: string;
+    price?: string | null;
+    quantity?: number;
+  }>;
+  notes?: string | null;
+  deliveryRequested?: boolean;
+  appointmentId?: string | null;
+  doctorName?: string | null;
+  doctorEmail?: string | null;
+  patientName?: string | null;
+  patientPhone?: string | null;
+  patientEmail?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export async function djangoGetPartnerListing() {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/marketplace/partner/listing/me/`, { headers });
+  return djangoJson<PartnerListing>(res);
+}
+
+export async function djangoUpdatePartnerListing(payload: Partial<PartnerListing>) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/marketplace/partner/listing/me/`, {
+    method: 'PATCH',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return djangoJson<PartnerListing>(res);
+}
+
+export async function djangoGetPartnerOrders(status?: string) {
+  if (!enabled()) return [];
+  const headers = await authHeaders();
+  const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+  const res = await fetch(`${API_BASE}/api/v1/marketplace/partner/orders/${qs}`, { headers });
+  return djangoJson<PartnerOrder[]>(res);
+}
+
+export async function djangoGetPartnerOrder(orderId: string) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/marketplace/partner/orders/${encodeURIComponent(orderId)}/`,
+    { headers },
+  );
+  return djangoJson<PartnerOrder>(res);
+}
+
+export async function djangoUpdatePartnerOrderStatus(orderId: string, status: string) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/marketplace/partner/orders/${encodeURIComponent(orderId)}/`,
+    {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    },
+  );
+  return djangoJson<PartnerOrder>(res);
 }

@@ -26,22 +26,32 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
   subtitle,
   displayLabel,
 }) => {
-  const { user, logout, practiceSession } = useAuth();
+  const { user, logout, practiceSession, joinIntent } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isCaregiver = user?.role === 'caregiver';
   const isClinicAdmin = usesClinicAdminPortal(practiceSession);
+  const isMarketPartner = joinIntent === 'market_partner' && user?.role === 'staff';
   const displayName = user?.displayName || (isCaregiver ? 'Caregiver' : 'Doctor');
   const initial = displayName.charAt(0).toUpperCase();
   const email = user?.email || '';
   const shortName = displayName.split(' ')[0];
   const headerLabel =
     displayLabel ||
-    (isCaregiver || isClinicAdmin ? shortName : clinicianHeaderLabel(displayName));
+    (isCaregiver || isClinicAdmin || isMarketPartner
+      ? shortName
+      : clinicianHeaderLabel(displayName));
   const headerSubtitle =
-    subtitle || (isCaregiver ? 'Caregiver' : isClinicAdmin ? 'Clinic admin' : 'Physician');
+    subtitle ||
+    (isCaregiver
+      ? 'Caregiver'
+      : isMarketPartner
+        ? 'Market Partner'
+        : isClinicAdmin
+          ? 'Clinic admin'
+          : 'Physician');
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -90,7 +100,30 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
           onClick: () => handleNavigate('/caregiver/change-password'),
         },
       ]
-    : isClinicAdmin
+    : isMarketPartner
+      ? [
+          {
+            label: 'Partner overview',
+            icon: UserCircleIcon,
+            onClick: () => handleNavigate('/partner'),
+          },
+          {
+            label: 'Listing profile',
+            icon: Cog6ToothIcon,
+            onClick: () => handleNavigate('/partner/listing'),
+          },
+          {
+            label: 'Account',
+            icon: Cog6ToothIcon,
+            onClick: () => handleNavigate('/partner/account'),
+          },
+          {
+            label: 'Change Password',
+            icon: LockClosedIcon,
+            onClick: () => handleNavigate('/change-password'),
+          },
+        ]
+      : isClinicAdmin
       ? [
           {
             label: 'Clinic settings',

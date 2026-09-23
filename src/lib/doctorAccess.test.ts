@@ -4,6 +4,7 @@ import { EMPTY_PROFILE_FORM } from '../types/doctorProfile';
 import {
   inheritClinicPracticeFields,
   isOnboardingFormComplete,
+  professionalHomePath,
 } from './doctorAccess';
 
 const personalAndProfessional: ProfessionalProfileFormData = {
@@ -67,5 +68,25 @@ describe('isOnboardingFormComplete', () => {
     expect(
       isOnboardingFormComplete(personalAndProfessional, { inheritPracticeFromClinic: true }),
     ).toBe(true);
+  });
+});
+
+describe('professionalHomePath', () => {
+  it('sends marketplace partners to the partner portal', () => {
+    expect(
+      professionalHomePath(
+        { id: '1', role: 'staff', email: 'partner@example.com', displayName: 'Partner' } as never,
+        { joinIntent: 'market_partner', hasPractice: false, practiceSession: null },
+      ),
+    ).toBe('/partner');
+  });
+
+  it('still sends clinic staff without a practice to pending invites', () => {
+    expect(
+      professionalHomePath(
+        { id: '2', role: 'staff', email: 'desk@clinic.com', displayName: 'Desk' } as never,
+        { joinIntent: 'invite', hasPractice: false, practiceSession: null },
+      ),
+    ).toBe('/invites/pending');
   });
 });

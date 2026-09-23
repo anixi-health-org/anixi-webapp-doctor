@@ -18,6 +18,22 @@ const STARTERS: Record<string, string[]> = {
   'clinic:4': ['What happens after I launch?', 'What should I set up next?'],
   'solo:1': ['What HPCSA details do I need?', 'What goes in the practice step?'],
   'solo:2': ['What happens during review?', 'How long does approval take?'],
+  'market_partner:1': [
+    'Should I choose wellness or pharmacy?',
+    'What makes a good market listing?',
+  ],
+  'market_partner:2': [
+    'What address details are required?',
+    'Do I need a pharmacy licence number?',
+  ],
+  'market_partner:3': [
+    'How should I price services?',
+    'How many offerings should I list?',
+  ],
+  'market_partner:4': [
+    'What happens after I submit?',
+    'How long does admin approval take?',
+  ],
 };
 
 export function OnboardingAyahCoach({ flow, currentStep }: Props) {

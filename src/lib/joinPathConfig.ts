@@ -91,6 +91,23 @@ const INVITE_HERO: JoinPathHeroSlide[] = [
   },
 ];
 
+const MARKET_PARTNER_HERO: JoinPathHeroSlide[] = [
+  {
+    heading: 'List on the Anixi Market',
+    description:
+      'Wellness providers and pharmacies can offer products and services to patients across Africa.',
+    caption: 'Marketplace partners',
+    image: '/hero-care.png',
+  },
+  {
+    heading: 'Go live after admin review',
+    description:
+      'Submit your business profile and offerings. Once approved, patients see you in the Market tab.',
+    caption: 'Verified listings',
+    image: '/hero-insight.png',
+  },
+];
+
 export const JOIN_PATH_CONFIG: Record<JoinPath, JoinPathRegistrationConfig> = {
   clinic: {
     layoutTitle: 'Create your account',
@@ -132,24 +149,45 @@ export const JOIN_PATH_CONFIG: Record<JoinPath, JoinPathRegistrationConfig> = {
     heroSlides: SOLO_HERO,
     postRegisterPath: () => '/onboarding',
   },
+  market_partner: {
+    layoutTitle: 'Create your partner account',
+    layoutSubtitle: 'Registering as a Market Partner',
+    cardTitle: 'Market Partner account',
+    cardDescription:
+      'Tell us about your wellness practice or pharmacy next. Listings go live after Anixi admin approval.',
+    submitLabel: 'Continue to partner profile',
+    submitLoadingLabel: 'Creating account…',
+    showCountryField: true,
+    nameLabel: 'Contact name',
+    namePlaceholder: 'Your name',
+    emailPlaceholder: 'you@yourbusiness.co.za',
+    nextSteps: [
+      'Choose wellness or pharmacy',
+      'Add business details and offerings',
+      'Admin review, then appear in the patient Market tab',
+    ],
+    heroSlides: MARKET_PARTNER_HERO,
+    postRegisterPath: () => '/market-partner/onboarding',
+  },
   invite: {
     layoutTitle: 'Accept your invitation',
-    layoutSubtitle: 'Join a clinic you were invited to',
-    cardTitle: 'Team invitation',
-    cardDescription: 'Open the link from your clinic email to continue.',
-    submitLabel: 'Continue',
-    submitLoadingLabel: 'Loading…',
+    layoutSubtitle: 'Create your password from the email invite link',
+    cardTitle: 'Practice invitation',
+    cardDescription:
+      'Open Accept invite in your email from info@anixihealth.com, then create and confirm your password.',
+    submitLabel: 'Create password & join',
+    submitLoadingLabel: 'Joining…',
     showCountryField: false,
     nameLabel: 'Full name',
     namePlaceholder: 'Your name',
     emailPlaceholder: 'Invited email address',
     nextSteps: [
-      'Open the invite link from your clinic',
-      'Create an account or sign in',
-      'Access tools for your assigned role',
+      'Open the Accept invite link from your email',
+      'Create and confirm your password',
+      'Join your clinic or practice workspace',
     ],
     heroSlides: INVITE_HERO,
-    postRegisterPath: () => '/join/invite',
+    postRegisterPath: () => '/invites/pending',
   },
   caregiver: {
     layoutTitle: 'Create your account',
@@ -185,9 +223,13 @@ export const JOIN_PATH_JOIN_PAGE_HINT: Record<
     title: 'Private practice path',
     steps: ['Create account', 'Complete doctor profile', 'Admin review & launch'],
   },
+  market_partner: {
+    title: 'Market Partner path',
+    steps: ['Create account', 'Submit business & offerings', 'Admin approval & Market listing'],
+  },
   invite: {
     title: 'Invitation path',
-    steps: ['Open clinic email link', 'Sign in or register', 'Join with your role'],
+    steps: ['Open Accept invite email', 'Create & confirm password', 'Join your practice'],
   },
   caregiver: {
     title: 'Caregiver path',

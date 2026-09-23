@@ -40,9 +40,25 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     path === CLINIC_ADMIN_PREFIX || path.startsWith(`${CLINIC_ADMIN_PREFIX}/`);
 
   // Staff (receptionist / billing), land in clinic admin when membership allows.
+  // Market partners use staff role with joinIntent=market_partner.
   if (user?.role === 'staff') {
+    const isMarketPartner = joinIntent === 'market_partner';
+    const onMarketPartnerPath =
+      path === '/market-partner/onboarding' ||
+      path === '/market-partner/review' ||
+      path === '/partner' ||
+      path.startsWith('/partner/') ||
+      path === '/change-password' ||
+      path === '/delete-account' ||
+      path === '/privacy';
+    if (isMarketPartner) {
+      if (onMarketPartnerPath) {
+        return <>{children}</>;
+      }
+      return <Navigate to="/partner" replace />;
+    }
     if (!practiceSession?.member) {
-      return <Navigate to="/join/invite" replace />;
+      return <Navigate to="/invites/pending" replace />;
     }
     if (clinicAdmin) {
       if (isClinicAdminPath || path === CLINIC_SETUP_PATH) {
@@ -50,7 +66,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
       }
       return <Navigate to={clinicAdminHomePath()} replace />;
     }
-    return <Navigate to="/join/invite" replace />;
+    return <Navigate to="/invites/pending" replace />;
   }
 
   if (user?.role !== 'doctor') {
