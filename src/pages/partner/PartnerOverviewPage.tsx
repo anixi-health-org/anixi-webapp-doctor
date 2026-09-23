@@ -54,7 +54,7 @@ export const PartnerOverviewPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [listing?.partnerType, listing?.listingId]);
+  }, [listing]);
 
   const openOrders = orders.filter(
     (o) => !['dispensed', 'cancelled'].includes(String(o.status || '').toLowerCase()),
