@@ -394,7 +394,12 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
                 className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div>
-                  <p className="font-medium text-gray-900">{inv.email}</p>
+                  <p className="font-medium text-gray-900">
+                    {inv.displayName?.trim() || inv.email}
+                  </p>
+                  {inv.displayName?.trim() ? (
+                    <p className="text-sm text-gray-500">{inv.email}</p>
+                  ) : null}
                   <p className="text-sm text-gray-500">{ROLE_LABELS[inv.role]}</p>
                 </div>
                 <div className="flex items-center gap-3">
