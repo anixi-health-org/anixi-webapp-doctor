@@ -322,6 +322,15 @@ const parseVitalValue = (
   if (lower.includes('glucose') || lower.includes('sugar') || lower.includes('blood sugar')) {
     return { bloodSugar: numeric };
   }
+  if (
+    lower.includes('spo2') ||
+    lower.includes('spO2'.toLowerCase()) ||
+    lower.includes('oxygen') ||
+    lower.includes('o2 sat') ||
+    lower.includes('o₂')
+  ) {
+    return { spo2: numeric };
+  }
   return {};
 };
 

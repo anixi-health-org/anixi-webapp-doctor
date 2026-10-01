@@ -4,6 +4,7 @@ import {
   getDoctorAdherenceLogsPage,
   type DoctorAdherenceLog,
 } from '../services/adherenceService';
+import { outcomeLabel, type AdherenceDoseOutcome } from '../lib/adherenceEventModel';
 import { AdherenceLogsSkeleton } from './ui/Skeleton';
 
 interface AdherenceLogsProps {
@@ -86,12 +87,17 @@ export const AdherenceLogs: React.FC<AdherenceLogsProps> = ({ patientId, doctorI
       await loadInitialLogs();
     }
   };
-  const getStatusColor = (status: string) => {
-    switch (status) {
+  const getStatusColor = (outcome: AdherenceDoseOutcome | string) => {
+    switch (outcome) {
       case 'taken':
+      case 'reported':
         return 'bg-green-100 text-green-800';
+      case 'late':
+        return 'bg-orange-100 text-orange-800';
       case 'missed':
         return 'bg-red-100 text-red-800';
+      case 'expected':
+        return 'bg-sky-100 text-sky-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
       default:
@@ -126,8 +132,8 @@ export const AdherenceLogs: React.FC<AdherenceLogsProps> = ({ patientId, doctorI
                 <h4 className="font-semibold text-gray-900">{log.medicationName}</h4>
                 <p className="text-xs text-gray-600">{log.dosage}</p>
               </div>
-              <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(log.status)}`}>
-                {log.status.charAt(0).toUpperCase() + log.status.slice(1)}
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(log.outcome || log.status)}`}>
+                {outcomeLabel(log.outcome || log.status)}
               </span>
             </div>
             <div className="flex items-center gap-4 text-sm text-gray-700 mb-2">

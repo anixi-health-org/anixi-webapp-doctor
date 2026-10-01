@@ -1,11 +1,23 @@
-import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { useAuth } from '../hooks/AuthContext';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
+import { useVitalRules } from '../hooks/useVitalRules';
 import { getVitalsLogs } from '../services/logsService';
 import { VitalsLog } from '../types';
 import { PageHeader, PageShell } from '../components/page-layout';
 import { VitalsPageSkeleton } from '../components/ui';
+import {
+  VitalSeverityBadge,
+  vitalSeverityCardTone,
+} from '../components/vitals/VitalSeverityBadge';
+import {
+  evaluateVitalsReading,
+  worstSeverity,
+  type VitalSeverity,
+} from '../lib/vitalMetricRules';
+import { usesClinicAdminPortal } from '../lib/doctorAccess';
 
 const formatBloodPressure = (log?: VitalsLog): string => {
   if (!log?.bloodPressure) return '-';
@@ -15,7 +27,12 @@ const formatBloodPressure = (log?: VitalsLog): string => {
 
 export const VitalsHistoryPage: React.FC = () => {
   const { navigateBack } = useNavigateWithFallback();
+  const { practiceSession } = useAuth();
   const { patientId } = useParams<{ patientId: string }>();
+  const { config } = useVitalRules();
+  const rulesHref = usesClinicAdminPortal(practiceSession)
+    ? '/clinic/settings?tab=vitals'
+    : '/practice-settings?tab=vitals';
   const [logs, setLogs] = useState<VitalsLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +67,30 @@ export const VitalsHistoryPage: React.FC = () => {
   }, [patientId]);
 
   const latest = logs[0];
+  const latestEval = useMemo(
+    () =>
+      latest
+        ? evaluateVitalsReading(
+            {
+              heartRate: latest.heartRate,
+              bloodPressure: latest.bloodPressure,
+              temperature: latest.temperature,
+              bloodSugar: latest.bloodSugar,
+              spo2: latest.spo2,
+            },
+            config
+          )
+        : [],
+    [latest, config]
+  );
+
+  const severityFor = (key: string): VitalSeverity =>
+    latestEval.find((e) => e.key === key)?.severity ?? 'unknown';
+
+  const bpSeverity = worstSeverity([
+    severityFor('bp_systolic'),
+    severityFor('bp_diastolic'),
+  ]);
 
   if (!patientId) {
     return (
@@ -81,7 +122,15 @@ export const VitalsHistoryPage: React.FC = () => {
       </button>
       <PageHeader
         title="Vitals History"
-        description="View patient vital signs and health measurements."
+        description="Patient vital signs classified with your practice alert rules (normal / warning / urgent)."
+        actions={
+          <Link
+            to={rulesHref}
+            className="text-sm font-medium text-anixi-green underline"
+          >
+            Configure rules
+          </Link>
+        }
       />
 
       {error ? (
@@ -90,40 +139,49 @@ export const VitalsHistoryPage: React.FC = () => {
         </div>
       ) : (
         <>
-          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {[
               {
                 label: 'Blood Pressure',
                 value: formatBloodPressure(latest),
                 unit: 'mmHg',
-                tone: 'border-[#e1e7ef] bg-white text-[#427160]',
+                severity: bpSeverity,
               },
               {
                 label: 'Heart Rate',
                 value: latest?.heartRate ?? '-',
                 unit: 'bpm',
-                tone: 'border-rose-100 bg-rose-50 text-rose-600',
+                severity: severityFor('heart_rate'),
+              },
+              {
+                label: 'SpO₂',
+                value: latest?.spo2 ?? '-',
+                unit: '%',
+                severity: severityFor('spo2'),
               },
               {
                 label: 'Body Temperature',
                 value: latest?.temperature ?? '-',
                 unit: '°C',
-                tone: 'border-amber-100 bg-amber-50 text-amber-700',
+                severity: severityFor('temperature'),
               },
               {
-                label: 'Blood Sugar',
+                label: 'Glucose',
                 value: latest?.bloodSugar ?? '-',
                 unit: 'mg/dL',
-                tone: 'border-emerald-100 bg-emerald-50 text-emerald-700',
+                severity: severityFor('glucose'),
               },
             ].map((card) => (
               <div
                 key={card.label}
-                className={`rounded-[12px] border p-5 shadow-sm ${card.tone}`}
+                className={`rounded-[12px] border p-5 shadow-sm ${vitalSeverityCardTone(card.severity)}`}
               >
-                <p className="text-sm font-semibold text-[#65758b]">{card.label}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-semibold opacity-80">{card.label}</p>
+                  {card.value !== '-' && <VitalSeverityBadge severity={card.severity} />}
+                </div>
                 <p className="mt-2 text-3xl font-bold">{card.value}</p>
-                <p className="mt-2 text-xs text-[#94a3b8]">{card.unit}</p>
+                <p className="mt-2 text-xs opacity-70">{card.unit}</p>
               </div>
             ))}
           </div>
@@ -140,25 +198,40 @@ export const VitalsHistoryPage: React.FC = () => {
                 <h2 className="font-semibold text-[#344256]">History (last 90 days)</h2>
               </div>
               <ul className="divide-y divide-[#eef2f6]">
-                {logs.map((log) => (
-                  <li
-                    key={log.id}
-                    className="flex flex-wrap gap-x-6 gap-y-1 px-5 py-3 text-sm text-[#65758b]"
-                  >
-                    <span className="w-36 font-medium text-[#344256]">
-                      {log.timestamp.toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </span>
-                    <span>BP: {formatBloodPressure(log)}</span>
-                    {log.heartRate != null && <span>HR: {log.heartRate} bpm</span>}
-                    {log.temperature != null && <span>Temp: {log.temperature}°C</span>}
-                    {log.bloodSugar != null && <span>Glucose: {log.bloodSugar}</span>}
-                    {log.notes && <span className="text-[#94a3b8]">{log.notes}</span>}
-                  </li>
-                ))}
+                {logs.map((log) => {
+                  const evaluated = evaluateVitalsReading(
+                    {
+                      heartRate: log.heartRate,
+                      bloodPressure: log.bloodPressure,
+                      temperature: log.temperature,
+                      bloodSugar: log.bloodSugar,
+                      spo2: log.spo2,
+                    },
+                    config
+                  );
+                  const overall = worstSeverity(evaluated.map((e) => e.severity));
+                  return (
+                    <li
+                      key={log.id}
+                      className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 text-sm text-[#65758b]"
+                    >
+                      <span className="w-36 font-medium text-[#344256]">
+                        {log.timestamp.toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </span>
+                      <VitalSeverityBadge severity={overall} />
+                      <span>BP: {formatBloodPressure(log)}</span>
+                      {log.heartRate != null && <span>HR: {log.heartRate} bpm</span>}
+                      {log.spo2 != null && <span>SpO₂: {log.spo2}%</span>}
+                      {log.temperature != null && <span>Temp: {log.temperature}°C</span>}
+                      {log.bloodSugar != null && <span>Glucose: {log.bloodSugar}</span>}
+                      {log.notes && <span className="text-[#94a3b8]">{log.notes}</span>}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}

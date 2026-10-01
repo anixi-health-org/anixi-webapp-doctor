@@ -5,6 +5,11 @@ import {
   getPracticeAnalyticsReport,
   type PracticeAnalyticsReport,
 } from '../../services/practiceAnalyticsService';
+import {
+  getPracticeClinicalMetrics,
+  type RosterClinicalMetrics,
+} from '../../services/clinicalMetricsService';
+import { RosterClinicalMetricsGrid } from '../../components/metrics/ClinicalMetricsPanels';
 import { activeRooms, roomTypeLabel } from '../../services/roomService';
 
 function formatCurrency(amount: number): string {
@@ -19,14 +24,19 @@ export const ClinicAdminReportsPage: React.FC = () => {
   const { practiceSession } = useAuth();
   const practice = practiceSession?.practice;
   const [report, setReport] = useState<PracticeAnalyticsReport | null>(null);
+  const [clinical, setClinical] = useState<RosterClinicalMetrics | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     if (!practice?.id) return;
     setLoading(true);
     try {
-      const data = await getPracticeAnalyticsReport(practice.id);
-      setReport(data);
+      const [ops, clin] = await Promise.all([
+        getPracticeAnalyticsReport(practice.id),
+        getPracticeClinicalMetrics(practice.id, { daysBack: 30 }).catch(() => null),
+      ]);
+      setReport(ops);
+      setClinical(clin);
     } catch (err) {
       console.warn('[ClinicAdminReportsPage] report load failed', err);
     } finally {
@@ -72,14 +82,41 @@ export const ClinicAdminReportsPage: React.FC = () => {
     <PageShell maxWidth="wide" className="py-6 sm:py-8">
       <PageHeader
         title="Reports"
-        description="Practice-wide appointment, billing, and room utilization summaries."
+        description="Practice-wide clinical metrics (vitals, adherence, appointments, labs, symptoms, treatment) plus billing and rooms."
       />
 
       {loading ? (
         <p className="mt-6 text-sm text-[#65758b]">Loading reports…</p>
       ) : (
         <>
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {clinical && (
+            <div className="mb-8">
+              <h3 className="mb-3 font-semibold text-[#344256]">Clinical overview (30d)</h3>
+              <RosterClinicalMetricsGrid metrics={clinical} />
+              {clinical.needingAttention > 0 && (
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-sm font-semibold text-amber-900">
+                    {clinical.needingAttention} patient
+                    {clinical.needingAttention === 1 ? '' : 's'} needing attention
+                  </p>
+                  <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+                    {clinical.patients
+                      .filter((p) => p.needsAttention)
+                      .slice(0, 10)
+                      .map((p) => (
+                        <li key={p.patientId} className="text-sm text-amber-900">
+                          {p.displayName} — adherence {p.adherence.rate}%, vitals{' '}
+                          {p.vitals.worst}
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          <h3 className="mb-3 font-semibold text-[#344256]">Operations & billing</h3>
+          <div className="mt-2 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {statCards.map((card) => (
               <div
                 key={card.label}

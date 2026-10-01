@@ -1,5 +1,6 @@
 import { Patient } from '../types';
 import { getAdherenceStats } from './adherenceService';
+import { getActiveAdherenceRules } from './adherenceRulesService';
 import { djangoListWellnessProviders } from './djangoApiService';
 import { getPatientStatus } from './patientManagementService';
 
@@ -79,10 +80,11 @@ export const getCaregiverPatientSummaries = async (
       }
 
       const status = getPatientStatus(patient);
+      const attentionBelow = getActiveAdherenceRules().attentionBelowPct;
       const needsAttention =
         status === 'warning' ||
         status === 'inactive' ||
-        adherenceRate < 70 ||
+        adherenceRate < attentionBelow ||
         (patient.chronicDiseases?.length ?? 0) > 0;
 
       return { patient, adherenceRate, status, needsAttention };

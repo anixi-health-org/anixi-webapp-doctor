@@ -21,6 +21,7 @@ const CONSULT_TYPES: { value: ConsultType; label: string }[] = [
   { value: 'urgent', label: 'Urgent' },
   { value: 'procedure', label: 'Procedure' },
   { value: 'teleconsult', label: 'Virtual / video' },
+  { value: 'whatsapp', label: 'WhatsApp video' },
   { value: 'other', label: 'Other' },
 ];
 

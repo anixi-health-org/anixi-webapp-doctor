@@ -10,6 +10,7 @@ import {
   djangoResolveSharing,
   isDjangoApiEnabled,
 } from './djangoApiService';
+import { logPatientEvent } from './centralEventLogService';
 
 export const sendPatientDownloadInvite = async (opts: {
   doctorId: string;
@@ -260,6 +261,32 @@ export const addPatientManually = async (
       (row) => targetEmail && row.email.trim().toLowerCase() === targetEmail,
     );
     const patientId = match?.patientId ?? `pending-${Date.now()}`;
+
+    // Log patient creation event
+    if (payload.practiceId) {
+      try {
+        await logPatientEvent({
+          organizationId: payload.practiceId,
+          action: 'patient.created',
+          actorUid: doctorId,
+          actorName: 'Doctor',
+          patientId,
+          patientName: payload.displayName,
+          newValue: {
+            displayName: payload.displayName,
+            email: payload.email,
+            phoneNumber: payload.phoneNumber,
+            dateOfBirth: payload.dateOfBirth?.toISOString(),
+            notes: payload.notes,
+          },
+          outcome: 'success',
+          confirmation: patientId,
+          metadata: { inviteQueued: Boolean(inviteOptions?.sendInvite && targetEmail) },
+        });
+      } catch (error) {
+        console.warn('[patientManagementService] Failed to log patient creation event:', error);
+      }
+    }
 
     if (inviteOptions?.sendInvite && targetEmail) {
       console.log(

@@ -38,6 +38,7 @@ function mapPractice(row: Record<string, unknown>): Practice {
     rooms: (row.rooms as Practice['rooms']) ?? [],
     consultTypes: (row.consultTypes as Practice['consultTypes']) ?? [],
     consultTypeSettings: row.consultTypeSettings as Practice['consultTypeSettings'],
+    vitalMetricRules: row.vitalMetricRules as Practice['vitalMetricRules'],
     createdAt: row.createdAt ? new Date(String(row.createdAt)) : new Date(),
     updatedAt: row.updatedAt ? new Date(String(row.updatedAt)) : new Date(),
   };

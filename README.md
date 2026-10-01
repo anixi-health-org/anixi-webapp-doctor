@@ -76,6 +76,16 @@ npm run build
 
 The dev server runs on **http://localhost:3000** and hot-reloads on save.
 
+### Seed doctor logins (local)
+
+With Django running (`REACT_APP_ANIXI_API_URL=http://127.0.0.1:8000`):
+
+```bash
+npm run seed:doctors
+```
+
+Creates the test doctor (`doctor@test.com` / `Test12345!!`). See [docs/SEED_DOCTOR_LOGINS.md](docs/SEED_DOCTOR_LOGINS.md).
+
 ## Configuration
 
 Firebase is initialised in `src/lib/firebase.ts` and exports `auth`, `db`, and `storage`:

@@ -11,6 +11,7 @@ const EMPTY_PERMISSIONS: PracticePermissions = {
   manageMembers: false,
   viewAllDoctors: false,
   viewBilling: false,
+  manageContent: false,
 };
 
 function parsePractice(raw: Record<string, unknown>): Practice {

@@ -20,12 +20,14 @@ import {
   getPatientWearableSummary,
   type PatientWearableSummary,
 } from '../services/wearableService';
+import { getPatientClinicalMetrics, type PatientClinicalMetrics } from '../services/clinicalMetricsService';
+import { PatientClinicalMetricsPanel } from '../components/metrics/ClinicalMetricsPanels';
 
 export const PatientProfile: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { patientId } = useParams<{ patientId: string }>();
-  const { user } = useAuth();
+  const { user, practiceSession } = useAuth();
 
   const contextState = (location.state ?? {}) as {
     appointmentId?: string;
@@ -50,6 +52,7 @@ export const PatientProfile: React.FC = () => {
   const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [wearableSummary, setWearableSummary] = useState<PatientWearableSummary | null>(null);
+  const [clinicalMetrics, setClinicalMetrics] = useState<PatientClinicalMetrics | null>(null);
 
   const logActivity = (
     actionType: string,
@@ -178,6 +181,29 @@ export const PatientProfile: React.FC = () => {
     patient?.id,
     user?.id
   );
+
+  useEffect(() => {
+    if (!patient) {
+      setClinicalMetrics(null);
+      return;
+    }
+    let cancelled = false;
+    void getPatientClinicalMetrics(patient, {
+      daysBack: 30,
+      appointments: patientAppointments,
+      practiceId: practiceSession?.practice?.id,
+      includeLabsAndSymptoms: true,
+    })
+      .then((m) => {
+        if (!cancelled) setClinicalMetrics(m);
+      })
+      .catch(() => {
+        if (!cancelled) setClinicalMetrics(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [patient, patientAppointments, practiceSession?.practice?.id]);
 
   const appointmentStats = useMemo(() => {
     const today = new Date();
@@ -322,6 +348,15 @@ export const PatientProfile: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {clinicalMetrics && (
+          <div className="mb-6 rounded-xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
+            <h3 className="mb-3 text-sm font-semibold text-[#0E2340]">
+              Clinical metrics (30d)
+            </h3>
+            <PatientClinicalMetricsPanel metrics={clinicalMetrics} />
+          </div>
+        )}
 
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
           {(

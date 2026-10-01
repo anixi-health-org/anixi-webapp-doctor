@@ -784,6 +784,19 @@ export const AppointmentDetails: React.FC<AppointmentDetailsProps> = ({
                   </div>
                 ) : null}
 
+                {isWhatsAppConsult(appointment) && patientPhone ? (
+                  <button
+                    onClick={() => navigate(`/appointments/${appointment.id}/post-consult`, { state: { appointment } })}
+                    disabled={isProcessing}
+                    className="w-full flex items-center justify-between gap-3 rounded-xl py-3 px-4 bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="text-lg">💚</span>
+                      Start WhatsApp Video
+                    </span>
+                    <span className="text-lg">→</span>
+                  </button>
+                ) : null}
                 {canDoctorStartVideoCall(appointment) && (
                   <button
                     onClick={handleOpenPostConsult}

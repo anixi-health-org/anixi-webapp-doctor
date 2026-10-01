@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import {
+  ASSIGNABLE_ROLES,
+  CORE_PRACTICE_ROLES,
   INVITABLE_ROLES,
+  LEGACY_PRACTICE_ROLES,
   ROLE_DESCRIPTIONS,
   ROLE_LABELS,
   permissionsForRole,
@@ -185,8 +188,9 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
             <div>
               <h3 className="text-xl font-semibold text-gray-900">Team</h3>
               <p className="mt-1 max-w-xl text-sm text-gray-600">
-                Invite doctors, receptionists, and practice managers. They join with one link - no
-                separate clinic setup.
+                Invite staff by role. Core roles: Administrator, Practice Manager, Doctor,
+                Clinical Associate, Receptionist, and Content Creator. They join with one link —
+                no separate clinic setup.
               </p>
             </div>
             <button
@@ -319,22 +323,22 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
                         onChange={(e) => void onChangeRole(m.uid, e.target.value as PracticeRole)}
                         className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
                       >
-                        {(
-                          [
-                            'practice_manager',
-                            'doctor',
-                            'nurse',
-                            'allied_health',
-                            'locum',
-                            'receptionist',
-                            'billing_clerk',
-                            'delegate',
-                          ] as PracticeRole[]
-                        ).map((role) => (
-                          <option key={role} value={role}>
-                            {ROLE_LABELS[role]}
-                          </option>
-                        ))}
+                        <optgroup label="Core roles">
+                          {CORE_PRACTICE_ROLES.map((role) => (
+                            <option key={role} value={role}>
+                              {ROLE_LABELS[role]}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Legacy / extended">
+                          {LEGACY_PRACTICE_ROLES.filter((role) =>
+                            ASSIGNABLE_ROLES.includes(role)
+                          ).map((role) => (
+                            <option key={role} value={role}>
+                              {ROLE_LABELS[role]}
+                            </option>
+                          ))}
+                        </optgroup>
                       </select>
                       <button
                         type="button"

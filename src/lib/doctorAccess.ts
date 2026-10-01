@@ -13,18 +13,25 @@ export function isClinicOwner(session: PracticeSession | null): boolean {
 export function usesClinicAdminPortal(session: PracticeSession | null): boolean {
   if (session?.practice?.orgType !== 'clinic') return false;
   const role = session.member?.role;
-  if (role === 'owner' || role === 'practice_manager') return true;
+  if (
+    role === 'owner' ||
+    role === 'administrator' ||
+    role === 'practice_manager' ||
+    role === 'content_creator'
+  ) {
+    return true;
+  }
   if (role === 'receptionist' || role === 'billing_clerk') {
     return session.member?.isClinician !== true;
   }
   return false;
 }
 
-/** Owner and practice manager can switch clinic ops ↔ clinical workspace. */
+/** Owner, administrator, and practice manager can switch clinic ops ↔ clinical workspace. */
 export function canSwitchWorkspaces(session: PracticeSession | null): boolean {
   if (session?.practice?.orgType !== 'clinic') return false;
   const role = session.member?.role;
-  return role === 'owner' || role === 'practice_manager';
+  return role === 'owner' || role === 'administrator' || role === 'practice_manager';
 }
 
 /**
@@ -53,7 +60,9 @@ export function canManageOperationalSettings(session: PracticeSession | null): b
   if (canSwitchWorkspaces(session)) return true;
   if (session.member?.isClinician === true) return false;
   const role = session.member?.role;
-  if (role === 'receptionist' || role === 'billing_clerk') return true;
+  if (role === 'receptionist' || role === 'billing_clerk' || role === 'content_creator') {
+    return true;
+  }
   const permissions = session.member?.permissions;
   return Boolean(
     permissions?.manageAppointments ||
@@ -62,7 +71,10 @@ export function canManageOperationalSettings(session: PracticeSession | null): b
   );
 }
 
-export function clinicAdminHomePath(): string {
+export function clinicAdminHomePath(session?: PracticeSession | null): string {
+  if (session?.member?.role === 'content_creator') {
+    return '/clinic/content';
+  }
   return '/clinic';
 }
 
@@ -216,7 +228,7 @@ export function professionalHomePath(
       return '/join/invite';
     }
     if (clinicAdmin) {
-      return clinicAdminHomePath();
+      return clinicAdminHomePath(session);
     }
     return '/dashboard';
   }
@@ -227,11 +239,11 @@ export function professionalHomePath(
     if (!options?.clinicOnboardingComplete) {
       return '/clinic-setup';
     }
-    return clinicAdminHomePath();
+    return clinicAdminHomePath(session);
   }
 
   if (clinicAdmin) {
-    return clinicAdminHomePath();
+    return clinicAdminHomePath(session);
   }
 
   if (!options?.hasPractice) {

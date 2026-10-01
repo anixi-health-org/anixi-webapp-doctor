@@ -8,6 +8,8 @@ import { SoftBlocksEditor } from '../../components/practice/SoftBlocksEditor';
 import { BookingPoliciesForm } from '../../components/practice/BookingPoliciesForm';
 import { PracticeLogoUploader } from '../../components/practice/PracticeLogoUploader';
 import { LetterheadSetupBanner } from '../../components/invoices/LetterheadSetupBanner';
+import { VitalRulesEditor } from '../../components/vitals/VitalRulesEditor';
+import { AdherenceRulesEditor } from '../../components/adherence/AdherenceRulesEditor';
 import { Toast, SettingsPageSkeleton } from '../../components/ui';
 import { TabPill } from '../../components/ui/TabPill';
 import { PageHeader, PageShell } from '../../components/page-layout';
@@ -18,11 +20,13 @@ import {
 import { memberDisplayLabel } from '../../services/practiceMemberService';
 import type { Doctor, PracticeLocation, PracticeMember } from '../../types';
 
-type Tab = 'profile' | 'booking' | 'schedules';
+type Tab = 'profile' | 'booking' | 'schedules' | 'vitals' | 'adherence';
 
 const TAB_CONFIG: { id: Tab; label: string }[] = [
   { id: 'profile', label: 'Clinic profile' },
   { id: 'booking', label: 'Booking rules' },
+  { id: 'vitals', label: 'Vital alerts' },
+  { id: 'adherence', label: 'Adherence' },
   { id: 'schedules', label: 'Doctor schedules' },
 ];
 
@@ -75,6 +79,7 @@ export const ClinicAdminSettingsPage: React.FC = () => {
   const visibleTabs = TAB_CONFIG.filter((tab) => {
     if (tab.id === 'profile') return true;
     if (tab.id === 'booking') return canEditBooking;
+    if (tab.id === 'vitals' || tab.id === 'adherence') return canEditBooking || can('manageMembers');
     if (tab.id === 'schedules') return canManageSchedules;
     return true;
   });
@@ -512,6 +517,14 @@ export const ClinicAdminSettingsPage: React.FC = () => {
               onSaved={reload}
               readOnly={!canEditBooking}
             />
+          )}
+
+          {activeTab === 'vitals' && (
+            <VitalRulesEditor canEdit={canEditBooking || can('manageMembers')} />
+          )}
+
+          {activeTab === 'adherence' && (
+            <AdherenceRulesEditor canEdit={canEditBooking || can('manageMembers')} />
           )}
 
           {activeTab === 'schedules' && (

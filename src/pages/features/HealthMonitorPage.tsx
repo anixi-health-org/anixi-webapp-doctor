@@ -2,19 +2,19 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ExclamationTriangleIcon,
-  HeartIcon,
   MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 import { Activity, HeartPulse } from 'lucide-react';
 import { PageHeader, PageShell } from '../../components/page-layout';
 import { PageHeaderSkeleton, Skeleton, StatCardsSkeleton } from '../../components/ui/Skeleton';
+import { VitalSeverityBadge } from '../../components/vitals/VitalSeverityBadge';
 import { useAuth } from '../../hooks/useAuth';
-import { getDoctorPatients } from '../../services/patientManagementService';
 import {
-  getDoctorPatientsAdherenceSummary,
-  PatientAdherenceListSummary,
-} from '../../services/adherenceService';
-import { Patient } from '../../types';
+  attentionReasonLabel,
+  getDoctorClinicalMetrics,
+  type PatientClinicalMetrics,
+  type RosterClinicalMetrics,
+} from '../../services/clinicalMetricsService';
 
 const HealthMonitorSkeleton: React.FC = () => (
   <>
@@ -29,8 +29,8 @@ const HealthMonitorSkeleton: React.FC = () => (
   </>
 );
 
-const statusTone = (label: PatientAdherenceListSummary['statusLabel']) => {
-  switch (label) {
+const bandTone = (band: PatientClinicalMetrics['adherence']['band']) => {
+  switch (band) {
     case 'excellent':
       return 'bg-emerald-50 text-emerald-700';
     case 'moderate':
@@ -43,10 +43,9 @@ const statusTone = (label: PatientAdherenceListSummary['statusLabel']) => {
 };
 
 export const HealthMonitorPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, practiceSession } = useAuth();
   const navigate = useNavigate();
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [summaries, setSummaries] = useState<Map<string, PatientAdherenceListSummary>>(new Map());
+  const [metrics, setMetrics] = useState<RosterClinicalMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -57,71 +56,37 @@ export const HealthMonitorPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const list = await getDoctorPatients(user.id);
-      setPatients(list);
-      const ids = list.map((p) => p.id);
-      const map =
-        ids.length > 0
-          ? await getDoctorPatientsAdherenceSummary(user.id, ids, 30)
-          : new Map<string, PatientAdherenceListSummary>();
-      setSummaries(map);
+      const data = await getDoctorClinicalMetrics(user.id, {
+        daysBack: 30,
+        practiceId: practiceSession?.practice?.id,
+      });
+      setMetrics(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load health monitor');
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, practiceSession?.practice?.id]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const rows = useMemo(() => {
+    if (!metrics) return [];
     const q = search.trim().toLowerCase();
-    return patients
-      .map((patient) => {
-        const summary = summaries.get(patient.id) ?? {
-          patientId: patient.id,
-          adherenceRate: 0,
-          takenCount: 0,
-          missedCount: 0,
-          pendingCount: 0,
-          statusLabel: 'no-data' as const,
-        };
-        return { patient, summary };
-      })
-      .filter(({ patient, summary }) => {
-        if (filter === 'attention' && !(summary.statusLabel === 'low' || summary.statusLabel === 'moderate')) {
-          return false;
-        }
-        if (filter === 'excellent' && summary.statusLabel !== 'excellent') return false;
+    return metrics.patients
+      .filter((p) => {
+        if (filter === 'attention' && !p.needsAttention) return false;
+        if (filter === 'excellent' && p.adherence.band !== 'excellent') return false;
         if (!q) return true;
-        return (
-          (patient.displayName || '').toLowerCase().includes(q) ||
-          (patient.email || '').toLowerCase().includes(q)
-        );
+        return p.displayName.toLowerCase().includes(q);
       })
       .sort((a, b) => {
-        const rank = (label: string) =>
-          label === 'low' ? 0 : label === 'moderate' ? 1 : label === 'excellent' ? 2 : 3;
-        return rank(a.summary.statusLabel) - rank(b.summary.statusLabel);
+        if (a.needsAttention !== b.needsAttention) return a.needsAttention ? -1 : 1;
+        return a.adherence.rate - b.adherence.rate;
       });
-  }, [patients, summaries, search, filter]);
-
-  const overview = useMemo(() => {
-    const values = Array.from(summaries.values());
-    const withData = values.filter((v) => v.statusLabel !== 'no-data');
-    const avg =
-      withData.length > 0
-        ? Math.round(withData.reduce((sum, v) => sum + v.adherenceRate, 0) / withData.length)
-        : 0;
-    return {
-      monitored: patients.length,
-      attention: values.filter((v) => v.statusLabel === 'low' || v.statusLabel === 'moderate').length,
-      excellent: values.filter((v) => v.statusLabel === 'excellent').length,
-      avg,
-    };
-  }, [patients, summaries]);
+  }, [metrics, search, filter]);
 
   if (isLoading) {
     return (
@@ -135,7 +100,7 @@ export const HealthMonitorPage: React.FC = () => {
     <PageShell>
       <PageHeader
         title="Health Monitor"
-        description="Track vitals trends and adherence signals across your roster."
+        description="Vitals, adherence, appointments, labs, symptoms, and treatment signals — plus patients needing attention."
         actions={
           <button
             type="button"
@@ -153,37 +118,41 @@ export const HealthMonitorPage: React.FC = () => {
         </div>
       )}
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {[
-          {
-            label: 'Patients monitored',
-            value: overview.monitored,
-            icon: HeartPulse,
-          },
-          {
-            label: 'Needs attention',
-            value: overview.attention,
-            icon: ExclamationTriangleIcon,
-          },
-          {
-            label: 'Avg adherence (30d)',
-            value: `${overview.avg}%`,
-            icon: Activity,
-          },
-        ].map((card) => (
-          <div key={card.label} className="rounded-[12px] border border-[#e1e7ef] bg-white p-5 shadow-sm">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-[#65758b]">{card.label}</p>
-                <p className="mt-2 text-3xl font-bold text-[#344256]">{card.value}</p>
-              </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eef4f1] text-[#427160]">
-                <card.icon className="h-5 w-5" />
+      {metrics && (
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {[
+            {
+              label: 'Patients monitored',
+              value: metrics.patientCount,
+              icon: HeartPulse,
+            },
+            {
+              label: 'Needs attention',
+              value: metrics.needingAttention,
+              icon: ExclamationTriangleIcon,
+            },
+            {
+              label: 'Avg adherence (30d)',
+              value: metrics.avgAdherence != null ? `${metrics.avgAdherence}%` : '—',
+              icon: Activity,
+            },
+          ].map((card) => (
+            <div key={card.label} className="rounded-[12px] border border-[#e1e7ef] bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-[#65758b]">
+                    {card.label}
+                  </p>
+                  <p className="mt-2 text-3xl font-bold text-[#344256]">{card.value}</p>
+                </div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eef4f1] text-[#427160]">
+                  <card.icon className="h-5 w-5" />
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full max-w-md">
@@ -196,11 +165,13 @@ export const HealthMonitorPage: React.FC = () => {
           />
         </div>
         <div className="flex gap-2">
-          {([
-            ['all', 'All'],
-            ['attention', 'Needs attention'],
-            ['excellent', 'Excellent'],
-          ] as const).map(([key, label]) => (
+          {(
+            [
+              ['all', 'All'],
+              ['attention', 'Needs attention'],
+              ['excellent', 'Excellent'],
+            ] as const
+          ).map(([key, label]) => (
             <button
               key={key}
               type="button"
@@ -217,69 +188,64 @@ export const HealthMonitorPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-[12px] border border-[#e1e7ef] bg-white shadow-sm">
-        {rows.length === 0 ? (
-          <div className="px-6 py-14 text-center">
-            <HeartIcon className="mx-auto h-10 w-10 text-[#c5ced9]" />
-            <p className="mt-3 text-sm font-medium text-[#344256]">No patients to monitor</p>
-            <p className="mt-1 text-sm text-[#65758b]">
-              Connected patients and their adherence signals will appear here.
-            </p>
-          </div>
-        ) : (
-          <ul className="divide-y divide-[#eef2f6]">
-            {rows.map(({ patient, summary }) => (
-              <li
-                key={patient.id}
-                className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+      <div className="space-y-3">
+        {rows.map((p) => (
+          <div
+            key={p.patientId}
+            className="flex flex-col gap-3 rounded-[12px] border border-[#e1e7ef] bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold text-[#344256]">{p.displayName}</p>
+                {p.needsAttention && (
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                    Attention
+                  </span>
+                )}
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold capitalize ${bandTone(p.adherence.band)}`}
+                >
+                  {p.adherence.band === 'no-data' ? 'No data' : p.adherence.band}
+                </span>
+                <VitalSeverityBadge severity={p.vitals.worst} />
+              </div>
+              <p className="mt-1 text-sm text-[#65758b]">
+                Adherence {p.adherence.rate}% · Vitals {p.vitals.readings} · Appts{' '}
+                {p.appointments.total} · Labs {p.labs.documentCount} · Symptoms{' '}
+                {p.symptoms.checkIns} · Treatments {p.treatment.activeTreatments}
+              </p>
+              {p.attentionReasons.length > 0 && (
+                <p className="mt-1 text-xs text-amber-800">
+                  {p.attentionReasons.map(attentionReasonLabel).join(' · ')}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => navigate(`/patient-profile/${p.patientId}/vitals-history`)}
+                className="inline-flex h-9 items-center rounded-[10px] border border-[#e1e7ef] px-3 text-sm font-medium text-[#344256] hover:border-[#427160]/40 hover:text-[#427160]"
               >
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef4f1] text-sm font-semibold text-[#427160]">
-                    {(patient.displayName || patient.email || '?')
-                      .split(' ')
-                      .map((p) => p[0])
-                      .join('')
-                      .slice(0, 2)
-                      .toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate font-medium text-[#344256]">
-                        {patient.displayName || 'Unnamed patient'}
-                      </p>
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold capitalize ${statusTone(summary.statusLabel)}`}
-                      >
-                        {summary.statusLabel === 'no-data' ? 'No data' : summary.statusLabel}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-sm text-[#65758b]">
-                      {summary.adherenceRate}% adherence · {summary.takenCount} taken ·{' '}
-                      {summary.missedCount} missed · {summary.pendingCount} pending
-                    </p>
-                  </div>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/patient-profile/${patient.id}/adherence-calendar`)}
-                    className="inline-flex h-9 items-center rounded-[10px] border border-[#e1e7ef] px-3 text-sm font-medium text-[#344256] hover:border-[#427160]/40 hover:text-[#427160]"
-                  >
-                    Adherence
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/patient-profile/${patient.id}`)}
-                    className="inline-flex h-9 items-center rounded-[10px] bg-[#427160] px-3 text-sm font-medium text-white hover:bg-[#365c4f]"
-                  >
-                    Profile
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+                Vitals
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(`/patient-profile/${p.patientId}`)}
+                className="inline-flex h-9 items-center rounded-[10px] bg-[#427160] px-3 text-sm font-medium text-white hover:bg-[#365c4f]"
+              >
+                Open
+              </button>
+            </div>
+          </div>
+        ))}
+        {rows.length === 0 && (
+          <div className="rounded-[12px] border border-dashed border-[#e1e7ef] bg-white p-8 text-center text-sm text-[#65758b]">
+            No patients match this filter.
+          </div>
         )}
       </div>
     </PageShell>
   );
 };
+
+export default HealthMonitorPage;

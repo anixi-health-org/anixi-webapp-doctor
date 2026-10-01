@@ -30,7 +30,13 @@ export const CONSULT_TYPE_CATALOG: Record<
   },
   teleconsult: {
     name: 'Video consultation',
-    description: 'Remote consultation',
+    description: 'Remote consultation via web browser',
+    durationMinutes: 20,
+    bufferMinutes: 5,
+  },
+  whatsapp: {
+    name: 'WhatsApp video',
+    description: 'Remote consultation via WhatsApp',
     durationMinutes: 20,
     bufferMinutes: 5,
   },

@@ -49,6 +49,8 @@ import ClinicAdminQueuePage from './pages/clinic/ClinicAdminQueuePage';
 import ClinicAdminRoomsPage from './pages/clinic/ClinicAdminRoomsPage';
 import ClinicAdminReportsPage from './pages/clinic/ClinicAdminReportsPage';
 import ClinicAdminAuditLogPage from './pages/clinic/ClinicAdminAuditLogPage';
+import ContentLibraryPage from './pages/ContentLibraryPage';
+import { ContentPermissionRoute } from './components/ContentPermissionRoute';
 import EmployerDashboardPage from './pages/employer/EmployerDashboardPage';
 import { EmployerRoute } from './components/EmployerRoute';
 import {
@@ -141,6 +143,22 @@ function App() {
             <Route path="rooms" element={<ClinicAdminRoomsPage />} />
             <Route path="reports" element={<ClinicAdminReportsPage />} />
             <Route path="audit" element={<ClinicAdminAuditLogPage />} />
+            <Route
+              path="content"
+              element={
+                <ContentPermissionRoute>
+                  <ContentLibraryPage />
+                </ContentPermissionRoute>
+              }
+            />
+            <Route
+              path="share"
+              element={
+                <ContentPermissionRoute>
+                  <ShareAnixi />
+                </ContentPermissionRoute>
+              }
+            />
             <Route path="appointments" element={<Navigate to="/clinic/schedule" replace />} />
             <Route path="calendar" element={<Navigate to="/clinic/schedule" replace />} />
             <Route path="settings" element={<ClinicAdminSettingsPage />} />
@@ -217,6 +235,14 @@ function App() {
                     <Route path="/professional-profile" element={<ProfessionalProfile />} />
                     <Route path="/practice-settings" element={<PracticeSettingsPage />} />
                     <Route path="/practice-calendar" element={<PracticeCalendarPage />} />
+                    <Route
+                      path="/content"
+                      element={
+                        <ContentPermissionRoute>
+                          <ContentLibraryPage />
+                        </ContentPermissionRoute>
+                      }
+                    />
                     <Route path="/share-anixi" element={<ShareAnixi />} />
                     <Route path="/change-password" element={<ChangePassword />} />
                     <Route path="/support" element={<Support />} />

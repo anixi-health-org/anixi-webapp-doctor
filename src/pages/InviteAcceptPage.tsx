@@ -18,16 +18,20 @@ import JoinInviteLandingPage from './JoinInviteLandingPage';
 
 const doctorAuthRoles: PracticeRole[] = [
   'owner',
+  'administrator',
   'doctor',
+  'clinical_associate',
   'nurse',
   'allied_health',
   'locum',
   'practice_manager',
 ];
 const clinicAdminRoles: PracticeRole[] = [
+  'administrator',
   'practice_manager',
   'receptionist',
   'billing_clerk',
+  'content_creator',
 ];
 
 export const InviteAcceptPage: React.FC = () => {
@@ -107,7 +111,10 @@ export const InviteAcceptPage: React.FC = () => {
     const acceptedRole = role || invite?.role;
 
     if (acceptedRole && clinicAdminRoles.includes(acceptedRole)) {
-      navigate(clinicAdminHomePath(), { replace: true });
+      navigate(
+        acceptedRole === 'content_creator' ? '/clinic/content' : clinicAdminHomePath(),
+        { replace: true }
+      );
       return;
     }
 

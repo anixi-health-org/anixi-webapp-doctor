@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  Activity,
   Building2,
   CalendarClock,
   CalendarOff,
   ClipboardList,
   MapPin,
+  Pill,
   Shield,
   Users,
   Video,
+  Clock,
 } from 'lucide-react';
 import { useAuth } from '../hooks/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
@@ -20,7 +23,10 @@ import { BookingPoliciesForm } from '../components/practice/BookingPoliciesForm'
 import { PracticePermissionsPanel } from '../components/practice/PracticePermissionsPanel';
 import { PracticeMembersPanel } from '../components/practice/PracticeMembersPanel';
 import { PracticeLogoUploader } from '../components/practice/PracticeLogoUploader';
+import { EventLogPanel } from '../components/practice/EventLogPanel';
 import { LetterheadSetupBanner } from '../components/invoices/LetterheadSetupBanner';
+import { VitalRulesEditor } from '../components/vitals/VitalRulesEditor';
+import { AdherenceRulesEditor } from '../components/adherence/AdherenceRulesEditor';
 import { Toast, SettingsPageSkeleton, CardSkeleton } from '../components/ui';
 import { PageShell } from '../components/page-layout';
 import { updatePractice, provisionPracticeForDoctor } from '../services/practiceSettingsService';
@@ -31,15 +37,27 @@ import {
 } from '../lib/consultTypeSettings';
 import type { ConsultType, Doctor, PracticeLocation } from '../types';
 
-type Tab = 'overview' | 'availability' | 'soft-blocks' | 'policies' | 'permissions' | 'team';
+type Tab =
+  | 'overview'
+  | 'availability'
+  | 'soft-blocks'
+  | 'policies'
+  | 'vitals'
+  | 'adherence'
+  | 'permissions'
+  | 'team'
+  | 'event-log';
 
 const TAB_CONFIG: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', icon: Building2 },
   { id: 'availability', label: 'Availability', icon: CalendarClock },
   { id: 'soft-blocks', label: 'Blocked Time', icon: CalendarOff },
   { id: 'policies', label: 'Booking Rules', icon: ClipboardList },
+  { id: 'vitals', label: 'Vital Alerts', icon: Activity },
+  { id: 'adherence', label: 'Adherence', icon: Pill },
   { id: 'team', label: 'Team', icon: Users },
   { id: 'permissions', label: 'Delegates', icon: Shield },
+  { id: 'event-log', label: 'Event Log', icon: Clock },
 ];
 
 const isValidTab = (value: string | null): value is Tab =>
@@ -68,7 +86,13 @@ const PracticeSettingsPage: React.FC = () => {
 
   const visibleTabs = useMemo(() => {
     if (isClinicEmployedClinician) {
-      return TAB_CONFIG.filter((tab) => tab.id === 'availability' || tab.id === 'policies');
+      return TAB_CONFIG.filter(
+        (tab) =>
+          tab.id === 'availability' ||
+          tab.id === 'policies' ||
+          tab.id === 'vitals' ||
+          tab.id === 'adherence'
+      );
     }
     return TAB_CONFIG;
   }, [isClinicEmployedClinician]);
@@ -593,6 +617,24 @@ const PracticeSettingsPage: React.FC = () => {
             </div>
           )}
 
+          {activeTab === 'vitals' && (
+            <VitalRulesEditor
+              canEdit={
+                !isClinicEmployedClinician &&
+                (isOwner || can('editBookingPolicies') || can('manageMembers'))
+              }
+            />
+          )}
+
+          {activeTab === 'adherence' && (
+            <AdherenceRulesEditor
+              canEdit={
+                !isClinicEmployedClinician &&
+                (isOwner || can('editBookingPolicies') || can('manageMembers'))
+              }
+            />
+          )}
+
           {activeTab === 'team' && (
             <div className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
               <PracticeMembersPanel />
@@ -606,6 +648,18 @@ const PracticeSettingsPage: React.FC = () => {
                 doctorName={user?.displayName ?? practice.name}
                 isOwner={isOwner}
               />
+            </div>
+          )}
+
+          {activeTab === 'event-log' && (
+            <div className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
+              <div className="mb-4">
+                <h2 className="text-base font-semibold text-[#0E2340]">Event Log</h2>
+                <p className="mt-1 text-[13px] text-[#65758b]">
+                  Track all user and Ayah actions, patient/organization changes, and outcomes.
+                </p>
+              </div>
+              <EventLogPanel organizationId={practice.id} />
             </div>
           )}
         </>

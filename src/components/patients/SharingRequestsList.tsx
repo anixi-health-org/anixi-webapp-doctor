@@ -37,6 +37,9 @@ export const SharingRequestsList: React.FC<SharingRequestsListProps> = ({
   const [rejectTarget, setRejectTarget] = useState<{ patientId: string; requestId: string } | null>(
     null
   );
+  const [acceptTarget, setAcceptTarget] = useState<{ patientId: string; requestId: string } | null>(
+    null
+  );
 
   const pendingRequests = useMemo(
     () => requests.filter((req) => req.status === 'pending'),
@@ -144,7 +147,7 @@ export const SharingRequestsList: React.FC<SharingRequestsListProps> = ({
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => handleAccept(request.patientId, request.id)}
+                onClick={() => setAcceptTarget({ patientId: request.patientId, requestId: request.id })}
                 disabled={isProcessing}
                 className="flex flex-1 items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -168,6 +171,52 @@ export const SharingRequestsList: React.FC<SharingRequestsListProps> = ({
           </article>
         );
       })}
+
+      {acceptTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground">Accept data sharing request?</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              You are about to grant access to patient data. By accepting this request, you confirm:
+            </p>
+            <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <span className="text-primary">•</span>
+                <span>You have the patient's consent to share this data</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-primary">•</span>
+                <span>The data sharing complies with POPIA requirements</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-primary">•</span>
+                <span>You are authorised to share this information</span>
+              </li>
+            </ul>
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setAcceptTarget(null)}
+                disabled={loadingId === acceptTarget.requestId}
+                className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await handleAccept(acceptTarget.patientId, acceptTarget.requestId);
+                  setAcceptTarget(null);
+                }}
+                disabled={loadingId === acceptTarget.requestId}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+              >
+                Accept & Share Data
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {rejectTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
