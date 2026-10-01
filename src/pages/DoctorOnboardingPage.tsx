@@ -27,9 +27,12 @@ export const DoctorOnboardingPage: React.FC = () => {
   useEffect(() => {
     if (!doctor) return;
     if (isClinicOwner(practiceSession)) {
-      navigate(clinicOnboardingComplete ? clinicAdminHomePath() : '/clinic-setup', {
-        replace: true,
-      });
+      navigate(
+        clinicOnboardingComplete ? clinicAdminHomePath(practiceSession) : '/clinic-setup',
+        {
+          replace: true,
+        }
+      );
       return;
     }
     const state = getDoctorAccessState(doctor);

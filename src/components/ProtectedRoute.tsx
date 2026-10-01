@@ -64,7 +64,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
       if (isClinicAdminPath || path === CLINIC_SETUP_PATH) {
         return <>{children}</>;
       }
-      return <Navigate to={clinicAdminHomePath()} replace />;
+      return <Navigate to={clinicAdminHomePath(practiceSession)} replace />;
     }
     return <Navigate to="/invites/pending" replace />;
   }
@@ -98,14 +98,14 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     }
 
     if (path === ONBOARDING_PATH || path === REVIEW_PATH) {
-      return <Navigate to={clinicAdminHomePath()} replace />;
+      return <Navigate to={clinicAdminHomePath(practiceSession)} replace />;
     }
 
     if (isClinicAdminPath || path === CLINIC_SETUP_PATH) {
       return <>{children}</>;
     }
 
-    return <Navigate to={clinicAdminHomePath()} replace />;
+    return <Navigate to={clinicAdminHomePath(practiceSession)} replace />;
   }
 
   if (workspaceSwitcher && (clinicOwner || clinicAdmin)) {

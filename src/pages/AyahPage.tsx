@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AyahCommandBoard } from '../components/ayah/AyahCommandBoard';
 import { AyahWorkspace, type AyahFileUpload } from '../components/ayah/AyahWorkspace';
@@ -59,6 +60,8 @@ export const AyahPage: React.FC = () => {
   const [streaming, setStreaming] = useState(false);
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   const [pendingDrafts, setPendingDrafts] = useState<DoctorAgentDraft[]>([]);
+  const [showAIDisclaimer, setShowAIDisclaimer] = useState(false);
+  const [aiDisclaimerAccepted, setAIDisclaimerAccepted] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastFileUploadRef = useRef<AyahFileUpload | null>(null);
@@ -148,6 +151,21 @@ export const AyahPage: React.FC = () => {
     void loadDrafts();
   }, [loadDrafts]);
 
+  useEffect(() => {
+    const hasAccepted = localStorage.getItem('ayah_ai_disclaimer_accepted');
+    if (hasAccepted) {
+      setAIDisclaimerAccepted(true);
+    } else {
+      setShowAIDisclaimer(true);
+    }
+  }, []);
+
+  const handleAcceptAIDisclaimer = () => {
+    localStorage.setItem('ayah_ai_disclaimer_accepted', 'true');
+    setAIDisclaimerAccepted(true);
+    setShowAIDisclaimer(false);
+  };
+
   useEffect(scrollToBottom, [messages, streaming]);
 
   const sendMessage = useCallback(
@@ -157,6 +175,11 @@ export const AyahPage: React.FC = () => {
     ) => {
       const trimmed = text.trim();
       if (!trimmed || streaming || !user) return;
+
+      if (!aiDisclaimerAccepted) {
+        setShowAIDisclaimer(true);
+        return;
+      }
 
       const nextContext = options?.context ?? contextRef.current;
       let chart =
@@ -510,23 +533,84 @@ export const AyahPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f7f6f3] lg:flex-row">
-      <div className="hidden h-full lg:flex">
-        <AyahCommandBoard
-          greeting={greeting}
-          firstName={firstName}
-          snapshot={snapshot}
-          pendingDrafts={pendingDrafts}
-          briefingLoading={briefingLoading}
-          onPrepareNext={onPrepareNext}
-          onAttention={onAttention}
-          onAskPanel={() => {
-            const panel = PRACTICE_COMMANDS.find((command) => command.id === 'panel');
-            if (panel) runCommand(panel);
-          }}
-          onResolveDraft={(draft, decision) => void onResolveDraft(draft, decision)}
-        />
-      </div>
+    <div className="flex h-screen flex-col bg-[#f8faf8]">
+      {showAIDisclaimer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="rounded-full bg-amber-100 p-2">
+                <AlertCircle className="h-6 w-6 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900">AI Companion Disclaimer</h3>
+                <button
+                  onClick={() => setShowAIDisclaimer(false)}
+                  className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div className="mb-6 space-y-3 text-sm text-gray-600">
+              <p>
+                <strong>Ayah</strong> is an AI clinical assistant designed to help with administrative
+                tasks, documentation, and clinical support.
+              </p>
+              <ul className="list-disc space-y-2 pl-5">
+                <li>
+                  Ayah provides suggestions and assistance but does not replace professional
+                  medical judgment
+                </li>
+                <li>
+                  Always verify AI-generated information before making clinical decisions
+                </li>
+                <li>
+                  Do not enter sensitive patient information you are not authorised to process
+                </li>
+                <li>
+                  AI interactions may be logged for quality improvement and safety monitoring
+                </li>
+                <li>
+                  Some features may use third-party AI providers under our instructions
+                </li>
+              </ul>
+              <p className="text-xs text-gray-500">
+                By using Ayah, you acknowledge these limitations and agree to use it responsibly
+                in accordance with POPIA and professional standards.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handleAcceptAIDisclaimer}
+                className="flex-1 rounded-lg bg-anixi-green px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              >
+                I Understand and Accept
+              </button>
+              <button
+                onClick={() => setShowAIDisclaimer(false)}
+                className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <AyahCommandBoard
+        greeting={greeting}
+        firstName={firstName}
+        snapshot={snapshot}
+        pendingDrafts={pendingDrafts}
+        briefingLoading={briefingLoading}
+        onPrepareNext={onPrepareNext}
+        onAttention={onAttention}
+        onAskPanel={() => {
+          const panel = PRACTICE_COMMANDS.find((command) => command.id === 'panel');
+          if (panel) runCommand(panel);
+        }}
+        onResolveDraft={(draft, decision) => void onResolveDraft(draft, decision)}
+      />
 
       <div className="border-b border-[#e1e7ef] bg-white px-4 py-3 lg:hidden">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#65758b]">

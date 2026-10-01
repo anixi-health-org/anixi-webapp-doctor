@@ -5,11 +5,13 @@ import {
   ChevronDownIcon,
   Cog6ToothIcon,
   LockClosedIcon,
+  RectangleStackIcon,
   ShareIcon,
   TrashIcon,
   UserCircleIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../hooks/useAuth';
+import { usePermissions } from '../../hooks/usePermissions';
 import { usesClinicAdminPortal } from '../../lib/doctorAccess';
 import { clinicianDisplayName, clinicianHeaderLabel } from '../../lib/clinicianName';
 
@@ -27,6 +29,7 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
   displayLabel,
 }) => {
   const { user, logout, practiceSession, joinIntent } = useAuth();
+  const { canManageContent } = usePermissions();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -125,6 +128,15 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
         ]
       : isClinicAdmin
       ? [
+          ...(canManageContent
+            ? [
+                {
+                  label: 'Content library',
+                  icon: RectangleStackIcon,
+                  onClick: () => handleNavigate('/clinic/content'),
+                },
+              ]
+            : []),
           {
             label: 'Clinic settings',
             icon: Cog6ToothIcon,

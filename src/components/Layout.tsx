@@ -10,6 +10,7 @@ import {
   HeartIcon,
   HomeIcon,
   QuestionMarkCircleIcon,
+  RectangleStackIcon,
   SparklesIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
@@ -20,6 +21,7 @@ import React from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { usePermissions } from '../hooks/usePermissions';
+import { setAdherenceRulesPracticeContext } from '../services/adherenceRulesService';
 import { useIncomingRecordShares } from '../hooks/useIncomingRecordShares';
 import { useIncomingSharingRequests } from '../hooks/useIncomingSharingRequests';
 import { usePendingAppointmentsCount } from '../hooks/usePendingAppointments';
@@ -90,8 +92,8 @@ function NavLink({
 }
 
 const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
-  const { isClinicEmployedClinician } = usePermissions();
+  const { user, practiceSession } = useAuth();
+  const { isClinicEmployedClinician, canManageContent } = usePermissions();
   const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const { requests: sharingRequests } = useIncomingSharingRequests(user?.id);
@@ -100,6 +102,10 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
   const { requests: recordShareRequests } = useIncomingRecordShares(user?.id);
   const pendingRecordShares = recordShareRequests.length;
   const [unreadMessages, setUnreadMessages] = React.useState(0);
+
+  React.useEffect(() => {
+    setAdherenceRulesPracticeContext(practiceSession?.practice?.id);
+  }, [practiceSession?.practice?.id]);
 
   React.useEffect(() => {
     if (!user?.id) {
@@ -176,6 +182,9 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
       href: '/practice-settings',
       icon: WrenchScrewdriverIcon,
     },
+    ...(canManageContent
+      ? [{ name: 'Content', href: '/content', icon: RectangleStackIcon } as NavItem]
+      : []),
   ];
 
   const supportNav: NavItem = {

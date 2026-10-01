@@ -9,6 +9,7 @@ import {
   HomeIcon,
   LifebuoyIcon,
   QueueListIcon,
+  RectangleStackIcon,
   UserGroupIcon,
   UsersIcon,
   XMarkIcon,
@@ -20,6 +21,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom';
 import { AskAnixiProvider } from '../context/AskAnixiContext';
 import { useAuth } from '../hooks/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
+import { setAdherenceRulesPracticeContext } from '../services/adherenceRulesService';
 import { AnixiLogo } from './brand/AnixiLogo';
 import { ClinicErrorBoundary } from './clinic/ClinicErrorBoundary';
 import { UserProfileMenu } from './page-layout/UserProfileMenu';
@@ -33,7 +35,8 @@ type NavItem = {
     | 'managePatients'
     | 'manageAppointments'
     | 'editBookingPolicies'
-    | 'viewBilling';
+    | 'viewBilling'
+    | 'manageContent';
 };
 
 const mainNav: NavItem[] = [
@@ -67,6 +70,12 @@ const mainNav: NavItem[] = [
     href: '/clinic/rooms',
     icon: BuildingOffice2Icon,
     requires: 'manageAppointments',
+  },
+  {
+    name: 'Content',
+    href: '/clinic/content',
+    icon: RectangleStackIcon,
+    requires: 'manageContent',
   },
   {
     name: 'Reports',
@@ -146,21 +155,26 @@ export const ClinicAdminLayout: React.FC = () => (
 
 const ClinicAdminShell: React.FC = () => {
   const { user, practiceSession } = useAuth();
-  const { can, isOwner, isPracticeManager } = usePermissions();
+  const { can, isOwner, isPracticeManager, role } = usePermissions();
   const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
 
   const visibleNav = React.useMemo(
     () =>
       mainNav.filter((item) => {
+        // Content creators only need Overview + Content (plus Support in footer).
+        if (role === 'content_creator') {
+          return item.href === '/clinic' || item.href === '/clinic/content';
+        }
         if (!item.requires) return true;
         if (isOwner || isPracticeManager) return true;
         if (item.requires === 'editBookingPolicies' && can('viewBilling')) return true;
         if (item.requires === 'manageAppointments') return can('manageAppointments');
         if (item.requires === 'viewBilling') return can('viewBilling');
+        if (item.requires === 'manageContent') return can('manageContent');
         return can(item.requires);
       }),
-    [can, isOwner, isPracticeManager]
+    [can, isOwner, isPracticeManager, role]
   );
 
   React.useEffect(() => {
@@ -177,6 +191,10 @@ const ClinicAdminShell: React.FC = () => {
   const closeMobile = () => setMobileNavOpen(false);
   const firstName = user?.displayName?.split(' ')[0] || 'Admin';
   const clinicName = practiceSession?.practice?.name || 'Your clinic';
+
+  React.useEffect(() => {
+    setAdherenceRulesPracticeContext(practiceSession?.practice?.id);
+  }, [practiceSession?.practice?.id]);
 
   const sidebarNav = (onNavigate?: () => void) => (
     <nav className="flex flex-1 flex-col overflow-hidden px-3 pb-5 pt-2">

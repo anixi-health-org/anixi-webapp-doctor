@@ -3,6 +3,7 @@ import { getDoctorPatientAdherenceSummary } from './adherenceService';
 import { getMoodEntriesForMonth, getPatientMedications, getVitalsLogs } from './logsService';
 import { getPatientUploadedFiles } from './patientDocumentService';
 import { getPatientForDoctorView } from './patientManagementService';
+import { logAyahEvent } from './centralEventLogService';
 
 export type AyahPatientChartSnapshot = {
   patientId: string;
@@ -85,6 +86,7 @@ function vitalRows(
 export async function loadAyahPatientChart(
   doctorId: string,
   patientId: string,
+  practiceId?: string,
 ): Promise<AyahPatientChartSnapshot | undefined> {
   if (!doctorId || !patientId) return undefined;
 
@@ -113,7 +115,7 @@ export async function loadAyahPatientChart(
     }))
     .filter((med) => med.name);
 
-  return {
+  const chart = {
     patientId,
     displayName: profile?.displayName || 'Patient',
     chronicConditions: profile?.chronicDiseases ?? [],
@@ -142,4 +144,33 @@ export async function loadAyahPatientChart(
     adherenceRate:
       adherence && adherence.statusLabel !== 'no-data' ? adherence.adherenceRate : null,
   };
+
+  // Log Ayah chart generation event
+  if (practiceId) {
+    try {
+      await logAyahEvent({
+        organizationId: practiceId,
+        action: 'ayah.chart_generated',
+        actorUid: doctorId,
+        actorName: 'Ayah',
+        targetId: patientId,
+        summary: `Patient chart generated for ${chart.displayName}`,
+        newValue: {
+          patientId,
+          displayName: chart.displayName,
+          medicationsCount: chart.medications.length,
+          appointmentsCount: chart.appointments.length,
+          vitalsCount: chart.vitals.length,
+          documentsCount: chart.documents.length,
+        },
+        outcome: 'success',
+        confirmation: `chart-${Date.now()}`,
+        metadata: { doctorId },
+      });
+    } catch (error) {
+      console.warn('[ayahPatientChart] Failed to log chart generation event:', error);
+    }
+  }
+
+  return chart;
 }

@@ -18,6 +18,7 @@ import {
   isDjangoApiEnabled,
   type DjangoPanelPatient,
 } from './djangoApiService';
+import { logPatientEvent } from './centralEventLogService';
 
 const patientAppUrl = () =>
   process.env.REACT_APP_PATIENT_APP_URL || 'https://anixihealth.com/activate';
@@ -313,6 +314,34 @@ export const addPatientManually = async (
           ? 'This patient could not be added. Provide an email, phone, or date of birth, or they may already belong to another clinic.'
           : 'Patient was not added to the roster.',
       );
+    }
+
+    if (payload.practiceId) {
+      try {
+        await logPatientEvent({
+          organizationId: payload.practiceId,
+          action: 'patient.created',
+          actorUid: doctorId,
+          actorName: 'Doctor',
+          patientId: created.patientId,
+          patientName: payload.displayName,
+          newValue: {
+            displayName: payload.displayName,
+            email: payload.email,
+            phoneNumber: payload.phoneNumber,
+            dateOfBirth:
+              payload.dateOfBirth instanceof Date
+                ? payload.dateOfBirth.toISOString()
+                : payload.dateOfBirth,
+            notes: payload.notes,
+          },
+          outcome: 'success',
+          confirmation: created.patientId,
+          metadata: { inviteQueued: Boolean(inviteOptions?.sendInvite && targetEmail) },
+        });
+      } catch (error) {
+        console.warn('[patientManagementService] Failed to log patient creation event:', error);
+      }
     }
 
     let inviteQueued = false;

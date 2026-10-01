@@ -21,22 +21,26 @@ export const usePermissions = () => {
   });
   const canManageOps = canManageOperationalSettings(practiceSession);
   const isOwner = role === 'owner';
+  const isAdministrator = role === 'administrator' || isOwner;
 
   return {
     role,
     permissions,
     orgType,
     isOwner,
-    isPracticeManager: role === 'practice_manager' || role === 'owner',
+    isAdministrator,
+    isPracticeManager:
+      role === 'practice_manager' || role === 'administrator' || isOwner,
     isDelegate: role === 'delegate',
     isClinician: Boolean(practiceSession?.member?.isClinician),
     isClinic: orgType === 'clinic',
     isClinicEmployedClinician: clinicEmployed,
     canManageOperationalSettings: canManageOps,
     can: (permission: keyof PracticePermissions): boolean => {
-      if (isOwner) return true;
+      if (isOwner || role === 'administrator') return true;
       return Boolean(permissions[permission]);
     },
-    canManageMembers: Boolean(permissions.manageMembers) || isOwner,
+    canManageMembers: Boolean(permissions.manageMembers) || isOwner || role === 'administrator',
+    canManageContent: Boolean(permissions.manageContent) || isOwner || role === 'administrator',
   };
 };
