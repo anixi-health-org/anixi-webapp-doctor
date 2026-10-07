@@ -368,7 +368,7 @@ export default function ClinicAyahPage() {
         abortRef.current = null;
       }
     },
-    [streaming, user, aiDisclaimerAccepted, appendLocalExchange],
+    [streaming, user, aiDisclaimerAccepted, practiceTimezone],
   );
 
   const runCommand = useCallback(

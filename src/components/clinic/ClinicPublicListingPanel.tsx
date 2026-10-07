@@ -46,12 +46,9 @@ export const ClinicPublicListingPanel: React.FC<Props> = ({
   const [draft, setDraft] = useState<ListingDraft>(() => draftFromPractice(practice));
   const [saving, setSaving] = useState(false);
 
-  const schemeCount = practice.acceptedSchemes?.length ?? 0;
-  const acceptsMedicalAid = practice.publicListing?.acceptsMedicalAid === true;
-
   useEffect(() => {
     setDraft(draftFromPractice(practice));
-  }, [practice.id, practice.publicListing]);
+  }, [practice]);
 
   const handleSave = async () => {
     if (!canEdit) return;
