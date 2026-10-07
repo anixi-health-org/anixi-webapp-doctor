@@ -2,6 +2,7 @@ import { Appointment, AppointmentDocument, PostConsultAction, PostConsultActionT
 import { convertTimestamp } from '../utils/dateFormatter';
 import {
   djangoBookAppointment,
+  djangoAttachAppointmentDocument,
   djangoListAppointments,
   djangoPatchAppointment,
   djangoResolveMediaUrl,
@@ -16,6 +17,7 @@ import {
   resolveScheduledAt,
 } from './appointmentCanonical';
 import { calendarDateKeyInTimeZone } from '../lib/timezones';
+import { logAppointmentEvent } from './centralEventLogService';
 
 export type Unsubscribe = () => void;
 
@@ -422,6 +424,35 @@ export const createAppointment = async (
       practiceId: data.practiceId,
     });
 
+    // Log appointment creation event
+    if (data.practiceId) {
+      try {
+        await logAppointmentEvent({
+          organizationId: data.practiceId,
+          action: 'appointment.created',
+          actorUid: data.doctorId,
+          actorName: 'Doctor',
+          appointmentId: booked.appointmentId,
+          patientId: data.patientId || 'unknown',
+          patientName: data.patientName,
+          newValue: {
+            type: data.type,
+            date: data.date.toISOString(),
+            time: data.time,
+            consultType: data.consultType,
+            locationId: data.locationId,
+            durationMinutes,
+            status: data.status,
+          },
+          outcome: 'success',
+          confirmation: booked.appointmentId,
+          metadata: { requestedByRole: data.requestedByRole },
+        });
+      } catch (error) {
+        console.warn('[appointmentService] Failed to log appointment creation event:', error);
+      }
+    }
+
     return booked.appointmentId;
   } catch (error) {
     throw error;
@@ -452,8 +483,53 @@ export const updateAppointment = async (
   if (updates.endAt) {
     patch.endAt = updates.endAt instanceof Date ? updates.endAt.toISOString() : updates.endAt;
   }
+
+  // Get current appointment for old value tracking
+  let currentAppointment: Appointment | null = null;
+  if (Object.keys(patch).length > 0) {
+    try {
+      currentAppointment = await getAppointmentById(doctorId, appointmentId);
+    } catch (error) {
+      console.warn('[appointmentService] Failed to fetch current appointment for logging:', error);
+    }
+  }
+
   if (Object.keys(patch).length > 0) {
     await djangoPatchAppointment(appointmentId, patch);
+
+    // Log appointment update event
+    if (currentAppointment && currentAppointment.practiceId) {
+      try {
+        const actionType = updates.status === 'cancelled' ? 'appointment.cancelled' :
+                          updates.status === 'completed' ? 'appointment.completed' :
+                          'appointment.updated';
+        
+        await logAppointmentEvent({
+          organizationId: currentAppointment.practiceId,
+          action: actionType,
+          actorUid: doctorId,
+          actorName: 'Doctor',
+          appointmentId,
+          patientId: currentAppointment.patientId,
+          patientName: currentAppointment.patientName,
+          oldValue: {
+            status: currentAppointment.status,
+            notes: currentAppointment.notes,
+            type: currentAppointment.type,
+          },
+          newValue: {
+            status: updates.status,
+            notes: updates.notes,
+            type: updates.type,
+          },
+          outcome: 'success',
+          confirmation: appointmentId,
+          metadata: { updatedFields: Object.keys(patch) },
+        });
+      } catch (error) {
+        console.warn('[appointmentService] Failed to log appointment update event:', error);
+      }
+    }
   }
 };
 
@@ -560,11 +636,17 @@ export const addAppointmentDocument = async (
     }
 
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const documentId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const uploaded = await djangoUploadDocument(file, 'appointment-document', safeName);
+    const saved = await djangoAttachAppointmentDocument(appointmentId, {
+      storageKey: uploaded.storageKey,
+      title: title?.trim() || file.name,
+      fileName: file.name,
+      mimeType: uploaded.mimeType || file.type,
+      fileSize: uploaded.sizeBytes || file.size,
+    });
 
     const document: AppointmentDocument = {
-      id: documentId,
+      id: String(saved.id),
       title: title?.trim() || undefined,
       fileName: file.name,
       fileType: uploaded.mimeType || file.type,
@@ -574,11 +656,6 @@ export const addAppointmentDocument = async (
       createdAt: new Date(),
       createdBy,
     };
-
-    console.warn(
-      '[appointmentService] Uploaded appointment document; persisting document lists on appointments is not yet supported by Django API',
-      { doctorId, appointmentId, storageKey: uploaded.storageKey }
-    );
 
     return document;
   } catch (error) {

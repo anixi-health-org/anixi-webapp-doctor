@@ -22,7 +22,9 @@ import {
   getPatientWearableSummary,
   type PatientWearableSummary,
 } from '../services/wearableService';
+import { PatientClinicalMetricsPanel } from '../components/metrics/ClinicalMetricsPanels';
 import { usePatientMedicalVaultAccess } from '../hooks/usePatientMedicalVaultAccess';
+import { getPatientClinicalMetrics, type PatientClinicalMetrics } from '../services/clinicalMetricsService';
 
 export const PatientProfile: React.FC = () => {
   const navigate = useNavigate();
@@ -54,6 +56,7 @@ export const PatientProfile: React.FC = () => {
   const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [wearableSummary, setWearableSummary] = useState<PatientWearableSummary | null>(null);
+  const [clinicalMetrics, setClinicalMetrics] = useState<PatientClinicalMetrics | null>(null);
 
   const logActivity = (
     actionType: string,
@@ -93,7 +96,7 @@ export const PatientProfile: React.FC = () => {
           patientEmail: contextState.patientEmail,
         });
         if (!foundPatient) {
-          setError('Patient not found');
+          setError('Patient not found or you do not have access to this record.');
           return;
         }
         setPatient(foundPatient);
@@ -184,6 +187,29 @@ export const PatientProfile: React.FC = () => {
     user?.id
   );
   const { canAccess: canViewMedicalVault } = usePatientMedicalVaultAccess(patient);
+
+  useEffect(() => {
+    if (!patient) {
+      setClinicalMetrics(null);
+      return;
+    }
+    let cancelled = false;
+    void getPatientClinicalMetrics(patient, {
+      daysBack: 30,
+      appointments: patientAppointments,
+      practiceId: practiceSession?.practice?.id,
+      includeLabsAndSymptoms: true,
+    })
+      .then((m) => {
+        if (!cancelled) setClinicalMetrics(m);
+      })
+      .catch(() => {
+        if (!cancelled) setClinicalMetrics(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [patient, patientAppointments, practiceSession?.practice?.id]);
 
   const appointmentStats = useMemo(() => {
     const today = new Date();
@@ -317,6 +343,15 @@ export const PatientProfile: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {clinicalMetrics && (
+          <div className="mb-6 rounded-xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
+            <h3 className="mb-3 text-sm font-semibold text-[#0E2340]">
+              Clinical metrics (30d)
+            </h3>
+            <PatientClinicalMetricsPanel metrics={clinicalMetrics} />
+          </div>
+        )}
 
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
           {(

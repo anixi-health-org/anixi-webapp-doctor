@@ -2,22 +2,33 @@
 
 /**
  * Practice membership roles for multi-doctor clinics.
- * - owner: practice/clinic owner (billing + full control)
- * - practice_manager: day-to-day clinic admin
- * - doctor: clinician in the practice
+ *
+ * Core product roles:
+ * - administrator: clinic/practice operations admin
+ * - practice_manager: day-to-day clinic operations
+ * - doctor: clinician
+ * - clinical_associate: clinical support (mid-level)
  * - receptionist: booking & front-desk
- * - billing_clerk: invoices & claims prep
- * - delegate: legacy scheduling staff (kept for backward compatibility)
+ * - content_creator: educational / content tooling
+ *
+ * System / legacy:
+ * - owner: practice owner (full control; product label often “Administrator”)
+ * - nurse, allied_health, locum, billing_clerk, delegate: kept for compatibility
+ *
+ * Patient is an account role (patient app), not a practice membership role.
  */
 export type PracticeRole =
     | 'owner'
+    | 'administrator'
     | 'practice_manager'
     | 'doctor'
+    | 'clinical_associate'
     | 'nurse'
     | 'allied_health'
     | 'locum'
     | 'receptionist'
     | 'billing_clerk'
+    | 'content_creator'
     | 'delegate';
 
 export interface PracticePermissions {
@@ -33,6 +44,8 @@ export interface PracticePermissions {
     viewAllDoctors: boolean;
     /** View practice revenue / invoice summaries */
     viewBilling: boolean;
+    /** Create/edit patient education and practice content */
+    manageContent: boolean;
 }
 
 export interface PracticeMember {
@@ -79,6 +92,7 @@ export type ConsultType =
     | 'urgent'
     | 'procedure'
     | 'teleconsult'
+    | 'whatsapp'
     | 'other';
 
 /**
@@ -120,8 +134,29 @@ export interface Practice {
     consultTypeSettings?: ConsultTypeSetting[];
     /** Patient-facing clinic listing (marketplace / browse) */
     publicListing?: PublicClinicListingSettings;
+    acceptedSchemes?: MedicalSchemeCatalogItem[];
+    acceptedPlans?: MedicalSchemePlanCatalogItem[];
+    configureAcceptedSchemes?: boolean;
+    /** Optional vital alert rules (client may also store overrides locally). */
+    vitalMetricRules?: import('../lib/vitalMetricRules').VitalMetricRulesConfig;
     createdAt: Date;
     updatedAt: Date;
+}
+
+export interface MedicalSchemeCatalogItem {
+    id: string;
+    slug: string;
+    name: string;
+    shortName: string;
+    category: string;
+}
+
+export interface MedicalSchemePlanCatalogItem {
+    id: string;
+    slug: string;
+    name: string;
+    schemeSlug: string;
+    schemeName: string;
 }
 
 export interface PublicClinicListingSettings {
@@ -146,6 +181,7 @@ export interface PublicClinicListing {
     province?: string;
     services?: string[];
     acceptsMedicalAid?: boolean;
+    acceptedSchemes?: MedicalSchemeCatalogItem[];
     heroImageUrl?: string;
     logoUrl?: string;
     bhfPracticeNumber?: string;
@@ -171,6 +207,74 @@ export interface ClinicAuditLogEntry {
     targetType?: string;
     targetId?: string;
     summary: string;
+    metadata?: Record<string, unknown>;
+    createdAt: Date;
+}
+
+/** Central event log action types for user and Ayah actions */
+export type CentralEventAction =
+    | 'patient.created'
+    | 'patient.updated'
+    | 'patient.deleted'
+    | 'patient.assigned'
+    | 'patient.unassigned'
+    | 'appointment.created'
+    | 'appointment.updated'
+    | 'appointment.cancelled'
+    | 'appointment.completed'
+    | 'appointment.rescheduled'
+    | 'appointment.confirmed'
+    | 'medication.prescribed'
+    | 'medication.updated'
+    | 'diagnosis.added'
+    | 'vitals.recorded'
+    | 'document.uploaded'
+    | 'document.deleted'
+    | 'message.sent'
+    | 'ayah.suggestion_applied'
+    | 'ayah.suggestion_rejected'
+    | 'ayah.chart_generated'
+    | 'ayah.summary_created'
+    | 'ayah.command_executed'
+    | 'practice.created'
+    | 'practice.updated'
+    | 'member.invited'
+    | 'member.role_changed'
+    | 'member.removed'
+    | 'settings.updated'
+    | 'invoice.created'
+    | 'invoice.paid'
+    | 'claim.submitted'
+    | 'data.exported'
+    | 'data.imported';
+
+export type CentralEventActorType = 'user' | 'ayah' | 'system';
+
+export interface CentralEventLogEntry {
+    id: string;
+    /** Practice or organization ID */
+    organizationId: string;
+    /** Event action type */
+    action: CentralEventAction;
+    /** Who/what performed the action */
+    actorType: CentralEventActorType;
+    actorUid?: string;
+    actorName?: string;
+    /** Type of entity affected */
+    targetType: 'patient' | 'appointment' | 'practice' | 'member' | 'invoice' | 'claim' | 'document' | 'ayah' | 'other';
+    /** ID of entity affected */
+    targetId?: string;
+    /** Human-readable summary */
+    summary: string;
+    /** Old value before change (for updates) */
+    oldValue?: Record<string, unknown> | string | number | boolean | null;
+    /** New value after change (for updates) */
+    newValue?: Record<string, unknown> | string | number | boolean | null;
+    /** Outcome of the action */
+    outcome: 'success' | 'failed' | 'pending' | 'cancelled';
+    /** Confirmation message or ID */
+    confirmation?: string;
+    /** Additional context */
     metadata?: Record<string, unknown>;
     createdAt: Date;
 }
@@ -472,6 +576,8 @@ export interface Patient extends User {
     rosterStatus?: string;
     /** Code for patient to activate a pre-created clinic account in the app */
     activationCode?: string;
+    /** Name as printed on UniCharts PDF (surname first) */
+    unichartChartName?: string;
     /** From patient medical profile (mobile app), read-only for doctors */
     bloodGroup?: string;
     /** From patient medical profile (mobile app), read-only for doctors */
@@ -520,6 +626,8 @@ export interface VitalsLog {
     };
     temperature?: number;
     bloodSugar?: number;
+    /** Oxygen saturation (%) */
+    spo2?: number;
     notes?: string;
     timestamp: Date;
 }
@@ -588,6 +696,7 @@ export interface Appointment {
     patientId: string;
     patientName: string;
     patientEmail: string;
+    patientPhoneNumber?: string;
     type: 'In-Person' | 'Virtual' | 'Phone' | 'Follow-up';
     status: 'confirmed' | 'pending' | 'rescheduled' | 'completed' | 'cancelled' | 'no_show' | 'auto_cancelled';
     date: Date;

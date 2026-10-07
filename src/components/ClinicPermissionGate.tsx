@@ -5,15 +5,22 @@ import { PageShell } from './page-layout';
 
 type ClinicPermissionGateProps = {
   requires: keyof PracticePermissions;
+  /** Active clinic clinicians may open assigned-patient workflows (server enforces scope). */
+  allowClinician?: boolean;
   children: React.ReactNode;
 };
 
 export const ClinicPermissionGate: React.FC<ClinicPermissionGateProps> = ({
   requires,
+  allowClinician = false,
   children,
 }) => {
-  const { can, isOwner, isPracticeManager } = usePermissions();
-  const allowed = isOwner || isPracticeManager || can(requires);
+  const { can, isOwner, isPracticeManager, isClinician } = usePermissions();
+  const allowed =
+    isOwner ||
+    isPracticeManager ||
+    can(requires) ||
+    (allowClinician && isClinician);
 
   if (allowed) {
     return <>{children}</>;

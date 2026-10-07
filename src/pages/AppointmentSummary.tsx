@@ -16,7 +16,7 @@ import { DetailPageSkeleton, Toast } from '../components/ui';
 import { PageShell } from '../components/page-layout';
 import {
   formatAppointmentTypeLabel,
-  isWhatsAppComingSoon,
+  isWhatsAppConsult,
 } from '../utils/teleconsult';
 import {
   formatAppointmentStatusLabel,
@@ -251,10 +251,17 @@ export const AppointmentSummary: React.FC = () => {
               {loadingConfirm ? 'Confirming…' : 'Confirm appointment'}
             </button>
           )}
-          {isWhatsAppComingSoon(appointment) ? (
-            <div className="inline-flex h-10 items-center rounded-[10px] border border-amber-200 bg-amber-50 px-4 text-sm font-medium text-amber-900">
-              WhatsApp - Coming soon
-            </div>
+          {isWhatsAppConsult(appointment) ? (
+            <button
+              type="button"
+              onClick={() =>
+                navigate(`/appointments/${appointment.id}/post-consult`, { state: { appointment } })
+              }
+              disabled={['cancelled', 'no_show', 'completed'].includes(appointment.status)}
+              className="inline-flex h-10 items-center justify-center rounded-[10px] bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              Start WhatsApp Video
+            </button>
           ) : (
             <button
               type="button"

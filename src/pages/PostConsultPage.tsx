@@ -1,12 +1,18 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useParams, useNavigate } from 'react-router-dom';
-import { jsPDF } from 'jspdf';
+import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
+  ArrowLeft,
+  Calendar,
+  Clock,
   Download,
   Eye,
+  FileText,
+  Phone,
+  Plus,
   Printer,
   Save,
   Video,
+  X,
 } from 'lucide-react';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { VisitPatientBriefing } from '../components/appointments/VisitChartSnapshot';
@@ -25,6 +31,8 @@ import {
   canDoctorStartVideoCall,
   formatAppointmentTypeLabel,
   isWhatsAppComingSoon,
+  isWhatsAppConsult,
+  whatsAppVideoCallLink,
 } from '../utils/teleconsult';
 import { sendPatientDownloadInvite } from '../services/patientManagementService';
 import { COMMON_ICD10_CODES, isValidNappiCode } from '../lib/southAfrica';
@@ -34,6 +42,7 @@ import {
   sendPrescriptionToPharmacy,
 } from '../services/pharmacyService';
 import type { Pharmacy } from '../types';
+import { jsPDF } from 'jspdf';
 import {
   AYAH_SCRIBE_ACTION_ID,
   AYAH_SCRIBE_TITLE,
@@ -1516,6 +1525,24 @@ const doctor = user?.role === 'doctor' ? user : null;
 
   const startVideoCall = () => {
     if (!teleconsultConsentChecked) return;
+
+    // For WhatsApp consults, open WhatsApp directly
+    if (isWhatsAppConsult(appointment)) {
+      const phoneNumber = appointment.patientPhoneNumber || '';
+      if (!phoneNumber) {
+        setToast({
+          visible: true,
+          message: 'Patient phone number is required for WhatsApp video calls',
+          type: 'error',
+        });
+        return;
+      }
+      const whatsappLink = whatsAppVideoCallLink(phoneNumber);
+      window.open(whatsappLink, '_blank');
+      return;
+    }
+
+    // For regular video consults, navigate to teleconsult page
     navigate(`/teleconsult/${appointment.id}`, { state: { appointment } });
   };
 

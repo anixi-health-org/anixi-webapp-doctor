@@ -243,6 +243,23 @@ export const PATIENT_COMMANDS: AyahCommand[] = [
   },
 ];
 
+/** Clinic admin Ayah — operations-focused subset of practice commands. */
+export const CLINIC_ADMIN_COMMANDS: AyahCommand[] = [
+  {
+    id: 'clinic-attention',
+    label: 'What needs attention at the clinic?',
+    shortLabel: 'Clinic pulse',
+    hint: 'Queue and setup',
+    prompt:
+      'What needs attention at this clinic today? Use get-practice-workspace, list-practice-panel, and the work queue. Cover appointments, roster gaps, and admin tasks. Plain text only.',
+  },
+  ...PRACTICE_COMMANDS.filter((command) =>
+    ['practice-setup', 'team', 'panel', 'hours', 'invoices', 'follow-ups-practice'].includes(
+      command.id,
+    ),
+  ),
+];
+
 export function commandNeedsPatient(command: AyahCommand, context: AskAnixiContext) {
   return Boolean(command.needsPatient && !context.patientId);
 }

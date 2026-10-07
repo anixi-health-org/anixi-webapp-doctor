@@ -7,6 +7,8 @@ import {
   getMonthlyAdherenceDetails,
   type DayAdherenceDetails,
 } from '../services/adherenceService';
+import { useAdherenceRules } from '../hooks/useAdherenceRules';
+import { calendarBandFromRate } from '../lib/adherenceEventModel';
 import { Skeleton } from './ui/Skeleton';
 
 interface AdherenceCalendarProps {
@@ -30,6 +32,7 @@ export const AdherenceCalendar: React.FC<AdherenceCalendarProps> = ({
   doctorId,
   onDayClick,
 }) => {
+  const { config: adherenceRules } = useAdherenceRules();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [dayAdherence, setDayAdherence] = useState<Map<string, DayAdherence>>(new Map());
   const [monthStats, setMonthStats] = useState({
@@ -108,19 +111,20 @@ export const AdherenceCalendar: React.FC<AdherenceCalendarProps> = ({
     : 0;
 
   const getAdherenceStyles = (percentage: number, hasData: boolean) => {
-    if (!hasData) {
+    const band = calendarBandFromRate(percentage, hasData, adherenceRules);
+    if (band === 'empty') {
       return {
         cell: 'border-[#e1e7ef] bg-white text-[#344256] hover:border-[#427160]/40 hover:bg-[#eef4f1]',
         dot: 'bg-[#d1d5db]',
       };
     }
-    if (percentage >= 80) {
+    if (band === 'excellent') {
       return {
         cell: 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100',
         dot: 'bg-emerald-500',
       };
     }
-    if (percentage >= 50) {
+    if (band === 'moderate') {
       return {
         cell: 'border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100',
         dot: 'bg-amber-500',

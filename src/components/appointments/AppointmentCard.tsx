@@ -35,7 +35,9 @@ const statusLabel = (status: Appointment['status']): string => {
   return formatAppointmentStatusLabel(status);
 };
 
-const getTypeIcon = (type: Appointment['type']): string => {
+const getTypeIcon = (type: Appointment['type'], consultType?: string): string => {
+  const consult = String(consultType ?? '').toLowerCase();
+  if (consult === 'whatsapp') return '💚';
   switch (type) {
     case 'In-Person':
       return '🏥';
@@ -69,6 +71,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
   });
   const timeDisplay = typeof appointment.time === 'string' ? appointment.time : '-';
   const typeLabel = formatAppointmentTypeLabel(appointment);
+  const typeIcon = getTypeIcon(appointment.type, appointment.consultType);
 
   return (
     <button
@@ -102,7 +105,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
 
       <div className="hidden min-w-0 items-center gap-1.5 sm:flex">
         <span className="text-sm leading-none" aria-hidden>
-          {getTypeIcon(appointment.type)}
+          {typeIcon}
         </span>
         <span
           className={`truncate text-xs font-medium ${

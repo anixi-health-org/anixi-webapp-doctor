@@ -19,13 +19,20 @@ import {
 import React, { useRef, useState, type ComponentType, type SVGProps } from 'react';
 import type { AskAnixiContext } from '../../services/askAnixiService';
 import type { StoredAyahMessage } from '../../lib/ayahChatStorage';
-import { PATIENT_COMMANDS, PRACTICE_COMMANDS, type AyahCommand } from '../../lib/ayahCommands';
 import {
+  CLINIC_ADMIN_COMMANDS,
+  PATIENT_COMMANDS,
+  PRACTICE_COMMANDS,
+  type AyahCommand,
+} from '../../lib/ayahCommands';
+import {
+  CLINIC_COMPOSER_PHRASES,
   patientComposerPhrases,
   PRACTICE_COMPOSER_PHRASES,
 } from '../../lib/ayahComposerPhrases';
 import { displayUserMessage } from '../../lib/ayahUserMessage';
 import type { DoctorAgentDraft } from '../../services/askAnixiService';
+import type { UnichartPreview } from '../../services/djangoApiService';
 import { AyahAvatar } from './AyahAvatar';
 import { AyahBriefingContent } from './AyahBriefingContent';
 import { AyahComposer } from './AyahComposer';
@@ -36,7 +43,7 @@ import { AyahFadeIn, ayahMessageClass } from './AyahMotion';
 export type AyahFileUpload = {
   file: File;
   content: string;
-  type: 'patient_csv' | 'staff_csv' | 'unknown';
+  type: 'patient_csv' | 'staff_csv' | 'chart_pdf' | 'unknown';
 };
 
 type IconType = ComponentType<SVGProps<SVGSVGElement>>;
@@ -83,12 +90,18 @@ type Props = {
   onResolveDraft?: (draft: DoctorAgentDraft, decision: 'approved' | 'rejected') => void;
   scrollRef?: React.RefObject<HTMLDivElement | null>;
   onVoiceMode?: () => void;
+  pendingUnichart?: UnichartPreview | null;
+  onConfirmUnichart?: () => void;
+  onDismissUnichart?: () => void;
+  /** Doctor portal default; clinic admin uses operations command set. */
+  commandScope?: 'doctor' | 'clinic';
 };
 
 function fileKind(type: AyahFileUpload['type']) {
   if (type === 'patient_csv') return 'Patient roster';
   if (type === 'staff_csv') return 'Staff list';
-  return 'CSV';
+  if (type === 'chart_pdf') return 'UniCharts PDF';
+  return 'Attachment';
 }
 
 function CommandPills({
@@ -173,14 +186,28 @@ export function AyahWorkspace({
   onResolveDraft,
   scrollRef,
   onVoiceMode,
+  pendingUnichart,
+  onConfirmUnichart,
+  onDismissUnichart,
+  commandScope = 'doctor',
 }: Props) {
   const [showMore, setShowMore] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFile, setPendingFile] = useState<AyahFileUpload | null>(null);
 
   const handleFileSelect = async (file: File) => {
-    const text = await file.text();
     const lowerName = file.name.toLowerCase();
+    const isPdf =
+      file.type === 'application/pdf' || lowerName.endsWith('.pdf');
+
+    if (isPdf) {
+      const upload: AyahFileUpload = { file, content: '', type: 'chart_pdf' };
+      setPendingFile(upload);
+      onFileUpload?.(upload);
+      return;
+    }
+
+    const text = await file.text();
     const lowerContent = text.slice(0, 500).toLowerCase();
 
     let type: AyahFileUpload['type'] = 'unknown';
@@ -209,18 +236,20 @@ export function AyahWorkspace({
   };
 
   const empty = hydrated && messages.length === 0 && !streaming;
+  const practiceCommands =
+    commandScope === 'clinic' ? CLINIC_ADMIN_COMMANDS : PRACTICE_COMMANDS;
   const primaryCommands = context.patientId
     ? PATIENT_COMMANDS.slice(0, 4)
-    : PRACTICE_COMMANDS.slice(0, 4);
+    : practiceCommands.slice(0, 4);
   const moreCommands = context.patientId
     ? PATIENT_COMMANDS.slice(4)
-    : PRACTICE_COMMANDS.slice(4);
+    : practiceCommands.slice(4);
   const landingCommands = context.patientId
     ? PATIENT_COMMANDS.slice(0, 5)
-    : PRACTICE_COMMANDS.slice(0, 5);
+    : practiceCommands.slice(0, 5);
   const landingExtra = context.patientId
     ? PATIENT_COMMANDS.slice(5)
-    : PRACTICE_COMMANDS.slice(5);
+    : practiceCommands.slice(5);
   const visibleDrafts = context.patientId
     ? pendingDrafts.filter((draft) => !draft.patientId || draft.patientId === context.patientId)
     : pendingDrafts;
@@ -231,15 +260,20 @@ export function AyahWorkspace({
 
   const typewriterPhrases = context.patientName
     ? patientComposerPhrases(context.patientName.split(' ')[0])
-    : PRACTICE_COMPOSER_PHRASES;
+    : commandScope === 'clinic'
+      ? CLINIC_COMPOSER_PHRASES
+      : PRACTICE_COMPOSER_PHRASES;
 
   const heading = context.patientName
     ? `How can I help with ${context.patientName.split(' ')[0]}?`
-    : 'How can I help?';
+    : commandScope === 'clinic'
+      ? 'How can I help at the clinic?'
+      : 'How can I help?';
 
   const submit = (text: string) => {
-    if (pendingFile && onFileUpload) {
-      onFileUpload(pendingFile);
+    const attachment = pendingFile;
+    if (attachment && onFileUpload) {
+      onFileUpload(attachment);
       setPendingFile(null);
     }
     onSend(text);
@@ -265,7 +299,7 @@ export function AyahWorkspace({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".csv,text/csv,.xlsx"
+        accept=".csv,text/csv,.xlsx,application/pdf,.pdf"
         className="sr-only"
         onChange={(e) => {
           const file = e.target.files?.[0];
@@ -282,7 +316,8 @@ export function AyahWorkspace({
                 Ayah
               </p>
               <h2 className="truncate font-heading text-xl font-semibold tracking-tight text-[#344256] sm:text-2xl">
-                {context.patientName ?? 'Practice conversation'}
+                {context.patientName ??
+                  (commandScope === 'clinic' ? 'Clinic conversation' : 'Practice conversation')}
               </h2>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -328,6 +363,34 @@ export function AyahWorkspace({
                 </h3>
               </AyahFadeIn>
             </div>
+            {pendingUnichart?.previewId && onConfirmUnichart ? (
+              <div className="rounded-xl border border-[#427160]/25 bg-[#eef4f1] px-4 py-3">
+                <p className="text-sm font-semibold text-[#1b2b2b]">
+                  Confirm chart import
+                  {pendingUnichart.patient?.displayName
+                    ? ` for ${pendingUnichart.patient.displayName}`
+                    : ''}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={onConfirmUnichart}
+                    className="rounded-lg bg-[#427160] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#365c4e]"
+                  >
+                    Confirm chart import
+                  </button>
+                  {onDismissUnichart ? (
+                    <button
+                      type="button"
+                      onClick={onDismissUnichart}
+                      className="rounded-lg border border-[#e1e7ef] bg-white px-3 py-1.5 text-xs font-semibold text-[#65758b]"
+                    >
+                      Dismiss
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             <AyahFadeIn delay={120}>
               <AyahComposer {...composerProps} tall />
             </AyahFadeIn>
@@ -401,6 +464,37 @@ export function AyahWorkspace({
 
           <div className="px-5 pb-5 pt-1 lg:px-8">
             <div className="mx-auto max-w-2xl">
+              {pendingUnichart?.previewId && onConfirmUnichart ? (
+                <div className="mb-3 rounded-xl border border-[#427160]/25 bg-[#eef4f1] px-4 py-3">
+                  <p className="text-sm font-semibold text-[#1b2b2b]">
+                    Confirm chart import
+                    {pendingUnichart.patient?.displayName
+                      ? ` for ${pendingUnichart.patient.displayName}`
+                      : ''}
+                  </p>
+                  <p className="mt-1 text-xs text-[#65758b]">
+                    Fills empty fields only — nothing already on the chart will be overwritten.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={onConfirmUnichart}
+                      className="rounded-lg bg-[#427160] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#365c4e]"
+                    >
+                      Confirm chart import
+                    </button>
+                    {onDismissUnichart ? (
+                      <button
+                        type="button"
+                        onClick={onDismissUnichart}
+                        className="rounded-lg border border-[#e1e7ef] bg-white px-3 py-1.5 text-xs font-semibold text-[#65758b]"
+                      >
+                        Dismiss
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               {onResolveDraft ? (
                 <AyahDraftReview drafts={visibleDrafts} onResolve={onResolveDraft} />
               ) : null}

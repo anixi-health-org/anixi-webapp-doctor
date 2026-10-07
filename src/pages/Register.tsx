@@ -37,6 +37,8 @@ export const Register: React.FC = () => {
     message: '',
     visible: false,
   });
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
 
   useEffect(() => {
     if (toast.visible) {
@@ -69,6 +71,16 @@ export const Register: React.FC = () => {
       return;
     }
 
+    if (!acceptTerms) {
+      setError('You must accept the Terms of Service to continue');
+      return;
+    }
+
+    if (!acceptPrivacy) {
+      setError('You must accept the Privacy Policy to continue');
+      return;
+    }
+
     setIsLoading(true);
     try {
       await registerProfessional(
@@ -78,6 +90,7 @@ export const Register: React.FC = () => {
         role,
         pathConfig.showCountryField ? country : undefined,
         joinPath,
+        acceptPrivacy,
       );
 
       await refreshUser();
@@ -218,6 +231,49 @@ export const Register: React.FC = () => {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
               />
+            </div>
+            <div className="space-y-3">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={acceptTerms}
+                  onChange={(e) => setAcceptTerms(e.target.checked)}
+                  required
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-anixi-green focus:ring-anixi-green"
+                />
+                <span className="text-sm text-gray-600">
+                  I accept the{' '}
+                  <a
+                    href="/terms"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-anixi-green underline hover:text-anixi-green/80"
+                  >
+                    Terms of Service
+                  </a>
+                </span>
+              </label>
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={acceptPrivacy}
+                  onChange={(e) => setAcceptPrivacy(e.target.checked)}
+                  required
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-anixi-green focus:ring-anixi-green"
+                />
+                <span className="text-sm text-gray-600">
+                  I accept the{' '}
+                  <a
+                    href="/privacy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-anixi-green underline hover:text-anixi-green/80"
+                  >
+                    Privacy Policy
+                  </a>{' '}
+                  and acknowledge POPIA compliance requirements
+                </span>
+              </label>
             </div>
             {error && <div className="text-sm text-red-600">{error}</div>}
             <button

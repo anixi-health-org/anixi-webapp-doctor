@@ -12,12 +12,14 @@ import {
   djangoImportRoster,
   djangoListPatientPanel,
   djangoListSharingRequests,
+  djangoPatchPracticePatientAccount,
   djangoRemoveFromPanel,
   djangoResolveSharing,
   djangoSendTransactionalEmail,
   isDjangoApiEnabled,
   type DjangoPanelPatient,
 } from './djangoApiService';
+import { logPatientEvent } from './centralEventLogService';
 
 const patientAppUrl = () =>
   process.env.REACT_APP_PATIENT_APP_URL || 'https://anixihealth.com/activate';
@@ -52,10 +54,17 @@ export const sendPatientDownloadInvite = async (opts: {
 
 /** Keeps doctor portal + mobile permission models in sync for health data reads. */
 export const linkDoctorPatientAccess = async (
-  _doctorId: string,
-  _patientId: string,
+  doctorId: string,
+  patientId: string,
 ): Promise<void> => {
-  // TODO: persist patient-doctor link via Django sharing endpoint once available.
+  if (!isDjangoApiEnabled()) {
+    throw new Error('Patient linking requires the Anixi API.');
+  }
+  await djangoCreateSharingRequest({
+    clinicianId: doctorId,
+    patientId,
+    message: 'Clinician requested access to this patient record.',
+  });
 };
 
 export type Unsubscribe = () => void;
@@ -315,6 +324,34 @@ export const addPatientManually = async (
       );
     }
 
+    if (payload.practiceId) {
+      try {
+        await logPatientEvent({
+          organizationId: payload.practiceId,
+          action: 'patient.created',
+          actorUid: doctorId,
+          actorName: 'Doctor',
+          patientId: created.patientId,
+          patientName: payload.displayName,
+          newValue: {
+            displayName: payload.displayName,
+            email: payload.email,
+            phoneNumber: payload.phoneNumber,
+            dateOfBirth:
+              payload.dateOfBirth instanceof Date
+                ? payload.dateOfBirth.toISOString()
+                : payload.dateOfBirth,
+            notes: payload.notes,
+          },
+          outcome: 'success',
+          confirmation: created.patientId,
+          metadata: { inviteQueued: Boolean(inviteOptions?.sendInvite && targetEmail) },
+        });
+      } catch (error) {
+        console.warn('[patientManagementService] Failed to log patient creation event:', error);
+      }
+    }
+
     let inviteQueued = false;
     let inviteError: string | undefined;
     if (inviteOptions?.sendInvite && targetEmail) {
@@ -353,16 +390,24 @@ export type PatientUpdatePayload = Partial<
 >;
 
 export const updatePatient = async (
-  _patientId: string,
-  _updates: PatientUpdatePayload,
+  patientId: string,
+  updates: PatientUpdatePayload & { practiceId?: string },
 ): Promise<void> => {
-  if (!_patientId || _patientId.trim() === '') {
+  if (!patientId || patientId.trim() === '') {
     throw new Error('Patient ID is required to update patient');
   }
-  if (!_updates || Object.keys(_updates).length === 0) {
+  if (!updates || Object.keys(updates).length === 0) {
     throw new Error('No update values provided');
   }
-  // TODO: persist via Django patient endpoint once available.
+  const practiceId = updates.practiceId;
+  if (!isDjangoApiEnabled() || !practiceId) {
+    throw new Error('A practice is required to update this patient record.');
+  }
+  await djangoPatchPracticePatientAccount(practiceId, patientId, {
+    displayName: updates.displayName,
+    phoneNumber: updates.phoneNumber,
+    email: updates.email,
+  });
 };
 
 export const removePatientFromDoctor = async (
@@ -429,9 +474,7 @@ export const acceptSharingRequest = async (
     await djangoResolveSharing(requestId, 'approved');
     return;
   }
-
-  await linkDoctorPatientAccess(doctorId, patientId);
-  // TODO: persist approval via Django sharing endpoint once available.
+  throw new Error('Sharing approval requires the Anixi API.');
 };
 
 export const rejectSharingRequest = async (
@@ -443,7 +486,7 @@ export const rejectSharingRequest = async (
     await djangoResolveSharing(requestId, 'rejected');
     return;
   }
-  // TODO: persist rejection via Django sharing endpoint once available.
+  throw new Error('Sharing rejection requires the Anixi API.');
 };
 
 export const sendSharingRequest = async (
@@ -470,7 +513,7 @@ export const sendSharingRequest = async (
 };
 
 export const createTestSharingRequests = async (_doctorId: string): Promise<void> => {
-  // TODO: replace with a Django test-data helper once available.
+  throw new Error('Test sharing requests are not available.');
 };
 
 
@@ -502,13 +545,30 @@ export const getDoctorPatientGrowth = async (
 
   try {
     const panel = await djangoListPatientPanel();
-    // Panel API does not yet expose link dates; growth stats need a dated roster endpoint.
-    return {
-      addedThisMonth: 0,
-      addedLastMonth: 0,
-      changePct: null,
-      undatedLinks: panel.length,
-    };
+    const now = new Date();
+    const startThis = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startLast = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    let addedThisMonth = 0;
+    let addedLastMonth = 0;
+    let undatedLinks = 0;
+    panel.forEach((row) => {
+      if (!row.createdAt) {
+        undatedLinks += 1;
+        return;
+      }
+      const created = new Date(row.createdAt);
+      if (Number.isNaN(created.getTime())) {
+        undatedLinks += 1;
+        return;
+      }
+      if (created >= startThis) addedThisMonth += 1;
+      else if (created >= startLast) addedLastMonth += 1;
+    });
+    const changePct =
+      addedLastMonth === 0
+        ? null
+        : Math.round(((addedThisMonth - addedLastMonth) / addedLastMonth) * 100);
+    return { addedThisMonth, addedLastMonth, changePct, undatedLinks };
   } catch {
     return { addedThisMonth: 0, addedLastMonth: 0, changePct: null, undatedLinks: 0 };
   }

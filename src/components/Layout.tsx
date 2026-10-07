@@ -20,6 +20,7 @@ import React from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { usePermissions } from '../hooks/usePermissions';
+import { setAdherenceRulesPracticeContext } from '../services/adherenceRulesService';
 import { useIncomingRecordShares } from '../hooks/useIncomingRecordShares';
 import { useIncomingSharingRequests } from '../hooks/useIncomingSharingRequests';
 import { usePendingAppointmentsCount } from '../hooks/usePendingAppointments';
@@ -90,7 +91,7 @@ function NavLink({
 }
 
 const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, practiceSession } = useAuth();
   const { isClinicEmployedClinician } = usePermissions();
   const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
@@ -100,6 +101,10 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
   const { requests: recordShareRequests } = useIncomingRecordShares(user?.id);
   const pendingRecordShares = recordShareRequests.length;
   const [unreadMessages, setUnreadMessages] = React.useState(0);
+
+  React.useEffect(() => {
+    setAdherenceRulesPracticeContext(practiceSession?.practice?.id);
+  }, [practiceSession?.practice?.id]);
 
   React.useEffect(() => {
     if (!user?.id) {
@@ -215,7 +220,7 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
       </aside>
 
       <div className="flex min-w-0 flex-1 md:pl-64">
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 border-b border-[#e1e7ef] bg-white">
           <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -275,7 +280,14 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
           </div>
         )}
 
-          <main className={`flex-1 ${location.pathname === '/ayah' || location.pathname === '/dashboard' ? 'min-h-0 overflow-hidden' : 'overflow-y-auto'}`}>
+          <main
+            className={clsx(
+              'flex-1',
+              location.pathname === '/ayah' || location.pathname === '/dashboard'
+                ? 'flex min-h-0 flex-col overflow-hidden'
+                : 'overflow-y-auto',
+            )}
+          >
             {children || <Outlet />}
           </main>
         </div>

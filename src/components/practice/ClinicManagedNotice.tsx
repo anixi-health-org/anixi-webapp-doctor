@@ -28,9 +28,9 @@ const COPY: Record<NonNullable<Props['surface']>, { title: string; body: string;
   },
   onboarding: {
     title: 'Your clinic is already set up',
-    body: 'already has the practice name, location, timezone, and branding. Complete your personal and professional details. Anixi Admin only needs those for your credentials review.',
+    body: 'already has the practice name, location, timezone, branding, and accepted medical aid schemes. Complete your personal and professional details. Anixi Admin only needs those for your credentials review.',
     fallback:
-      'Your clinic already has practice name, location, timezone, and branding. Complete your personal and professional details for credentials review.',
+      'Your clinic already has practice name, location, timezone, branding, and medical aid schemes. Complete your personal and professional details for credentials review.',
   },
 };
 

@@ -2,7 +2,7 @@ import { djangoSendTransactionalEmail } from '../djangoApiService';
 
 const WEB_APP_URL =
   (process.env.REACT_APP_WEB_APP_URL || process.env.REACT_APP_WEB_SIGNUP_URL || '').trim() ||
-  (typeof window !== 'undefined' ? window.location.origin : 'https://doctor.anixihealth.com');
+  (typeof window !== 'undefined' ? window.location.origin : 'https://portal.anixihealth.com');
 
 function escapeHtml(input: string): string {
   return input

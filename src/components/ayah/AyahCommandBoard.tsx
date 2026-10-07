@@ -51,7 +51,7 @@ export function AyahCommandBoard({
   const hasQueue = snapshot.attentionItems.length > 0 || pendingDrafts.length > 0;
 
   return (
-    <aside className="flex h-full w-full flex-col overflow-y-auto border-r border-[#e1e7ef] bg-white lg:w-[340px] xl:w-[360px]">
+    <aside className="flex max-h-[42vh] w-full shrink-0 flex-col overflow-y-auto border-b border-[#e1e7ef] bg-white lg:max-h-none lg:w-[340px] lg:border-b-0 lg:border-r xl:w-[360px]">
       <header className="px-5 pb-4 pt-5">
         <div className="flex items-center gap-3">
           <AyahAvatar size="md" />

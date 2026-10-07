@@ -164,8 +164,7 @@ export const ClinicAdminInvoicesPage: React.FC = () => {
           <h1 className="font-heading text-2xl font-bold text-[#1a4d4d]">Clinic invoices</h1>
           <p className="mt-1 text-sm text-[#65758b]">
           Track invoices across every clinician in this hospital or clinic. Organisation letterhead
-          and BHF number apply. Employed doctors do not bill under their private practice details.
-          Payments are still collected offline. Mark status here after the patient pays.
+          and BHF number apply.
           </p>
         </div>
         <button

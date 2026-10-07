@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BulkPatientImportPanel } from '../../components/onboarding/BulkPatientImportPanel';
+import { UnichartPdfImportPanel } from '../../components/clinic/UnichartPdfImportPanel';
 import { ClinicAddPatientPanel, type ClinicAddPatientResult } from '../../components/clinic/ClinicAddPatientPanel';
 import { ClinicSecondaryAction } from '../../components/clinic/ClinicSecondaryAction';
 import { PageHeader, PageShell } from '../../components/page-layout';
@@ -12,6 +13,8 @@ import {
   updatePracticePatientAssignedDoctor,
 } from '../../services/practicePatientService';
 import { listPracticeClinicians } from '../../services/practiceSettingsService';
+import { formatSaPhoneDisplay } from '../../lib/formatSaPhone';
+import { unichartsChartNameLabel } from '../../lib/patientDisplayName';
 import type { Patient, PracticeMember } from '../../types';
 
 const PAGE_SIZE = 50;
@@ -36,6 +39,7 @@ export const ClinicAdminPatientsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const importPanelRef = React.useRef<HTMLDivElement>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [copiedClinicCode, setCopiedClinicCode] = useState(false);
 
@@ -90,6 +94,11 @@ export const ClinicAdminPatientsPage: React.FC = () => {
   useEffect(() => {
     void loadPatients();
   }, [loadPatients]);
+
+  useEffect(() => {
+    if (!importOpen) return;
+    importPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [importOpen]);
 
   const copyClinicCode = async () => {
     if (!practice?.clinicCode) return;
@@ -235,18 +244,23 @@ export const ClinicAdminPatientsPage: React.FC = () => {
 
   const hasRoster = total > 0;
   const showImport = canManagePatients && !loading && (!hasRoster || importOpen);
+  const refreshAfterImport = () => {
+    setPage(1);
+    setImportOpen(false);
+    void loadPatients();
+  };
+
   const importPanel = canManagePatients ? (
-    <BulkPatientImportPanel
-      doctorId={user.id}
-      practiceId={practice.id}
-      practiceName={practice.name}
-      clinicCode={practice.clinicCode}
-      onComplete={() => {
-        setPage(1);
-        setImportOpen(false);
-        void loadPatients();
-      }}
-    />
+    <div className="space-y-6">
+      <UnichartPdfImportPanel practiceId={practice.id} onComplete={refreshAfterImport} />
+      <BulkPatientImportPanel
+        doctorId={user.id}
+        practiceId={practice.id}
+        practiceName={practice.name}
+        clinicCode={practice.clinicCode}
+        onComplete={refreshAfterImport}
+      />
+    </div>
   ) : null;
 
   return (
@@ -256,7 +270,7 @@ export const ClinicAdminPatientsPage: React.FC = () => {
         description={
           hasRoster
             ? 'Search the clinic roster, assign doctors, and add or import patients.'
-            : 'Add one person at a time, or import a CSV. Patients activate in the Anixi app with your clinic code.'
+            : 'Add one person at a time, import a UniCharts PDF (up to 50MB), or import a CSV. Patients activate in the Anixi app with your clinic code.'
         }
       />
 
@@ -312,7 +326,7 @@ export const ClinicAdminPatientsPage: React.FC = () => {
                   <ClinicSecondaryAction
                     open={importOpen}
                     onToggle={() => setImportOpen((open) => !open)}
-                    revealLabel="Import from CSV"
+                    revealLabel="Import CSV or UniCharts PDF"
                     hideLabel="Hide import"
                   />
                 ) : null}
@@ -327,6 +341,11 @@ export const ClinicAdminPatientsPage: React.FC = () => {
             ) : null}
           </div>
         </div>
+        {showImport && hasRoster ? (
+          <div ref={importPanelRef} className="mb-6 scroll-mt-24">
+            {importPanel}
+          </div>
+        ) : null}
         {error ? (
           <p className="mb-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
@@ -456,15 +475,31 @@ export const ClinicAdminPatientsPage: React.FC = () => {
                         <td className="px-4 py-3">
                           <Link
                             to={`/clinic/patients/${patient.id}`}
-                            className="font-medium text-anixi-green hover:underline"
+                            className="block font-medium text-anixi-green hover:underline"
                           >
                             {patient.displayName || '-'}
                           </Link>
+                          {(() => {
+                            const chartLabel = unichartsChartNameLabel(
+                              patient.displayName,
+                              patient.unichartChartName,
+                            );
+                            if (!chartLabel || chartLabel === (patient.displayName || '').toUpperCase()) {
+                              return null;
+                            }
+                            return (
+                              <p className="mt-0.5 text-[11px] text-[#8FA0B6]">
+                                Chart: {chartLabel}
+                              </p>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3 font-mono text-xs">
                           {patient.email || '—'}
                         </td>
-                        <td className="px-4 py-3 text-[#65758b]">{patient.phoneNumber || '-'}</td>
+                        <td className="px-4 py-3 text-[#65758b]">
+                          {formatSaPhoneDisplay(patient.phoneNumber) || '-'}
+                        </td>
                         <td className="px-4 py-3">
                           <span
                             className={
@@ -547,7 +582,6 @@ export const ClinicAdminPatientsPage: React.FC = () => {
         </div>
       </div>
 
-      {showImport && hasRoster ? <div className="mt-8">{importPanel}</div> : null}
     </PageShell>
   );
 };

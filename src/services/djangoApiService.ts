@@ -157,6 +157,7 @@ export async function djangoCompanionStream(params: {
   message: string;
   context?: Record<string, unknown>;
   threadId?: string;
+  agentId?: string;
   onChunk: (chunk: string) => void;
   signal?: AbortSignal;
 }): Promise<void> {
@@ -167,7 +168,7 @@ export async function djangoCompanionStream(params: {
     headers,
     body: JSON.stringify({
       message: params.message,
-      agentId: 'doctor-practice-partner',
+      agentId: params.agentId || 'doctor-practice-partner',
       threadId: params.threadId,
       context: params.context,
     }),
@@ -494,11 +495,11 @@ async function readResponseJson<T>(res: Response): Promise<T> {
   }
   const contentType = res.headers.get('content-type') || '';
   if (trimmed.startsWith('<') || contentType.includes('text/html')) {
-    throw new Error(
+    const hint =
       res.status >= 500
-        ? 'The API returned an error page. Confirm Django is running and migrated.'
-        : 'Could not reach the Anixi API. Confirm the backend is running on the configured URL.',
-    );
+        ? `Server error (${res.status}). Confirm Django is running and migrations are applied.`
+        : `Could not reach the Anixi API (${res.status}). Check REACT_APP_ANIXI_API_URL points at your backend.`;
+    throw new Error(hint);
   }
   try {
     return JSON.parse(trimmed) as T;
@@ -557,6 +558,102 @@ export async function djangoUploadDocument(
   form.append('file', file, filename);
   form.append('purpose', purpose);
   const res = await fetch(`${API_BASE}/api/v1/documents/upload/`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'X-Client': 'doctor-web',
+    },
+    body: form,
+  });
+  return djangoJson(res);
+}
+
+export type UnichartPreview = {
+  previewId: string;
+  status: string;
+  emptyPages: number[];
+  patient: { id: string; displayName: string } | null;
+  fills: string[];
+  chart: {
+    patientName: string;
+    dateOfBirth: string;
+    idNumber: string;
+    chartId: string;
+  };
+};
+
+export async function djangoPreviewUnichart(
+  file: File,
+  options?: { practiceId?: string; client?: 'doctor-web' | 'admin-panel' },
+): Promise<UnichartPreview> {
+  if (!enabled()) throw new Error('Django API not configured');
+  const token = await resolveAccessToken();
+  const form = new FormData();
+  form.append('file', file, file.name);
+  if (options?.practiceId) {
+    form.append('practiceId', options.practiceId);
+  }
+  const res = await fetch(`${API_BASE}/api/v1/patients/unichart/preview/`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'X-Client': options?.client ?? 'doctor-web',
+    },
+    body: form,
+  });
+  return djangoJson(res);
+}
+
+export async function djangoApplyUnichart(previewId: string): Promise<{
+  status: string;
+  patientId?: string;
+  filled?: string[];
+}> {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/patients/unichart/apply/`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ previewId }),
+  });
+  return djangoJson(res);
+}
+
+export type UnichartBatchApplyResult = {
+  async?: boolean;
+  jobId?: string;
+  jobKind?: string;
+  totalCharts: number;
+  applied: number;
+  created?: number;
+  alreadyApplied: number;
+  unmatched: number;
+  ambiguous: number;
+  failed: number;
+  results: Array<{
+    patientName?: string;
+    displayName?: string;
+    status: string;
+    patientId?: string;
+    filled?: string[];
+    error?: string;
+  }>;
+};
+
+export async function djangoUnichartBatchApply(
+  file: File,
+  practiceId: string,
+  options?: { async?: boolean },
+): Promise<Partial<UnichartBatchApplyResult> & { jobId?: string; status?: string }> {
+  if (!enabled()) throw new Error('Django API not configured');
+  const token = await resolveAccessToken();
+  const form = new FormData();
+  form.append('file', file, file.name);
+  form.append('practiceId', practiceId);
+  if (options?.async) {
+    form.append('async', 'true');
+  }
+  const res = await fetch(`${API_BASE}/api/v1/patients/unichart/batch-apply/`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -715,8 +812,14 @@ async function djangoFetch(input: string, init?: RequestInit): Promise<Response>
   try {
     return await fetch(input, init);
   } catch {
+    const isLocalApi =
+      API_BASE.includes('localhost') ||
+      API_BASE.includes('127.0.0.1') ||
+      API_BASE.includes('.local');
     throw new Error(
-      `Could not reach the API at ${API_BASE}. Start Django (python manage.py runserver) and confirm .env points at your local backend.`,
+      isLocalApi
+        ? `Could not reach the API at ${API_BASE}. Start Django (python manage.py runserver) and confirm .env points at your local backend.`
+        : `Could not reach the API at ${API_BASE}. Check your internet connection, VPN, or firewall. If this persists, the portal origin may not be allowed by API CORS (contact Anixi ops).`,
     );
   }
 }
@@ -728,6 +831,7 @@ export async function djangoRegister(params: {
   role: 'doctor' | 'patient' | 'caregiver' | 'staff';
   phoneNumber?: string;
   joinIntent?: string;
+  popiaConsent?: boolean;
 }) {
   if (!enabled()) throw new Error('Django API not configured');
   assertApiReachable();
@@ -741,6 +845,7 @@ export async function djangoRegister(params: {
       role: params.role,
       phone_number: params.phoneNumber ?? '',
       ...(params.joinIntent ? { joinIntent: params.joinIntent } : {}),
+      ...(params.popiaConsent ? { popia_consent: true } : {}),
     }),
   });
   const json = (await res.json()) as Envelope<{
@@ -896,6 +1001,56 @@ export async function djangoPatchAppointment(
     body: JSON.stringify(patch),
   });
   return djangoJson<{ updated: boolean }>(res);
+}
+
+export async function djangoAttachAppointmentDocument(
+  appointmentId: string,
+  payload: {
+    storageKey: string;
+    title?: string;
+    fileName?: string;
+    mimeType?: string;
+    fileSize?: number;
+  },
+) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/documents/appointments/${encodeURIComponent(appointmentId)}/documents/`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    },
+  );
+  return djangoJson<Record<string, unknown>>(res);
+}
+
+export type DjangoRosterMetricRow = {
+  patientId: string;
+  displayName?: string;
+  adherence?: { taken?: number; missed?: number; pending?: number; rate?: number | null };
+  vitalsReadings?: number;
+  moodCheckIns?: number;
+  documentCount?: number;
+};
+
+export async function djangoListRosterMetrics(daysBack = 30): Promise<{
+  daysBack: number;
+  patientCount: number;
+  patients: DjangoRosterMetricRow[];
+} | null> {
+  if (!enabled()) return null;
+  try {
+    const headers = await authHeaders();
+    const res = await fetch(
+      `${API_BASE}/api/v1/clinical/roster-metrics/?daysBack=${encodeURIComponent(String(daysBack))}`,
+      { headers },
+    );
+    return djangoJson(res);
+  } catch {
+    return null;
+  }
 }
 
 export type DjangoPanelPatient = {
@@ -1173,6 +1328,7 @@ export async function djangoImportRoster(
 
 export type DjangoBulkImportJob = {
   jobId: string;
+  jobKind?: 'roster_csv' | 'unichart_pdf';
   status: 'pending' | 'processing' | 'completed' | 'failed';
   totalRows: number;
   processedRows: number;
@@ -1186,6 +1342,27 @@ export type DjangoBulkImportJob = {
 };
 
 /** Upload a CSV file for batched Celery processing. Returns a job to poll. */
+/** Extract roster rows from a clinic PDF and queue a background import job. */
+export async function djangoImportRosterPdf(
+  file: File,
+  practiceId: string,
+): Promise<{ jobId: string; totalRows: number; skippedParse: number; status: string }> {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  delete (headers as Record<string, string>)['Content-Type'];
+
+  const form = new FormData();
+  form.append('file', file, file.name);
+  form.append('practiceId', practiceId);
+
+  const res = await fetch(`${API_BASE}/api/v1/patients/roster/import-pdf/`, {
+    method: 'POST',
+    headers,
+    body: form,
+  });
+  return djangoJson<{ jobId: string; totalRows: number; skippedParse: number; status: string }>(res);
+}
+
 export async function djangoImportRosterCsv(
   file: File,
   practiceId: string,
@@ -1261,6 +1438,28 @@ export type DjangoPracticePatient = {
   occupation?: string;
   employmentStatus?: string;
   planOption?: string;
+  medicalAidGroup?: string;
+  medicalAidAuthNumber?: string;
+  insuredRelationship?: string;
+  chartId?: string;
+  unichartChartName?: string;
+  mrn?: string;
+  unichartAge?: string;
+  race?: string;
+  homePhone?: string;
+  workPhone?: string;
+  guarantorName?: string;
+  guarantorPhone?: string;
+  guarantorRelationship?: string;
+  guarantorRemarks?: string;
+  contactStatus?: string;
+  institution?: string;
+  pastMedicalHistoryText?: string;
+  familyHistoryText?: string;
+  socialHistoryText?: string;
+  masterProblemsList?: string[];
+  activeProblems?: string[];
+  recentUnichartEncounters?: Array<{ number?: string; date?: string; type?: string }>;
   hasCaregiver?: boolean;
   caregiverEmail?: string;
   createdAt?: string | null;
@@ -1562,6 +1761,69 @@ export async function djangoGetPublicClinic(
   );
   if (res.status === 404) return null;
   return djangoPublicJson<Record<string, unknown>>(res);
+}
+
+export async function djangoListMedicalSchemes(search?: string) {
+  if (!enabled()) return [];
+  const qs = new URLSearchParams();
+  if (search?.trim()) qs.set('q', search.trim());
+  qs.set('limit', '200');
+  const res = await fetch(`${API_BASE}/api/v1/catalog/medical-schemes/?${qs.toString()}`, {
+    headers: { 'X-Client': 'doctor-web' },
+  });
+  return djangoPublicJson<
+    Array<{ id: string; slug: string; name: string; shortName: string; category: string }>
+  >(res);
+}
+
+export async function djangoGetPracticeAcceptedSchemes(practiceId: string) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/practices/${encodeURIComponent(practiceId)}/accepted-schemes/`,
+    { headers },
+  );
+  return djangoJson<{
+    acceptedSchemes: Array<{ id: string; slug: string; name: string; shortName: string; category: string }>;
+    configureAcceptedSchemes: boolean;
+  }>(res);
+}
+
+export async function djangoListMedicalSchemePlans(schemeSlug: string) {
+  if (!enabled()) return [];
+  const qs = new URLSearchParams();
+  qs.set('schemeSlug', schemeSlug);
+  qs.set('limit', '200');
+  const res = await fetch(`${API_BASE}/api/v1/catalog/medical-scheme-plans/?${qs.toString()}`, {
+    headers: { 'X-Client': 'doctor-web' },
+  });
+  return djangoPublicJson<
+    Array<{ id: string; slug: string; name: string; schemeSlug: string; schemeName: string }>
+  >(res);
+}
+
+export async function djangoPutPracticeAcceptedSchemes(
+  practiceId: string,
+  schemeSlugs: string[],
+  planSlugs?: string[],
+) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const payload: { schemeSlugs: string[]; planSlugs?: string[] } = { schemeSlugs };
+  if (planSlugs !== undefined) payload.planSlugs = planSlugs;
+  const res = await fetch(
+    `${API_BASE}/api/v1/practices/${encodeURIComponent(practiceId)}/accepted-schemes/`,
+    {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(payload),
+    },
+  );
+  return djangoJson<{
+    acceptedSchemes: Array<{ id: string; slug: string; name: string; shortName: string; category: string }>;
+    acceptedPlans: Array<{ id: string; slug: string; name: string; schemeSlug: string; schemeName: string }>;
+    configureAcceptedSchemes: boolean;
+  }>(res);
 }
 
 export async function djangoPatchPractice(practiceId: string, patch: Record<string, unknown>) {

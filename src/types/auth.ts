@@ -1,3 +1,7 @@
+/**
+ * Auth roles for this (doctor / caregiver / staff) portal.
+ * Patient accounts authenticate on the patient app — see PATIENT_ACCOUNT_ROLE_NOTE in practiceRoles.
+ */
 export type AuthRole = 'doctor' | 'caregiver' | 'staff';
 
 /** How a professional is joining the portal */

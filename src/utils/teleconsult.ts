@@ -80,7 +80,7 @@ export function canDoctorStartVideoCall(appointment: Appointment): boolean {
 }
 
 export function isWhatsAppComingSoon(_appointment: Appointment): boolean {
-  return false;
+  return false; // WhatsApp video is now enabled
 }
 
 export function isWhatsAppConsult(appointment: Appointment): boolean {
@@ -101,6 +101,12 @@ export function whatsAppDeepLink(phone: string, message?: string): string {
   return `https://wa.me/${normalized}${text}`;
 }
 
+export function whatsAppVideoCallLink(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  const normalized = digits.startsWith('27') ? digits : `27${digits.replace(/^0/, '')}`;
+  return `https://wa.me/${normalized}`;
+}
+
 export function phoneDeepLink(phone: string): string {
   const digits = phone.replace(/\D/g, '');
   const normalized = digits.startsWith('27') ? `+${digits}` : `+27${digits.replace(/^0/, '')}`;
@@ -108,7 +114,7 @@ export function phoneDeepLink(phone: string): string {
 }
 
 export function formatAppointmentTypeLabel(appointment: Appointment): string {
-  if (isWhatsAppConsult(appointment)) return 'WhatsApp consult';
+  if (isWhatsAppConsult(appointment)) return 'WhatsApp video';
   if (isPhoneConsult(appointment)) return 'Phone consult';
 
   const consult = consultCategory(appointment);
@@ -122,6 +128,7 @@ export function formatAppointmentTypeLabel(appointment: Appointment): string {
     telehealth: 'Virtual / video',
     video: 'Virtual / video',
     virtual: 'Virtual / video',
+    whatsapp: 'WhatsApp video',
     'in-practice': 'In clinic',
     'in-person': 'In clinic',
     inpractice: 'In clinic',

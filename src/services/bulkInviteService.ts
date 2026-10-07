@@ -39,11 +39,14 @@ const TEMPLATE_ROWS = [
   DOCTOR_INVITE_CSV_HEADERS.join(','),
   'dr.smith@example.co.za,John,Smith,doctor,+27821234567,MP1234567',
   'jane.doe@example.co.za,Jane,Doe,receptionist,+27829876543,',
-  'billing@example.co.za,Sipho,Nkosi,billing_clerk,+27831112222,',
+  'associate@example.co.za,Thandi,Mokoena,clinical_associate,+27830001111,',
+  'admin@example.co.za,Alex,Admin,administrator,+27832223333,',
+  'manager@example.co.za,Pat,Manager,practice_manager,+27834445555,',
+  'content@example.co.za,Lee,Writer,content_creator,,',
 ].join('\n');
 
 export const DOCTOR_INVITE_ROLE_HINT =
-  'doctor, practice_manager, receptionist, billing_clerk';
+  'doctor, practice_manager, administrator, clinical_associate, receptionist, content_creator';
 
 /** Trigger download of the standard clinic staff CSV template. */
 export function downloadDoctorInviteTemplate(): void {
@@ -89,8 +92,19 @@ function splitCsvLine(line: string): string[] {
 }
 
 function resolveRole(raw: string | undefined, defaultRole: PracticeRole): PracticeRole | null {
-  const normalized = (raw || defaultRole).toLowerCase().replace(/\s+/g, '_') as PracticeRole;
-  return ALLOWED_ROLES.includes(normalized) ? normalized : null;
+  const normalized = (raw || defaultRole).toLowerCase().replace(/\s+/g, '_');
+  const aliases: Record<string, PracticeRole> = {
+    admin: 'administrator',
+    administrator: 'administrator',
+    clinical_associate: 'clinical_associate',
+    clinicalassociate: 'clinical_associate',
+    content_creator: 'content_creator',
+    contentcreator: 'content_creator',
+    practice_manager: 'practice_manager',
+    manager: 'practice_manager',
+  };
+  const role = (aliases[normalized] ?? normalized) as PracticeRole;
+  return ALLOWED_ROLES.includes(role) ? role : null;
 }
 
 function buildDisplayName(firstName?: string, lastName?: string, fallback?: string): string | undefined {

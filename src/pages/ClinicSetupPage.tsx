@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Building2, CheckCircle2, Loader2, MapPin, Rocket } from 'lucide-react';
+import { PracticeMedicalAidOnboardingStep } from '../components/practice/PracticeMedicalAidOnboardingStep';
 import { BulkDoctorInvitePanel } from '../components/onboarding/BulkDoctorInvitePanel';
 import { BulkPatientImportPanel } from '../components/onboarding/BulkPatientImportPanel';
 import { OnboardingShell } from '../components/onboarding/OnboardingShell';
@@ -25,13 +26,14 @@ const fieldClass =
   'w-full rounded-xl border border-[#e1e7ef] bg-white px-3.5 py-2.5 text-sm text-[#344256] placeholder:text-[#94a3b8] transition focus:border-anixi-green focus:outline-none focus:ring-2 focus:ring-anixi-green/15';
 const labelClass = 'mb-1.5 block text-sm font-medium text-[#344256]';
 
-type ClinicStep = 1 | 2 | 3 | 4;
+type ClinicStep = 1 | 2 | 3 | 4 | 5;
 
 const STEP_FROM_ID: Record<string, ClinicStep> = {
   clinic: 1,
-  team: 2,
-  patients: 3,
-  launch: 4,
+  'medical-aid': 2,
+  team: 3,
+  patients: 4,
+  launch: 5,
 };
 
 export const ClinicSetupPage: React.FC = () => {
@@ -86,7 +88,7 @@ export const ClinicSetupPage: React.FC = () => {
       if (!clinicOnboardingComplete) {
         setStep(2);
       } else {
-        setStep(4);
+        setStep(5);
       }
     }
     setHasInitialised(true);
@@ -201,10 +203,12 @@ export const ClinicSetupPage: React.FC = () => {
         step === 2
           ? 'Back to clinic details'
           : step === 3
-            ? 'Back to invite doctors'
+            ? 'Back to medical aid schemes'
             : step === 4
-              ? 'Back to import patients'
-              : 'Back'
+              ? 'Back to invite doctors'
+              : step === 5
+                ? 'Back to import patients'
+                : 'Back'
       }
       onStepClick={(clickedStep, stepNumber) => {
         if (stepNumber < step) {
@@ -341,7 +345,15 @@ export const ClinicSetupPage: React.FC = () => {
         </form>
       )}
 
-      {step === 2 && practiceId && (
+      {step === 2 && practiceSession?.practice && (
+        <PracticeMedicalAidOnboardingStep
+          practice={practiceSession.practice}
+          onRefreshPractice={() => refreshPracticeSession()}
+          onContinue={() => setStep(3)}
+        />
+      )}
+
+      {step === 3 && practiceId && (
         <div className="max-w-3xl space-y-4">
           <BulkDoctorInvitePanel
             practiceId={practiceId}
@@ -352,7 +364,7 @@ export const ClinicSetupPage: React.FC = () => {
           <div className="flex justify-end">
             <button
               type="button"
-              onClick={() => setStep(3)}
+              onClick={() => setStep(4)}
               className="rounded-full bg-anixi-green px-8 py-3 text-sm font-semibold text-white hover:opacity-90"
             >
               Continue to patients
@@ -361,7 +373,7 @@ export const ClinicSetupPage: React.FC = () => {
         </div>
       )}
 
-      {step === 3 && practiceId && (
+      {step === 4 && practiceId && (
         <div className="max-w-3xl space-y-4">
           <BulkPatientImportPanel
             doctorId={doctor.id}
@@ -372,14 +384,14 @@ export const ClinicSetupPage: React.FC = () => {
           <div className="flex justify-end gap-3">
             <button
               type="button"
-              onClick={() => setStep(4)}
+              onClick={() => setStep(5)}
               className="rounded-full border border-[#e1e7ef] px-6 py-3 text-sm font-semibold text-[#344256] hover:bg-white"
             >
               Skip for now
             </button>
             <button
               type="button"
-              onClick={() => setStep(4)}
+              onClick={() => setStep(5)}
               className="rounded-full bg-anixi-green px-8 py-3 text-sm font-semibold text-white hover:opacity-90"
             >
               Continue
@@ -388,7 +400,7 @@ export const ClinicSetupPage: React.FC = () => {
         </div>
       )}
 
-      {step === 4 && (
+      {step === 5 && (
         <div className="max-w-3xl space-y-5">
           <div className="flex items-start gap-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/80 px-5 py-4">
             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" strokeWidth={1.75} />

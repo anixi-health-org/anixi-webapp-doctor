@@ -2,6 +2,14 @@ import { djangoListAdherence, djangoListMood, djangoSaveMoodEntry, type DjangoAd
 import { getVitalsRecordsForDate } from './logsService';
 import { convertTimestamp, getDateString } from '../utils/dateFormatter';
 import { mapInBatches } from '../utils/asyncBatch';
+import {
+  classifyDoseEvent,
+  labelFromAdherenceRate,
+  outcomeToLegacyBucket,
+  type AdherenceDoseOutcome,
+  type AdherenceRulesConfig,
+} from '../lib/adherenceEventModel';
+import { getActiveAdherenceRules } from './adherenceRulesService';
 
 interface AdherenceRecord {
   date: string;
@@ -9,6 +17,7 @@ interface AdherenceRecord {
   dosage?: string;
   scheduledTime: Date;
   status: 'taken' | 'missed' | 'pending';
+  outcome?: AdherenceDoseOutcome;
   takenTime?: Date;
   notes?: string;
   timeSlot?: 'morning' | 'afternoon' | 'evening';
@@ -47,7 +56,10 @@ export interface DoctorAdherenceLog {
   id: string;
   medicationName: string;
   dosage: string;
+  /** Legacy bucket for existing UI */
   status: 'taken' | 'missed' | 'pending';
+  /** Full event-model outcome: expected → taken/reported/late → missed */
+  outcome: AdherenceDoseOutcome;
   scheduledTime: Date | null;
   takenTime: Date | null;
   timestamp: Date | null;
@@ -79,6 +91,8 @@ type AdherenceQueryOptions = {
    * so doctor stats match patient "through today" math.
    */
   excludeFuturePendingFromStats?: boolean;
+  /** Override practice adherence rules for this call */
+  rules?: AdherenceRulesConfig;
 };
 
 type AdherenceDoc = { id: string; data: Record<string, unknown> };
@@ -91,11 +105,25 @@ const getStartAndEndOfMonth = (year: number, month: number) => {
 
 const toDateKey = (value: Date): string => getDateString(value);
 
-const normalizeStatus = (status: unknown): 'taken' | 'missed' | 'pending' => {
-  if (status === 'taken' || status === 'missed' || status === 'pending') {
-    return status;
-  }
-  return 'pending';
+const resolveDose = (
+  data: Record<string, unknown>,
+  rules: AdherenceRulesConfig,
+  now?: Date
+) => {
+  const scheduledTime = convertTimestamp(data.scheduledTime ?? data.scheduledFor);
+  const takenTime = convertTimestamp(data.takenTime ?? data.recordedAt);
+  const outcome = classifyDoseEvent(
+    {
+      apiStatus: data.status as string | undefined,
+      scheduledTime,
+      takenTime,
+      reportedBy: (data.reportedBy as string) || (data.source as string) || null,
+      now,
+    },
+    rules
+  );
+  const status = outcomeToLegacyBucket(outcome, rules);
+  return { scheduledTime, takenTime, outcome, status };
 };
 
 const endOfToday = () => {
@@ -134,15 +162,16 @@ const fetchAdherenceDocs = async (
 };
 
 const parseDoctorLog = (id: string, data: Record<string, unknown>): DoctorAdherenceLog => {
-  const scheduledTime = convertTimestamp(data.scheduledTime ?? data.scheduledFor);
-  const takenTime = convertTimestamp(data.takenTime ?? data.recordedAt);
+  const rules = getActiveAdherenceRules();
+  const { scheduledTime, takenTime, outcome, status } = resolveDose(data, rules);
   const timestamp = convertTimestamp(data.timestamp ?? data.createdAt) ?? scheduledTime;
 
   return {
     id,
     medicationName: (data.medicationName as string) || 'Unknown',
     dosage: formatDosage(data.dosage, data.dosageUnit),
-    status: normalizeStatus(data.status),
+    status,
+    outcome,
     scheduledTime,
     takenTime,
     timestamp,
@@ -157,8 +186,11 @@ const buildAdherenceDetailsFromDocs = (
   const {
     type = 'medication',
     excludeFuturePendingFromStats = true,
+    rules: rulesOverride,
   } = options;
+  const rules = rulesOverride ?? getActiveAdherenceRules();
   const statsCutoff = endOfToday();
+  const now = new Date();
   const dayMap = new Map<string, DayAdherenceDetails>();
 
   let takenTotal = 0;
@@ -174,10 +206,9 @@ const buildAdherenceDetailsFromDocs = (
       ?? 'medication';
     if (type && recordType !== type) return;
 
-    const scheduledTime = convertTimestamp(data.scheduledTime ?? data.scheduledFor);
+    const { scheduledTime, outcome, status } = resolveDose(data, rules, now);
     if (!scheduledTime) return;
 
-    const status = normalizeStatus(data.status);
     const dateKey = toDateKey(scheduledTime);
 
     if (!dayMap.has(dateKey)) {
@@ -198,12 +229,18 @@ const buildAdherenceDetailsFromDocs = (
     if (status === 'pending') day.pending += 1;
     day.percentage = day.total > 0 ? Math.round((day.taken / day.total) * 100) : 0;
 
+    const isOpenPending = status === 'pending' || outcome === 'expected';
     const includeInStats =
       !excludeFuturePendingFromStats ||
-      status !== 'pending' ||
+      !isOpenPending ||
       scheduledTime.getTime() <= statsCutoff.getTime();
 
     if (!includeInStats) return;
+
+    if (rules.excludeOpenPendingFromRate && isOpenPending) {
+      pendingTotal += 1;
+      return;
+    }
 
     if (status === 'taken') {
       takenTotal += 1;
@@ -395,13 +432,16 @@ export const getDailyAdherence = async (
       ?? new Date(`${date}T00:00:00`);
     const takenTime = convertTimestamp(data.takenTime ?? data.recordedAt);
 
+    const rules = getActiveAdherenceRules();
+    const { status, outcome, takenTime: resolvedTaken } = resolveDose(data, rules);
     medications.push({
       date,
       medicationName: (data.medicationName as string) || 'Unknown',
       dosage: formatDosage(data.dosage, data.dosageUnit),
       scheduledTime,
-      status: normalizeStatus(data.status),
-      takenTime: takenTime ?? undefined,
+      status,
+      outcome,
+      takenTime: resolvedTaken ?? takenTime ?? undefined,
       notes: data.notes as string | undefined,
       timeSlot: inferTimeSlot(scheduledTime),
     });
@@ -442,12 +482,14 @@ export const getDailyAdherence = async (
         return null;
       }
       const scheduledTime = convertTimestamp(data.scheduledTime ?? data.scheduledFor);
+      const rules = getActiveAdherenceRules();
+      const { status } = resolveDose(data, rules);
       return {
         id: entryDoc.id,
         name: (data.medicationName as string) || 'Vital',
         value: data.recordedValue ?? null,
         unit: data.unit ?? null,
-        status: normalizeStatus(data.status),
+        status,
         scheduledTime,
         takenTime: convertTimestamp(data.takenTime ?? data.recordedAt),
         notes: data.notes,
@@ -535,10 +577,10 @@ export const getDoctorPatientAdherenceSummary = async (
   since.setDate(since.getDate() - daysBack);
   since.setHours(0, 0, 0, 0);
 
-  const now = endOfToday();
+  const rangeEnd = endOfToday();
   const docs = await fetchAdherenceDocs(patientId, {
     fromDate: since,
-    toDate: now,
+    toDate: rangeEnd,
     type: 'medication',
     limit: 500,
   });
@@ -546,6 +588,8 @@ export const getDoctorPatientAdherenceSummary = async (
   let takenCount = 0;
   let missedCount = 0;
   let pendingCount = 0;
+  const rules = getActiveAdherenceRules();
+  const now = new Date();
 
   docs.forEach((entryDoc) => {
     const data = entryDoc.data;
@@ -553,19 +597,22 @@ export const getDoctorPatientAdherenceSummary = async (
       ?? (data.itemType as string | undefined)
       ?? 'medication';
     if (recordType !== 'medication') return;
-    const status = normalizeStatus(data.status);
+    const { status, outcome } = resolveDose(data, rules, now);
+    if (rules.excludeOpenPendingFromRate && (status === 'pending' || outcome === 'expected')) {
+      pendingCount += 1;
+      return;
+    }
     if (status === 'taken') takenCount += 1;
     if (status === 'missed') missedCount += 1;
     if (status === 'pending') pendingCount += 1;
   });
 
   const total = takenCount + missedCount + pendingCount;
-  const adherenceRate = total > 0 ? Math.round((takenCount / total) * 100) : 0;
-
-  let statusLabel: PatientAdherenceListSummary['statusLabel'] = 'no-data';
-  if (total > 0 && adherenceRate >= 85) statusLabel = 'excellent';
-  else if (total > 0 && adherenceRate >= 60) statusLabel = 'moderate';
-  else if (total > 0) statusLabel = 'low';
+  const rateDenom = rules.excludeOpenPendingFromRate
+    ? takenCount + missedCount
+    : total;
+  const adherenceRate = rateDenom > 0 ? Math.round((takenCount / rateDenom) * 100) : 0;
+  const statusLabel = labelFromAdherenceRate(adherenceRate, rateDenom > 0, rules);
 
   return {
     patientId,

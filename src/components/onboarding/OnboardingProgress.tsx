@@ -20,6 +20,12 @@ const CLINIC_STEPS: OnboardingStep[] = [
     description: 'Name, timezone, and location',
   },
   {
+    id: 'medical-aid',
+    label: 'Medical aid schemes',
+    shortLabel: 'Medical aid',
+    description: 'Schemes your clinic accepts',
+  },
+  {
     id: 'team',
     label: 'Invite doctors',
     shortLabel: 'Doctors',
@@ -298,17 +304,23 @@ export function getOnboardingStepMeta(
         };
       case 2:
         return {
+          title: 'Medical aid schemes',
+          subtitle:
+            'Choose which medical schemes your clinic accepts. Every doctor on your team inherits this list.',
+        };
+      case 3:
+        return {
           title: 'Invite your doctors',
           subtitle:
             'Upload or paste your doctor list. Each person receives an email to create their own login under your clinic.',
         };
-      case 3:
+      case 4:
         return {
           title: 'Import your patients',
           subtitle:
             'Add existing patients in bulk. They can download the Anixi app to view records and manage adherence.',
         };
-      case 4:
+      case 5:
         return {
           title: 'Your clinic is ready',
           subtitle:

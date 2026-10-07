@@ -121,25 +121,44 @@ export const saveDoctorProfileForm = async (
     throw new Error('Doctor profile save is not available. Set REACT_APP_ANIXI_API_URL to enable the Django profile endpoint.');
 };
 
-export const updateDoctorProfile = async (_doctorId: string, _updates: Partial<Doctor>): Promise<void> => {
-    // TODO: persist via Django endpoint once available.
+export const updateDoctorProfile = async (doctorId: string, updates: Partial<Doctor>): Promise<void> => {
+    if (!isDjangoApiEnabled()) {
+        throw new Error('Doctor profile updates require the Anixi API.');
+    }
+    const patch: Record<string, unknown> = {};
+    if (updates.displayName) patch.display_name = updates.displayName;
+    if (updates.phoneNumber) patch.phone_number = updates.phoneNumber;
+    if (Object.keys(patch).length === 0) return;
+    await djangoPatchDoctorProfile(patch);
+    void doctorId;
 };
 
 export const diagnosticCheck = async () => {
-    // No-op until a Django diagnostics endpoint exists.
+    return { ok: isDjangoApiEnabled() };
 };
 
-export const getDoctorPatients = async (_doctorId: string): Promise<Patient[]> => {
-    // TODO: replace with a Django patient-panel endpoint once available.
-    return [];
+export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> => {
+    const { getDoctorPatients: listPatients } = await import('./patientManagementService');
+    return listPatients(doctorId);
 };
 
-export const getDashboardStats = async (_doctorId: string): Promise<DashboardStats> => {
+export const getDashboardStats = async (doctorId: string): Promise<DashboardStats> => {
+    const [{ getDoctorPatients: listPatients }, { getDoctorAppointments }] = await Promise.all([
+        import('./patientManagementService'),
+        import('./appointmentService'),
+    ]);
+    const [patients, appointments] = await Promise.all([
+        listPatients(doctorId),
+        getDoctorAppointments(doctorId),
+    ]);
+    const now = new Date();
     return {
-        totalPatients: 0,
+        totalPatients: patients.length,
         warningPatients: 0,
-        stablePatients: 0,
-        inactivePatients: 0,
-        upcomingAppointments: 0,
+        stablePatients: patients.filter((patient) => patient.rosterStatus !== 'inactive').length,
+        inactivePatients: patients.filter((patient) => patient.rosterStatus === 'inactive').length,
+        upcomingAppointments: appointments.filter(
+            (appointment) => appointment.date >= now && appointment.status !== 'cancelled',
+        ).length,
     };
 };
