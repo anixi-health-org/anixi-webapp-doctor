@@ -165,7 +165,7 @@ export const ClinicAdminClaimsPage: React.FC = () => {
     <PageShell maxWidth="wide" className="py-6 sm:py-8">
       <PageHeader
         title="Medical aid claims"
-        description="Clinic billing prepares scheme packs from practice invoices. Independent doctors handle their own claims from private practice billing."
+        description="Clinic billing prepares scheme packs from practice invoices."
       />
 
       {!canManage ? (

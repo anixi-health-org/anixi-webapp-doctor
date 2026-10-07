@@ -10,7 +10,6 @@ import {
   HeartIcon,
   HomeIcon,
   QuestionMarkCircleIcon,
-  RectangleStackIcon,
   SparklesIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
@@ -93,7 +92,7 @@ function NavLink({
 
 const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const { user, practiceSession } = useAuth();
-  const { isClinicEmployedClinician, canManageContent } = usePermissions();
+  const { isClinicEmployedClinician } = usePermissions();
   const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const { requests: sharingRequests } = useIncomingSharingRequests(user?.id);
@@ -182,9 +181,6 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
       href: '/practice-settings',
       icon: WrenchScrewdriverIcon,
     },
-    ...(canManageContent
-      ? [{ name: 'Content', href: '/content', icon: RectangleStackIcon } as NavItem]
-      : []),
   ];
 
   const supportNav: NavItem = {
@@ -224,7 +220,7 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
       </aside>
 
       <div className="flex min-w-0 flex-1 md:pl-64">
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 border-b border-[#e1e7ef] bg-white">
           <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -284,7 +280,14 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
           </div>
         )}
 
-          <main className={`flex-1 ${location.pathname === '/ayah' || location.pathname === '/dashboard' ? 'min-h-0 overflow-hidden' : 'overflow-y-auto'}`}>
+          <main
+            className={clsx(
+              'flex-1',
+              location.pathname === '/ayah' || location.pathname === '/dashboard'
+                ? 'flex min-h-0 flex-col overflow-hidden'
+                : 'overflow-y-auto',
+            )}
+          >
             {children || <Outlet />}
           </main>
         </div>

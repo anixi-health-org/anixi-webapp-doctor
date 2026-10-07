@@ -6,6 +6,7 @@ import {
   djangoPatchPracticePatientAccount,
   type DjangoPracticePatient,
 } from './djangoApiService';
+import { sanitizeContactEmail } from '../lib/contactEmail';
 import type { Patient } from '../types';
 
 export type PracticePatientQuery = {
@@ -30,11 +31,13 @@ function mapPracticePatient(row: {
   assignedDoctorId?: string | null;
   status?: string;
   activationCode?: string | null;
+  unichartChartName?: string | null;
 }, practiceId: string): Patient {
   return {
     id: row.patientId,
-    email: row.email,
+    email: sanitizeContactEmail(row.email),
     displayName: (row.displayName || '').trim(),
+    unichartChartName: row.unichartChartName?.trim() || undefined,
     phoneNumber: row.phoneNumber || undefined,
     role: 'patient' as const,
     practiceId: row.practiceId ?? practiceId,

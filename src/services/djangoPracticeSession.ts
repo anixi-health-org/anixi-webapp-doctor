@@ -18,6 +18,13 @@ function parsePractice(raw: Record<string, unknown>): Practice {
       ? (raw.consultTypeSettings as Practice['consultTypeSettings'])
       : undefined,
     publicListing: (raw.publicListing as Practice['publicListing']) ?? undefined,
+    acceptedSchemes: Array.isArray(raw.acceptedSchemes)
+      ? (raw.acceptedSchemes as Practice['acceptedSchemes'])
+      : undefined,
+    acceptedPlans: Array.isArray(raw.acceptedPlans)
+      ? (raw.acceptedPlans as Practice['acceptedPlans'])
+      : undefined,
+    configureAcceptedSchemes: raw.configureAcceptedSchemes === true,
     clinicCode: raw.clinicCode ? String(raw.clinicCode) : undefined,
     logoUrl: raw.logoUrl ? String(raw.logoUrl) : undefined,
     createdAt: raw.createdAt ? new Date(String(raw.createdAt)) : new Date(),

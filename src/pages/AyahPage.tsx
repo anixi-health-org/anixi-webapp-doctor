@@ -34,7 +34,21 @@ import {
   parseDoctorBulkCsv,
   createPracticeInvitesBulk,
 } from '../services/bulkInviteService';
+import {
+  djangoApplyUnichart,
+  djangoPreviewUnichart,
+  type UnichartPreview,
+} from '../services/djangoApiService';
 import { resolveAyahVoiceLanguage } from '../lib/resolveAyahVoiceLanguage';
+import {
+  unichartAgentContextSuffix,
+  wantsUnichartApply,
+} from '../lib/ayahUnichartContext';
+import {
+  mergeCompanionRequestContext,
+  resolveAyahThreadId,
+  resolveClinicAnchors,
+} from '../lib/buildCompanionContext';
 
 function formatTime(): string {
   const now = new Date();
@@ -65,8 +79,14 @@ export const AyahPage: React.FC = () => {
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastFileUploadRef = useRef<AyahFileUpload | null>(null);
+  const [pendingUnichart, setPendingUnichart] = useState<UnichartPreview | null>(null);
+  const pendingUnichartRef = useRef<UnichartPreview | null>(null);
   const contextRef = useRef(context);
   contextRef.current = context;
+
+  useEffect(() => {
+    pendingUnichartRef.current = pendingUnichart;
+  }, [pendingUnichart]);
 
   const buildVoiceContext = useCallback(() => {
     const nextContext = contextRef.current;
@@ -86,18 +106,27 @@ export const AyahPage: React.FC = () => {
       patientSnapshot: chart,
       fallback: 'en-ZA',
     });
-    return {
-      ...nextContext,
+    return mergeCompanionRequestContext(nextContext, {
       practiceSnapshot: practiceSnapshotRef.current as unknown as Record<string, unknown>,
       patientSnapshot: chart as unknown as Record<string, unknown> | undefined,
-      clinicDate,
-      clinicTimezone,
+      clientSurface: 'voice',
+      preferredLanguage: resolveAyahVoiceLanguage({
+        patientSnapshot: chart,
+        fallback: voiceLanguage,
+      }),
+      ...resolveClinicAnchors(clinicTimezone),
       voiceLanguage,
-    };
+    });
   }, []);
 
   const voiceConversation = useAyahVoiceConversation({
-    threadId: user?.id,
+    threadId: user?.id
+      ? resolveAyahThreadId({
+          surface: 'voice',
+          userId: user.id,
+          patientId: context.patientId,
+        })
+      : undefined,
     languageCode: resolveAyahVoiceLanguage({
       patientSnapshot: patientChart,
       fallback: 'en-ZA',
@@ -195,16 +224,20 @@ export const AyahPage: React.FC = () => {
         (typeof practiceSnapshotRef.current?.timezone === 'string' &&
           practiceSnapshotRef.current.timezone) ||
         'Africa/Johannesburg';
-      const clinicDate = new Date().toLocaleDateString('en-CA', {
-        timeZone: clinicTimezone,
-      });
-      const requestContext = {
-        ...nextContext,
+      const anchors = resolveClinicAnchors(clinicTimezone);
+      const preview = pendingUnichartRef.current;
+      const agentText = `${trimmed}${unichartAgentContextSuffix(preview)}`;
+      const preferredLanguage =
+        (chart as { preferredLanguage?: string } | undefined)?.preferredLanguage ||
+        (chart as { language?: string } | undefined)?.language;
+      const requestContext = mergeCompanionRequestContext(nextContext, {
         practiceSnapshot: practiceSnapshotRef.current as unknown as Record<string, unknown>,
         patientSnapshot: chart as unknown as Record<string, unknown> | undefined,
-        clinicDate,
-        clinicTimezone,
-      };
+        unichartPreview: preview,
+        clientSurface: 'doctor-ayah',
+        preferredLanguage,
+        ...anchors,
+      });
       const assistantId = `${Date.now()}-a`;
       setMessages((prev) => [
         ...prev,
@@ -229,11 +262,13 @@ export const AyahPage: React.FC = () => {
 
       try {
         await streamAskAnixi({
-          message: trimmed,
+          message: agentText,
           context: requestContext,
-          threadId: requestContext.patientId
-            ? `${user.id}:${requestContext.patientId}`
-            : user.id,
+          threadId: resolveAyahThreadId({
+            surface: 'doctor-ayah',
+            userId: user.id,
+            patientId: requestContext.patientId,
+          }),
           signal: controller.signal,
           onChunk: (chunk: string) => {
             accumulated += chunk;
@@ -402,12 +437,69 @@ export const AyahPage: React.FC = () => {
     [],
   );
 
+  const appendLocalExchange = useCallback(
+    (exchange: { userContent?: string; assistantContent: string; hideUser?: boolean }) => {
+      const stamp = formatTime();
+      setMessages((prev) => [
+        ...prev,
+        ...(exchange.hideUser || !exchange.userContent
+          ? []
+          : [
+              {
+                id: `${Date.now()}-u`,
+                role: 'user' as const,
+                content: exchange.userContent,
+                time: stamp,
+              },
+            ]),
+        {
+          id: `${Date.now()}-a`,
+          role: 'assistant',
+          content: formatAyahReply(exchange.assistantContent),
+          time: stamp,
+        },
+      ]);
+      setInput('');
+    },
+    [setMessages],
+  );
+
+  const onConfirmUnichart = useCallback(async () => {
+    const preview = pendingUnichartRef.current;
+    if (!preview?.previewId) return;
+    try {
+      const result = await djangoApplyUnichart(preview.previewId);
+      const filled = (result.filled ?? []).join(', ') || 'nothing new';
+      appendLocalExchange({
+        assistantContent:
+          result.status === 'already_applied'
+            ? 'This chart was already applied.'
+            : `Chart import applied. Updated: ${filled}.`,
+        hideUser: true,
+      });
+      setPendingUnichart(null);
+    } catch (err) {
+      appendLocalExchange({
+        assistantContent: `❌ Could not apply chart: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        hideUser: true,
+      });
+    }
+  }, [appendLocalExchange]);
+
   const handleSendWithFile = useCallback(
     async (text: string) => {
       const upload = lastFileUploadRef.current;
       lastFileUploadRef.current = null;
 
       if (!upload) {
+        if (
+          pendingUnichartRef.current?.previewId &&
+          pendingUnichartRef.current.status === 'matched' &&
+          wantsUnichartApply(text)
+        ) {
+          void onConfirmUnichart();
+          return;
+        }
         void sendMessage(text);
         return;
       }
@@ -418,6 +510,71 @@ export const AyahPage: React.FC = () => {
       }
 
       const practiceId = contextRef.current.practiceId || (practiceSnapshotRef.current as Record<string, unknown>)?.practiceId as string || '';
+
+      if (upload.type === 'chart_pdf') {
+        const userLabel = text.trim()
+          ? `${text.trim()}\n📎 ${upload.file.name}`
+          : `📎 ${upload.file.name}`;
+        const assistantId = `${Date.now()}-a`;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-u`,
+            role: 'user',
+            content: userLabel,
+            time: formatTime(),
+          },
+          {
+            id: assistantId,
+            role: 'assistant',
+            content: formatAyahReply(`Reading UniCharts PDF **${upload.file.name}**…`),
+            time: formatTime(),
+          },
+        ]);
+        setInput('');
+
+        try {
+          const preview = await djangoPreviewUnichart(upload.file, {
+            practiceId:
+              contextRef.current.practiceId ||
+              (practiceSnapshotRef.current as { practiceId?: string }).practiceId,
+          });
+          setPendingUnichart(preview.status === 'matched' ? preview : null);
+          let reply: string;
+          if (preview.status === 'matched' && preview.patient) {
+            const fields =
+              preview.fills.length > 0
+                ? preview.fills.join(', ')
+                : 'no empty fields to fill';
+            reply = `**${preview.patient.displayName}** matched from this chart. I can fill empty fields only: ${fields}.\n\nUse **Confirm chart import** below to apply, or ask me anything about this preview.`;
+          } else if (preview.status === 'already_applied') {
+            reply = 'This chart was already applied to the patient record.';
+          } else {
+            reply =
+              'I could not match this PDF to a patient in your practice. Check the chart belongs to someone on your panel, then try again or pick the patient first.';
+          }
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, content: formatAyahReply(reply) } : m,
+            ),
+          );
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : 'Unknown error';
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    content: formatAyahReply(
+                      `❌ Chart preview failed: ${detail}\n\nThis step uses the Django API (\`/api/v1/patients/unichart/preview/\`). Check that the backend is running.`,
+                    ),
+                  }
+                : m,
+            ),
+          );
+        }
+        return;
+      }
 
       if (upload.type === 'patient_csv') {
         const parsed = parsePatientBulkCsv(upload.content);
@@ -509,7 +666,7 @@ export const AyahPage: React.FC = () => {
         { displayText: `📎 ${upload.file.name}` },
       );
     },
-    [user, sendMessage],
+    [user, sendMessage, onConfirmUnichart, setMessages],
   );
 
   const onAttention = (item: AttentionItem) => {
@@ -533,7 +690,7 @@ export const AyahPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-[#f8faf8]">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f8faf8] lg:flex-row">
       {showAIDisclaimer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="mx-4 max-w-lg rounded-2xl bg-white p-6 shadow-xl">
@@ -612,7 +769,8 @@ export const AyahPage: React.FC = () => {
         onResolveDraft={(draft, decision) => void onResolveDraft(draft, decision)}
       />
 
-      <div className="border-b border-[#e1e7ef] bg-white px-4 py-3 lg:hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="border-b border-[#e1e7ef] bg-white px-4 py-3 lg:hidden shrink-0">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#65758b]">
           {greeting}, {clinicianHeaderLabel(user?.displayName)}
         </p>
@@ -659,7 +817,11 @@ export const AyahPage: React.FC = () => {
           setVoiceModeOpen(true);
           void voiceConversation.startConversation();
         }}
+        pendingUnichart={pendingUnichart}
+        onConfirmUnichart={() => void onConfirmUnichart()}
+        onDismissUnichart={() => setPendingUnichart(null)}
       />
+      </div>
 
       <AyahVoicePanel
         open={voiceModeOpen}

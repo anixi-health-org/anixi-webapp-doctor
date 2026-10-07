@@ -35,6 +35,9 @@ export function mapPublicClinicRow(row: Record<string, unknown>): PublicClinicLi
     province: row.province ? String(row.province) : undefined,
     services: Array.isArray(row.services) ? row.services.map(String) : [],
     acceptsMedicalAid: row.acceptsMedicalAid === true,
+    acceptedSchemes: Array.isArray(row.acceptedSchemes)
+      ? (row.acceptedSchemes as PublicClinicListing['acceptedSchemes'])
+      : undefined,
     heroImageUrl: row.heroImageUrl ? String(row.heroImageUrl) : undefined,
     logoUrl: row.logoUrl ? String(row.logoUrl) : undefined,
     bhfPracticeNumber: row.bhfPracticeNumber ? String(row.bhfPracticeNumber) : undefined,

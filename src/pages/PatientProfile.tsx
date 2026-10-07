@@ -96,7 +96,7 @@ export const PatientProfile: React.FC = () => {
           patientEmail: contextState.patientEmail,
         });
         if (!foundPatient) {
-          setError('Patient not found');
+          setError('Patient not found or you do not have access to this record.');
           return;
         }
         setPatient(foundPatient);

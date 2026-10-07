@@ -134,10 +134,29 @@ export interface Practice {
     consultTypeSettings?: ConsultTypeSetting[];
     /** Patient-facing clinic listing (marketplace / browse) */
     publicListing?: PublicClinicListingSettings;
+    acceptedSchemes?: MedicalSchemeCatalogItem[];
+    acceptedPlans?: MedicalSchemePlanCatalogItem[];
+    configureAcceptedSchemes?: boolean;
     /** Optional vital alert rules (client may also store overrides locally). */
     vitalMetricRules?: import('../lib/vitalMetricRules').VitalMetricRulesConfig;
     createdAt: Date;
     updatedAt: Date;
+}
+
+export interface MedicalSchemeCatalogItem {
+    id: string;
+    slug: string;
+    name: string;
+    shortName: string;
+    category: string;
+}
+
+export interface MedicalSchemePlanCatalogItem {
+    id: string;
+    slug: string;
+    name: string;
+    schemeSlug: string;
+    schemeName: string;
 }
 
 export interface PublicClinicListingSettings {
@@ -162,6 +181,7 @@ export interface PublicClinicListing {
     province?: string;
     services?: string[];
     acceptsMedicalAid?: boolean;
+    acceptedSchemes?: MedicalSchemeCatalogItem[];
     heroImageUrl?: string;
     logoUrl?: string;
     bhfPracticeNumber?: string;
@@ -556,6 +576,8 @@ export interface Patient extends User {
     rosterStatus?: string;
     /** Code for patient to activate a pre-created clinic account in the app */
     activationCode?: string;
+    /** Name as printed on UniCharts PDF (surname first) */
+    unichartChartName?: string;
     /** From patient medical profile (mobile app), read-only for doctors */
     bloodGroup?: string;
     /** From patient medical profile (mobile app), read-only for doctors */

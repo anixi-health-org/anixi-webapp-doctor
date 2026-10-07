@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
-import { useAuth } from '../hooks/AuthContext';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import { useVitalRules } from '../hooks/useVitalRules';
 import { getVitalsLogs } from '../services/logsService';
@@ -17,7 +16,6 @@ import {
   worstSeverity,
   type VitalSeverity,
 } from '../lib/vitalMetricRules';
-import { usesClinicAdminPortal } from '../lib/doctorAccess';
 
 const formatBloodPressure = (log?: VitalsLog): string => {
   if (!log?.bloodPressure) return '-';
@@ -27,12 +25,8 @@ const formatBloodPressure = (log?: VitalsLog): string => {
 
 export const VitalsHistoryPage: React.FC = () => {
   const { navigateBack } = useNavigateWithFallback();
-  const { practiceSession } = useAuth();
   const { patientId } = useParams<{ patientId: string }>();
   const { config } = useVitalRules();
-  const rulesHref = usesClinicAdminPortal(practiceSession)
-    ? '/clinic/settings?tab=vitals'
-    : '/practice-settings?tab=vitals';
   const [logs, setLogs] = useState<VitalsLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -123,14 +117,6 @@ export const VitalsHistoryPage: React.FC = () => {
       <PageHeader
         title="Vitals History"
         description="Patient vital signs classified with your practice alert rules (normal / warning / urgent)."
-        actions={
-          <Link
-            to={rulesHref}
-            className="text-sm font-medium text-anixi-green underline"
-          >
-            Configure rules
-          </Link>
-        }
       />
 
       {error ? (

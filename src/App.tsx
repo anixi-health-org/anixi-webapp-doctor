@@ -51,6 +51,7 @@ import { PartnerAccountPage } from './pages/partner/PartnerAccountPage';
 import { ClinicAdminLayout } from './components/ClinicAdminLayout';
 import { ClinicAdminRoute } from './components/ClinicAdminRoute';
 import { ClinicPermissionGate } from './components/ClinicPermissionGate';
+import ClinicAyahPage from './pages/clinic/ClinicAyahPage';
 import ClinicAdminDashboard from './pages/clinic/ClinicAdminDashboard';
 import ClinicAdminTeamPage from './pages/clinic/ClinicAdminTeamPage';
 import ClinicAdminPatientsPage from './pages/clinic/ClinicAdminPatientsPage';
@@ -64,8 +65,6 @@ import ClinicAdminQueuePage from './pages/clinic/ClinicAdminQueuePage';
 import ClinicAdminRoomsPage from './pages/clinic/ClinicAdminRoomsPage';
 import ClinicAdminReportsPage from './pages/clinic/ClinicAdminReportsPage';
 import ClinicAdminAuditLogPage from './pages/clinic/ClinicAdminAuditLogPage';
-import ContentLibraryPage from './pages/ContentLibraryPage';
-import { ContentPermissionRoute } from './components/ContentPermissionRoute';
 import EmployerDashboardPage from './pages/employer/EmployerDashboardPage';
 import { EmployerRoute } from './components/EmployerRoute';
 import {
@@ -187,6 +186,7 @@ function App() {
             }
           >
             <Route index element={<ClinicAdminDashboard />} />
+            <Route path="ayah" element={<ClinicAyahPage />} />
             <Route
               path="team"
               element={
@@ -214,7 +214,7 @@ function App() {
             <Route
               path="patients/:patientId"
               element={
-                <ClinicPermissionGate requires="managePatients">
+                <ClinicPermissionGate requires="managePatients" allowClinician>
                   <ClinicAdminPatientAccountPage />
                 </ClinicPermissionGate>
               }
@@ -268,22 +268,8 @@ function App() {
                 </ClinicPermissionGate>
               }
             />
-            <Route
-              path="content"
-              element={
-                <ContentPermissionRoute>
-                  <ContentLibraryPage />
-                </ContentPermissionRoute>
-              }
-            />
-            <Route
-              path="share"
-              element={
-                <ContentPermissionRoute>
-                  <ShareAnixi />
-                </ContentPermissionRoute>
-              }
-            />
+            <Route path="content" element={<Navigate to="/clinic" replace />} />
+            <Route path="share" element={<Navigate to="/clinic" replace />} />
             <Route path="appointments" element={<Navigate to="/clinic/schedule" replace />} />
             <Route path="calendar" element={<Navigate to="/clinic/schedule" replace />} />
             <Route path="settings" element={<ClinicAdminSettingsPage />} />
@@ -361,14 +347,7 @@ function App() {
                     <Route path="/professional-profile" element={<ProfessionalProfile />} />
                     <Route path="/practice-settings" element={<PracticeSettingsPage />} />
                     <Route path="/practice-calendar" element={<PracticeCalendarPage />} />
-                    <Route
-                      path="/content"
-                      element={
-                        <ContentPermissionRoute>
-                          <ContentLibraryPage />
-                        </ContentPermissionRoute>
-                      }
-                    />
+                    <Route path="/content" element={<Navigate to="/ayah" replace />} />
                     <Route path="/share-anixi" element={<ShareAnixi />} />
                     <Route path="/change-password" element={<ChangePassword />} />
                     <Route path="/support" element={<Support />} />

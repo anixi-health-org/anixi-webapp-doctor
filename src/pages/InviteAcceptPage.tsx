@@ -52,6 +52,7 @@ export const InviteAcceptPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const inviteConfig = getJoinPathConfig('invite');
@@ -113,10 +114,7 @@ export const InviteAcceptPage: React.FC = () => {
     const acceptedRole = role || invite?.role;
 
     if (acceptedRole && clinicAdminRoles.includes(acceptedRole)) {
-      navigate(
-        acceptedRole === 'content_creator' ? '/clinic/content' : clinicAdminHomePath(),
-        { replace: true }
-      );
+      navigate(clinicAdminHomePath(), { replace: true });
       return;
     }
 
@@ -156,6 +154,11 @@ export const InviteAcceptPage: React.FC = () => {
           setSubmitting(false);
           return;
         }
+        if (!acceptPrivacy) {
+          setError('You must accept the Privacy Policy to continue');
+          setSubmitting(false);
+          return;
+        }
         await registerProfessional(
           email,
           password,
@@ -163,6 +166,7 @@ export const InviteAcceptPage: React.FC = () => {
           authRole,
           undefined,
           'invite',
+          acceptPrivacy,
         );
         const professional = await login(email, password, authRole);
         if (!professional) throw new Error('Could not sign in after registration');
@@ -373,6 +377,29 @@ export const InviteAcceptPage: React.FC = () => {
                       placeholder="Re-enter your password"
                     />
                   </div>
+                )}
+                {mode === 'register' && (
+                  <label className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={acceptPrivacy}
+                      onChange={(e) => setAcceptPrivacy(e.target.checked)}
+                      required
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-anixi-green focus:ring-anixi-green"
+                    />
+                    <span className="text-sm text-gray-600">
+                      I accept the{' '}
+                      <Link
+                        to="/privacy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-anixi-green underline hover:text-anixi-green/80"
+                      >
+                        Privacy Policy
+                      </Link>{' '}
+                      and acknowledge POPIA compliance requirements
+                    </span>
+                  </label>
                 )}
               </>
             )}

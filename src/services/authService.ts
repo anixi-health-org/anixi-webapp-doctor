@@ -16,6 +16,7 @@ export const registerProfessional = async (
   role: AuthRole,
   _countryCode?: string,
   joinPath?: JoinPath,
+  popiaConsent?: boolean,
 ): Promise<void> => {
   const djangoRole =
     role === 'staff' ? 'staff' : role === 'caregiver' ? 'caregiver' : 'doctor';
@@ -24,6 +25,7 @@ export const registerProfessional = async (
     password,
     displayName,
     role: djangoRole,
+    popiaConsent,
     joinIntent: joinPath === 'market_partner'
       ? 'market_partner'
       : joinPath === 'clinic'

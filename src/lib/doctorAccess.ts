@@ -100,10 +100,7 @@ export function canManageOperationalSettings(session: PracticeSession | null): b
   );
 }
 
-export function clinicAdminHomePath(session?: PracticeSession | null): string {
-  if (session?.member?.role === 'content_creator') {
-    return '/clinic/content';
-  }
+export function clinicAdminHomePath(_session?: PracticeSession | null): string {
   return '/clinic';
 }
 

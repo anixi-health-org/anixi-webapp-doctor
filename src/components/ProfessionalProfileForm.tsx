@@ -15,6 +15,8 @@ import { PageHeaderSkeleton, Skeleton } from './ui/Skeleton';
 import { isOnboardingFormComplete, inheritClinicPracticeFields } from '../lib/doctorAccess';
 import { usePermissions } from '../hooks/usePermissions';
 import { ClinicManagedNotice } from './practice/ClinicManagedNotice';
+import { InheritedMedicalSchemesNotice } from './practice/InheritedMedicalSchemesNotice';
+import { PracticeMedicalAidSoloSection } from './practice/PracticeMedicalAidSoloSection';
 import { detectBrowserTimezone, timezoneSelectOptions } from '../lib/timezones';
 import { SA_PROVINCES, validateSouthAfricanId } from '../lib/southAfrica';
 import {
@@ -978,6 +980,15 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
             </label>
           </div>
         </div>
+
+        {!clinicEmployed && isOnboarding && doctor ? (
+          <PracticeMedicalAidSoloSection
+            doctorId={doctor.id}
+            practice={practiceSession?.practice ?? null}
+            practiceNameFallback={formData.practiceName || doctor.displayName || 'My practice'}
+            onPracticeReady={refreshPracticeSession}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -1010,11 +1021,22 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
   const formCard = (
     <>
       {clinicEmployed && (
-        <ClinicManagedNotice
-          practiceName={practiceSession?.practice?.tradingName || practiceSession?.practice?.name}
-          surface={isOnboarding ? 'onboarding' : 'settings'}
-          className="mb-5"
-        />
+        <>
+          <ClinicManagedNotice
+            practiceName={practiceSession?.practice?.tradingName || practiceSession?.practice?.name}
+            surface={isOnboarding ? 'onboarding' : 'settings'}
+            className="mb-5"
+          />
+          {isOnboarding ? (
+            <InheritedMedicalSchemesNotice
+              schemes={practiceSession?.practice?.acceptedSchemes}
+              practiceName={
+                practiceSession?.practice?.tradingName || practiceSession?.practice?.name
+              }
+              className="mb-5"
+            />
+          ) : null}
+        </>
       )}
       {renderTabNavigation()}
 

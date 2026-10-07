@@ -50,7 +50,7 @@ This portal is part of a three-portal ecosystem:
 - **Language:** TypeScript 4.9
 - **Routing:** React Router 7 (`react-router-dom`)
 - **Styling:** Tailwind CSS 3, `tailwind-merge`, `clsx`, custom brand theme (Lora + Inter fonts)
-- **Backend / data:** Firebase 12 — Authentication, Cloud Firestore, Storage; Firebase Data Connect (`@dataconnect/generated`)
+- **Backend / data:** Django REST API (`REACT_APP_ANIXI_API_URL`). Firebase Auth and Firestore are not used. FCM push, when enabled, is configured on the API — not in this portal.
 - **State & data fetching:** [Zustand](https://github.com/pmndrs/zustand) (client state) + [TanStack Query](https://tanstack.com/query) (server state)
 - **UI & icons:** Headless UI, Heroicons, `lucide-react`
 - **Utilities:** `date-fns`, `jspdf` (PDF generation), `react-easy-crop` (image cropping)
@@ -59,7 +59,7 @@ This portal is part of a three-portal ecosystem:
 
 - **Node.js 18+** (Node 20 LTS recommended)
 - **npm 9+**
-- Access to the shared **Firebase project** (`anixihealth24`)
+- A running Anixi API (`REACT_APP_ANIXI_API_URL`, for example `http://127.0.0.1:8000`)
 
 ## Getting started
 
@@ -78,39 +78,17 @@ The dev server runs on **http://localhost:3000** and hot-reloads on save.
 
 ## Configuration
 
-Firebase is initialised in `src/lib/firebase.ts` and exports `auth`, `db`, and `storage`:
-
-```ts
-const firebaseConfig = {
-  apiKey: "…",
-  authDomain: "anixihealth24.firebaseapp.com",
-  projectId: "anixihealth24",
-  storageBucket: "anixihealth24.appspot.com",
-  messagingSenderId: "…",
-  appId: "…",
-};
-```
-
-> These are **client-side Firebase keys** — they are safe to ship in the bundle; access is enforced by Firestore/Storage security rules, not by hiding the keys. To point the portal at a different Firebase project, update the config in `src/lib/firebase.ts`.
-
-### LiveKit teleconsult (Cloud Functions)
-
-Video tokens are minted by Firebase callables in `anixi-mobile-expo/functions` (`getTeleconsultToken`, `endTeleconsult`, region `europe-west1`). Set these secrets before deploy:
+Copy `.env.example` if present and set:
 
 ```bash
-cd anixi-mobile-expo/functions
-firebase functions:secrets:set LIVEKIT_URL
-firebase functions:secrets:set LIVEKIT_API_KEY
-firebase functions:secrets:set LIVEKIT_API_SECRET
-npm run build
-firebase deploy --only functions:getTeleconsultToken,functions:endTeleconsult
+REACT_APP_ANIXI_API_URL=http://127.0.0.1:8000
 ```
 
-`LIVEKIT_URL` should be your LiveKit Cloud WebSocket URL (e.g. `wss://your-project.livekit.cloud`). Without these secrets the Join flow returns a clear configuration error.
+The portal sends `X-Client: doctor-web` and a JWT from `/api/v1/auth/login/`. Practice role and permissions come from `/api/v1/practices/mine/session/` — the browser does not choose another practice.
 
-Doctor web joins at `/teleconsult/:appointmentId`. Ending the call marks `teleconsult.status = ended` and routes to the consultation workspace. Patient mobile join is not wired yet.
+Doctor web joins teleconsult at `/teleconsult/:appointmentId`. LiveKit tokens are issued by the Django API, not by a portal Cloud Function.
 
-Firestore collection paths are centralised in `src/shared/firestorePaths.ts`.
+The `functions/` directory is retired. Do not deploy it. Push notifications stay on the API (FCM).
 
 ## Available scripts
 
@@ -134,11 +112,11 @@ src/
 │   └── caregiver/        # Caregiver-scoped pages
 ├── hooks/                # React hooks (useAuth, usePermissions, queries, …)
 │   └── queries/          # TanStack Query hooks
-├── services/             # Firebase-backed domain services (patients, appointments,
+├── services/             # Django API domain services (patients, appointments,
 │                         #   invoices, adherence, scheduling, sharing, permissions, …)
 ├── store/                # Zustand stores (authStore)
-├── lib/                  # Firebase init, currency, mappers, adapters
-├── shared/               # Shared constants & Firestore paths
+├── lib/                  # Runtime config, currency, mappers, adapters
+├── shared/               # Shared constants
 ├── types/                # TypeScript types (auth, doctorProfile, permissions)
 ├── constants/            # Static data (countries)
 ├── utils/                # Formatters & image cropping helpers
@@ -147,7 +125,7 @@ src/
 
 ## Authentication & roles
 
-- Authentication is handled through **Firebase Auth** (`services/authService.ts`, `hooks/AuthContext.tsx`, `store/authStore.ts`).
+- Authentication is handled through the **Django API** (`services/authService.ts`, `hooks/AuthContext.tsx`).
 - Routes are guarded by `ProtectedRoute` (authenticated doctors) and `CaregiverRoute` (delegated caregivers).
 - Fine-grained access is resolved via the permissions layer (`hooks/usePermissions.ts`, `services/permissions/`), enabling caregivers to act on behalf of a doctor within a limited scope.
 
@@ -170,4 +148,4 @@ The portal deploys to **Vercel** as a static CRA build.
 
 - **Build fails on Vercel with lint warnings** — resolve the reported ESLint warnings locally (`npm run build` reproduces CI behaviour) before pushing.
 - **`No space left on device` during builds** — clear artifacts and caches: `rm -rf build node_modules/.cache && npm cache clean --force`.
-- **Auth/permission errors** — confirm the account exists in the `anixihealth24` Firebase project and that Firestore security rules allow the operation.
+- **Auth/permission errors** — confirm the account exists on the API and that `REACT_APP_ANIXI_API_URL` points at that server. A 403 on a patient chart means this clinician is not linked or assigned to that warrior.

@@ -15,6 +15,8 @@ export type AskAnixiContext = {
   dashboardIntent?: string;
   clinicDate?: string;
   clinicTimezone?: string;
+  voiceLanguage?: string;
+  voiceMode?: boolean;
   onboardingFlow?: string;
   onboardingStep?: string | number;
   onboardingStepLabel?: string;
@@ -24,6 +26,23 @@ export type AskAnixiContext = {
   draftIntent?: 'clinical_report' | 'clinical_note' | 'message_reply';
   visitNote?: string;
   scribeSummary?: string;
+  unichartPreviewId?: string;
+  unichartPreviewStatus?: string;
+  unichartPreviewPatientId?: string;
+  importJobId?: string;
+  importJobStatus?: string;
+  unichartBatchApplied?: number;
+  unichartBatchTotal?: number;
+  /** Portal already ran UniCharts OCR/import — agent must not ask for the file again. */
+  unichartImportSummary?: string;
+  /** Portal surface — echoed in Django runtime brief. */
+  clientSurface?: string;
+  preferredLanguage?: string;
+  /** Copilot JSON / billing helpers */
+  responseFormat?: 'json' | string;
+  query?: string;
+  noteSnippet?: string;
+  patientMessage?: string;
 };
 
 export type DoctorAgentDraft = {
@@ -87,6 +106,7 @@ export async function streamAskAnixi(params: {
   message: string;
   context?: AskAnixiContext;
   threadId?: string;
+  agentId?: string;
   onChunk: (text: string) => void;
   signal?: AbortSignal;
 }): Promise<void> {
@@ -96,6 +116,7 @@ export async function streamAskAnixi(params: {
       message: params.message,
       context: params.context,
       threadId: params.threadId,
+      agentId: params.agentId,
       onChunk: params.onChunk,
       signal: params.signal,
     });

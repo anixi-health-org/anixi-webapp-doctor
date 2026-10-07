@@ -9,7 +9,7 @@ import {
   HomeIcon,
   LifebuoyIcon,
   QueueListIcon,
-  RectangleStackIcon,
+  SparklesIcon,
   UserGroupIcon,
   UsersIcon,
   XMarkIcon,
@@ -35,12 +35,12 @@ type NavItem = {
     | 'managePatients'
     | 'manageAppointments'
     | 'editBookingPolicies'
-    | 'viewBilling'
-    | 'manageContent';
+    | 'viewBilling';
 };
 
 const mainNav: NavItem[] = [
   { name: 'Overview', href: '/clinic', icon: HomeIcon },
+  { name: 'Ayah', href: '/clinic/ayah', icon: SparklesIcon },
   {
     name: 'Team & doctors',
     href: '/clinic/team',
@@ -70,12 +70,6 @@ const mainNav: NavItem[] = [
     href: '/clinic/rooms',
     icon: BuildingOffice2Icon,
     requires: 'manageAppointments',
-  },
-  {
-    name: 'Content',
-    href: '/clinic/content',
-    icon: RectangleStackIcon,
-    requires: 'manageContent',
   },
   {
     name: 'Reports',
@@ -162,16 +156,15 @@ const ClinicAdminShell: React.FC = () => {
   const visibleNav = React.useMemo(
     () =>
       mainNav.filter((item) => {
-        // Content creators only need Overview + Content (plus Support in footer).
+        // Content creators — overview and Ayah only (plus Support in footer).
         if (role === 'content_creator') {
-          return item.href === '/clinic' || item.href === '/clinic/content';
+          return item.href === '/clinic' || item.href === '/clinic/ayah';
         }
         if (!item.requires) return true;
         if (isOwner || isPracticeManager) return true;
         if (item.requires === 'editBookingPolicies' && can('viewBilling')) return true;
         if (item.requires === 'manageAppointments') return can('manageAppointments');
         if (item.requires === 'viewBilling') return can('viewBilling');
-        if (item.requires === 'manageContent') return can('manageContent');
         return can(item.requires);
       }),
     [can, isOwner, isPracticeManager, role]
@@ -191,6 +184,7 @@ const ClinicAdminShell: React.FC = () => {
   const closeMobile = () => setMobileNavOpen(false);
   const firstName = user?.displayName?.split(' ')[0] || 'Admin';
   const clinicName = practiceSession?.practice?.name || 'Your clinic';
+  const isAyahRoute = location.pathname === '/clinic/ayah';
 
   React.useEffect(() => {
     setAdherenceRulesPracticeContext(practiceSession?.practice?.id);
@@ -218,7 +212,7 @@ const ClinicAdminShell: React.FC = () => {
         {sidebarNav()}
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col md:pl-64">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:pl-64">
         <header className="sticky top-0 z-30 border-b border-[#dfe6e1] bg-white shadow-sm shadow-[#1a4d4d]/5">
           <div className="flex h-[4.25rem] items-center gap-4 px-4 sm:px-6 lg:px-8">
             <button
@@ -273,7 +267,12 @@ const ClinicAdminShell: React.FC = () => {
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto">
+        <main
+          className={clsx(
+            'flex-1',
+            isAyahRoute ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-y-auto',
+          )}
+        >
           <ClinicErrorBoundary key={location.pathname}>
             <Outlet />
           </ClinicErrorBoundary>

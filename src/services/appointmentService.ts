@@ -2,6 +2,7 @@ import { Appointment, AppointmentDocument, PostConsultAction, PostConsultActionT
 import { convertTimestamp } from '../utils/dateFormatter';
 import {
   djangoBookAppointment,
+  djangoAttachAppointmentDocument,
   djangoListAppointments,
   djangoPatchAppointment,
   djangoResolveMediaUrl,
@@ -635,11 +636,17 @@ export const addAppointmentDocument = async (
     }
 
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const documentId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const uploaded = await djangoUploadDocument(file, 'appointment-document', safeName);
+    const saved = await djangoAttachAppointmentDocument(appointmentId, {
+      storageKey: uploaded.storageKey,
+      title: title?.trim() || file.name,
+      fileName: file.name,
+      mimeType: uploaded.mimeType || file.type,
+      fileSize: uploaded.sizeBytes || file.size,
+    });
 
     const document: AppointmentDocument = {
-      id: documentId,
+      id: String(saved.id),
       title: title?.trim() || undefined,
       fileName: file.name,
       fileType: uploaded.mimeType || file.type,
@@ -649,11 +656,6 @@ export const addAppointmentDocument = async (
       createdAt: new Date(),
       createdBy,
     };
-
-    console.warn(
-      '[appointmentService] Uploaded appointment document; persisting document lists on appointments is not yet supported by Django API',
-      { doctorId, appointmentId, storageKey: uploaded.storageKey }
-    );
 
     return document;
   } catch (error) {

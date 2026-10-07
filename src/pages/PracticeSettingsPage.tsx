@@ -1,17 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Activity,
   Building2,
   CalendarClock,
   CalendarOff,
   ClipboardList,
   MapPin,
-  Pill,
   Shield,
   Users,
   Video,
-  Clock,
 } from 'lucide-react';
 import { useAuth } from '../hooks/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
@@ -23,12 +20,10 @@ import { BookingPoliciesForm } from '../components/practice/BookingPoliciesForm'
 import { PracticePermissionsPanel } from '../components/practice/PracticePermissionsPanel';
 import { PracticeMembersPanel } from '../components/practice/PracticeMembersPanel';
 import { PracticeLogoUploader } from '../components/practice/PracticeLogoUploader';
-import { EventLogPanel } from '../components/practice/EventLogPanel';
 import { LetterheadSetupBanner } from '../components/invoices/LetterheadSetupBanner';
-import { VitalRulesEditor } from '../components/vitals/VitalRulesEditor';
-import { AdherenceRulesEditor } from '../components/adherence/AdherenceRulesEditor';
 import { Toast, SettingsPageSkeleton, CardSkeleton } from '../components/ui';
 import { PageShell } from '../components/page-layout';
+import { AcceptedMedicalSchemesEditor } from '../components/practice/AcceptedMedicalSchemesEditor';
 import { updatePractice, provisionPracticeForDoctor } from '../services/practiceSettingsService';
 import {
   consultTypesFromVisitModes,
@@ -42,22 +37,16 @@ type Tab =
   | 'availability'
   | 'soft-blocks'
   | 'policies'
-  | 'vitals'
-  | 'adherence'
   | 'permissions'
-  | 'team'
-  | 'event-log';
+  | 'team';
 
 const TAB_CONFIG: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', icon: Building2 },
   { id: 'availability', label: 'Availability', icon: CalendarClock },
   { id: 'soft-blocks', label: 'Blocked Time', icon: CalendarOff },
   { id: 'policies', label: 'Booking Rules', icon: ClipboardList },
-  { id: 'vitals', label: 'Vital Alerts', icon: Activity },
-  { id: 'adherence', label: 'Adherence', icon: Pill },
   { id: 'team', label: 'Team', icon: Users },
   { id: 'permissions', label: 'Delegates', icon: Shield },
-  { id: 'event-log', label: 'Event Log', icon: Clock },
 ];
 
 const isValidTab = (value: string | null): value is Tab =>
@@ -87,11 +76,7 @@ const PracticeSettingsPage: React.FC = () => {
   const visibleTabs = useMemo(() => {
     if (isClinicEmployedClinician) {
       return TAB_CONFIG.filter(
-        (tab) =>
-          tab.id === 'availability' ||
-          tab.id === 'policies' ||
-          tab.id === 'vitals' ||
-          tab.id === 'adherence'
+        (tab) => tab.id === 'availability' || tab.id === 'policies',
       );
     }
     return TAB_CONFIG;
@@ -124,6 +109,10 @@ const PracticeSettingsPage: React.FC = () => {
   const [addingLocation, setAddingLocation] = useState(false);
 
   const [consultTypesDraft, setConsultTypesDraft] = useState<ConsultType[]>([]);
+  const [acceptsMedicalAid, setAcceptsMedicalAid] = useState(false);
+  const [acceptedSchemeSlugs, setAcceptedSchemeSlugs] = useState<string[]>([]);
+  const [acceptedPlanSlugs, setAcceptedPlanSlugs] = useState<string[]>([]);
+  const [savingMedicalAid, setSavingMedicalAid] = useState(false);
 
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
     visible: false,
@@ -145,8 +134,40 @@ const PracticeSettingsPage: React.FC = () => {
   }, [toast.visible]);
 
   useEffect(() => {
-    if (practice) setConsultTypesDraft(practice.consultTypes ?? []);
+    if (practice) {
+      setConsultTypesDraft(practice.consultTypes ?? []);
+      setAcceptsMedicalAid(practice.publicListing?.acceptsMedicalAid ?? false);
+      setAcceptedSchemeSlugs(
+        (practice.acceptedSchemes ?? []).map((scheme) => scheme.slug),
+      );
+      setAcceptedPlanSlugs((practice.acceptedPlans ?? []).map((plan) => plan.slug));
+    }
   }, [practice]);
+
+  const handleSaveMedicalAidListing = async () => {
+    if (!practice || !isOwner) return;
+    setSavingMedicalAid(true);
+    try {
+      await updatePractice(practice.id, {
+        publicListing: {
+          ...(practice.publicListing ?? {}),
+          published: practice.publicListing?.published ?? false,
+          slug: practice.publicListing?.slug || practice.id,
+          acceptsMedicalAid,
+        },
+      });
+      await refreshPracticeSession();
+      setToast({ visible: true, message: 'Medical aid settings updated.', type: 'success' });
+    } catch (e: unknown) {
+      setToast({
+        visible: true,
+        message: e instanceof Error ? e.message : 'Failed to update medical aid settings.',
+        type: 'error',
+      });
+    } finally {
+      setSavingMedicalAid(false);
+    }
+  };
 
   const handleProvisionPractice = async () => {
     if (!user?.id) return;
@@ -443,6 +464,56 @@ const PracticeSettingsPage: React.FC = () => {
                 <PracticeLogoUploader logoUrl={doctor?.logoUrl} />
               </section>
 
+              {isOwner && practice.orgType === 'solo' ? (
+                <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
+                  <div className="mb-4">
+                    <h2 className="text-base font-semibold text-[#0E2340]">Medical aid</h2>
+                    <p className="mt-1 text-[13px] text-[#65758b]">
+                      Tell warriors which schemes you accept for in-person and video visits.
+                    </p>
+                  </div>
+                  {practice.configureAcceptedSchemes ? (
+                    <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      Configure accepted medical schemes so warriors can find you by plan.
+                    </p>
+                  ) : null}
+                  <label className="flex items-center gap-2 text-sm text-[#344256]">
+                    <input
+                      type="checkbox"
+                      checked={acceptsMedicalAid}
+                      disabled={!isOwner || savingMedicalAid}
+                      onChange={(e) => setAcceptsMedicalAid(e.target.checked)}
+                    />
+                    Accepts medical aid
+                  </label>
+                  <button
+                    type="button"
+                    disabled={!isOwner || savingMedicalAid}
+                    onClick={() => void handleSaveMedicalAidListing()}
+                    className="mt-3 rounded-lg border border-[#e1e7ef] px-3 py-2 text-sm font-semibold text-[#344256] disabled:opacity-50"
+                  >
+                    {savingMedicalAid ? 'Saving…' : 'Save medical aid toggle'}
+                  </button>
+                  <AcceptedMedicalSchemesEditor
+                    practiceId={practice.id}
+                    acceptsMedicalAid={acceptsMedicalAid}
+                    initialSlugs={acceptedSchemeSlugs}
+                    initialPlanSlugs={acceptedPlanSlugs}
+                    disabled={!isOwner}
+                    onSaved={(slugs, planSlugs) => {
+                      setAcceptedSchemeSlugs(slugs);
+                      setAcceptedPlanSlugs(planSlugs);
+                      void refreshPracticeSession();
+                      setToast({
+                        visible: true,
+                        message: 'Accepted medical schemes saved.',
+                        type: 'success',
+                      });
+                    }}
+                  />
+                </section>
+              ) : null}
+
               <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
                 <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -633,24 +704,6 @@ const PracticeSettingsPage: React.FC = () => {
             </div>
           )}
 
-          {activeTab === 'vitals' && (
-            <VitalRulesEditor
-              canEdit={
-                !isClinicEmployedClinician &&
-                (isOwner || can('editBookingPolicies') || can('manageMembers'))
-              }
-            />
-          )}
-
-          {activeTab === 'adherence' && (
-            <AdherenceRulesEditor
-              canEdit={
-                !isClinicEmployedClinician &&
-                (isOwner || can('editBookingPolicies') || can('manageMembers'))
-              }
-            />
-          )}
-
           {activeTab === 'team' && (
             <div className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
               <PracticeMembersPanel />
@@ -667,17 +720,6 @@ const PracticeSettingsPage: React.FC = () => {
             </div>
           )}
 
-          {activeTab === 'event-log' && (
-            <div className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
-              <div className="mb-4">
-                <h2 className="text-base font-semibold text-[#0E2340]">Event Log</h2>
-                <p className="mt-1 text-[13px] text-[#65758b]">
-                  Track all user and Ayah actions, patient/organization changes, and outcomes.
-                </p>
-              </div>
-              <EventLogPanel organizationId={practice.id} />
-            </div>
-          )}
         </>
       )}
     </PageShell>
