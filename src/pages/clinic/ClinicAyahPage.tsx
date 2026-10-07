@@ -50,13 +50,9 @@ import {
   wantsUnichartApply,
 } from '../../lib/ayahUnichartContext';
 import {
-  formatBulkImportJobSummary,
-  pollBulkImportJob,
-  startBulkRosterImport,
-} from '../../lib/bulkRosterImportJob';
-import {
+  formatUnichartBatchImportFailure,
   formatUnichartPreviewFailure,
-  isBulkRosterPdfIntent,
+  shouldUseUnichartBatchApply,
   userExpectsAttachedDocument,
 } from '../../lib/unichartUploadIntent';
 import {
@@ -442,7 +438,11 @@ export default function ClinicAyahPage() {
           user &&
           practiceIdForRetry &&
           lastRosterFileRef.current &&
-          (isBulkRosterPdfIntent(lastRosterFileRef.current.name, text) ||
+          (shouldUseUnichartBatchApply(
+            lastRosterFileRef.current.name,
+            text,
+            lastRosterFileRef.current.size,
+          ) ||
             userExpectsAttachedDocument(text))
         ) {
           const file = lastRosterFileRef.current;
@@ -521,7 +521,10 @@ export default function ClinicAyahPage() {
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId
-                    ? { ...m, content: formatAyahReply(formatUnichartPreviewFailure(detail)) }
+                    ? {
+                        ...m,
+                        content: formatAyahReply(formatUnichartBatchImportFailure(detail)),
+                      }
                     : m,
                 ),
               );
@@ -546,8 +549,16 @@ export default function ClinicAyahPage() {
       );
 
       if (upload.type === 'chart_pdf') {
-        if (isBulkRosterPdfIntent(upload.file.name, text)) {
+        if (shouldUseUnichartBatchApply(upload.file.name, text, upload.file.size)) {
           const file = upload.file;
+          if (!practiceId) {
+            appendLocalExchange({
+              assistantContent:
+                '❌ No clinic is selected. Open Ayah from your practice dashboard and try again.',
+              hideUser: true,
+            });
+            return;
+          }
           const userLabel = text.trim()
             ? `${text.trim()}\n📎 ${file.name}`
             : `📎 ${file.name}`;
@@ -572,136 +583,65 @@ export default function ClinicAyahPage() {
           setInput('');
 
           try {
-            const { jobId, totalRows } = await startBulkRosterImport(file, practiceId);
-            lastImportJobIdRef.current = jobId;
-            const job = await pollBulkImportJob(jobId, (progress) => {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? {
-                        ...m,
-                        content: formatAyahReply(
-                          `Importing **${file.name}**… ${progress.processedRows}/${progress.totalRows} processed (${progress.importedCount} imported).`,
-                        ),
-                      }
-                    : m,
-                ),
-              );
+            const started = await startUnichartPdfImport(file, practiceId);
+            let reply: string;
+            let applied = 0;
+            let totalCharts = 0;
+            if (started.async && started.jobId) {
+              lastImportJobIdRef.current = started.jobId;
+              const job = await pollUnichartImportJob(started.jobId, (progress) => {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? {
+                          ...m,
+                          content: formatAyahReply(
+                            progress.totalRows > 0
+                              ? `UniCharts import **${file.name}**… ${progress.processedRows}/${progress.totalRows} charts (${progress.importedCount} updated or created).`
+                              : `Extracting text from **${file.name}**…`,
+                          ),
+                        }
+                      : m,
+                  ),
+                );
+              });
+              reply = formatUnichartImportJobSummary(job, file.name);
+              applied = job.importedCount;
+              totalCharts = job.processedRows;
+            } else if (started.summary) {
+              reply = formatUnichartBatchApplySummary(started.summary, file.name);
+              applied = (started.summary.applied ?? 0) + (started.summary.created ?? 0);
+              totalCharts = started.summary.totalCharts;
+            } else {
+              reply = 'UniCharts import finished.';
+            }
+            setPendingUnichart(null);
+            commitClinicImportSession({
+              summary: reply,
+              jobId: lastImportJobIdRef.current,
+              applied,
+              total: totalCharts,
             });
-            const summary = formatBulkImportJobSummary(job, file.name);
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === assistantId ? { ...m, content: formatAyahReply(summary) } : m,
+                m.id === assistantId ? { ...m, content: formatAyahReply(reply) } : m,
               ),
             );
-            void sendMessage(text.trim() || `Roster import completed (${totalRows} rows).`, {
-              context: { importJobId: job.jobId, importJobStatus: job.status },
+            void sendMessage(clinicImportFollowUpPrompt(file.name, reply), {
+              hideUser: true,
             });
           } catch (err) {
             const detail = err instanceof Error ? err.message : 'Unknown error';
-            if (/single unicharts/i.test(detail)) {
-              if (!practiceId) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? {
-                          ...m,
-                          content: formatAyahReply(
-                            '❌ No clinic is selected. Reload the page from your practice dashboard.',
-                          ),
-                        }
-                      : m,
-                  ),
-                );
-                return;
-              }
-              try {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? {
-                          ...m,
-                          content: formatAyahReply(
-                            `UniCharts PDF detected — OCR and backfill in progress for **${file.name}**…`,
-                          ),
-                        }
-                      : m,
-                  ),
-                );
-                const started = await startUnichartPdfImport(file, practiceId);
-                let reply: string;
-                let applied = 0;
-                let totalCharts = 0;
-                if (started.async && started.jobId) {
-                  const job = await pollUnichartImportJob(started.jobId, (progress) => {
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === assistantId
-                          ? {
-                              ...m,
-                              content: formatAyahReply(
-                                progress.totalRows > 0
-                                  ? `UniCharts import **${file.name}**… ${progress.processedRows}/${progress.totalRows} charts (${progress.importedCount} updated or created).`
-                                  : `Extracting text from **${file.name}**…`,
-                              ),
-                            }
-                          : m,
-                      ),
-                    );
-                  });
-                  reply = formatUnichartImportJobSummary(job, file.name);
-                  applied = job.importedCount;
-                  totalCharts = job.processedRows;
-                } else if (started.summary) {
-                  reply = formatUnichartBatchApplySummary(started.summary, file.name);
-                  applied =
-                    (started.summary.applied ?? 0) + (started.summary.created ?? 0);
-                  totalCharts = started.summary.totalCharts;
-                } else {
-                  reply = 'UniCharts import finished.';
-                }
-                setPendingUnichart(null);
-                if (started.async && started.jobId) {
-                  lastImportJobIdRef.current = started.jobId;
-                }
-                commitClinicImportSession({
-                  summary: reply,
-                  jobId: lastImportJobIdRef.current,
-                  applied,
-                  total: totalCharts,
-                });
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId ? { ...m, content: formatAyahReply(reply) } : m,
-                  ),
-                );
-                void sendMessage(clinicImportFollowUpPrompt(file.name, reply), {
-                  hideUser: true,
-                });
-              } catch (batchErr) {
-                const batchDetail =
-                  batchErr instanceof Error ? batchErr.message : detail;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? {
-                          ...m,
-                          content: formatAyahReply(formatUnichartPreviewFailure(batchDetail)),
-                        }
-                      : m,
-                  ),
-                );
-              }
-              return;
-            }
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
-                  ? { ...m, content: formatAyahReply(`❌ Roster import failed: ${detail}`) }
+                  ? {
+                      ...m,
+                      content: formatAyahReply(formatUnichartBatchImportFailure(detail)),
+                    }
                   : m,
               ),
             );
-            return;
           }
           return;
         }
@@ -855,7 +795,14 @@ export default function ClinicAyahPage() {
         { displayText: `📎 ${upload.file.name}` },
       );
     },
-    [user, sendMessage, onConfirmUnichart, commitClinicImportSession, practiceSession?.practice?.id],
+    [
+      user,
+      sendMessage,
+      onConfirmUnichart,
+      commitClinicImportSession,
+      practiceSession?.practice?.id,
+      appendLocalExchange,
+    ],
   );
 
   const resetToWelcome = useCallback(() => {
