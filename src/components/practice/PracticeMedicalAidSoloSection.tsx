@@ -38,7 +38,7 @@ export const PracticeMedicalAidSoloSection: React.FC<Props> = ({
     setAcceptsMedicalAid(practice?.publicListing?.acceptsMedicalAid ?? true);
     setSchemeSlugs((practice?.acceptedSchemes ?? []).map((row) => row.slug));
     setPlanSlugs((practice?.acceptedPlans ?? []).map((row) => row.slug));
-  }, [practice?.id, practice?.publicListing?.acceptsMedicalAid, practice?.acceptedSchemes, practice?.acceptedPlans]);
+  }, [practice]);
 
   useEffect(() => {
     if (localPractice?.id || provisionAttempted.current) return;

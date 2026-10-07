@@ -37,13 +37,17 @@ export const AcceptedMedicalSchemesEditor: React.FC<Props> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const initialSlugsKey = initialSlugs.join('|');
+  const initialPlanSlugsKey = initialPlanSlugs.join('|');
+  const selectedKey = selected.join('|');
+
   useEffect(() => {
     setSelected(initialSlugs);
-  }, [initialSlugs.join('|')]);
+  }, [initialSlugs, initialSlugsKey]);
 
   useEffect(() => {
     setSelectedPlans(initialPlanSlugs);
-  }, [initialPlanSlugs.join('|')]);
+  }, [initialPlanSlugs, initialPlanSlugsKey]);
 
   useEffect(() => {
     onSelectionChange?.(selected, selectedPlans);
@@ -82,7 +86,7 @@ export const AcceptedMedicalSchemesEditor: React.FC<Props> = ({
     return () => {
       cancelled = true;
     };
-  }, [showPlans, selected.join('|')]);
+  }, [showPlans, selected, selectedKey]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();

@@ -94,9 +94,6 @@ export const AyahPage: React.FC = () => {
       (typeof practiceSnapshotRef.current?.timezone === 'string' &&
         practiceSnapshotRef.current.timezone) ||
       'Africa/Johannesburg';
-    const clinicDate = new Date().toLocaleDateString('en-CA', {
-      timeZone: clinicTimezone,
-    });
     const chart =
       patientChartRef.current &&
       (!nextContext.patientId || patientChartRef.current.patientId === nextContext.patientId)
@@ -305,7 +302,7 @@ export const AyahPage: React.FC = () => {
         void loadDrafts();
       }
     },
-    [streaming, user, loadDrafts, setMessages],
+    [streaming, user, loadDrafts, setMessages, aiDisclaimerAccepted],
   );
 
   const applyPatientContext = useCallback(

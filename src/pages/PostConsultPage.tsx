@@ -1,18 +1,11 @@
-import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
-  ArrowLeft,
-  Calendar,
-  Clock,
   Download,
   Eye,
-  FileText,
-  Phone,
-  Plus,
   Printer,
   Save,
   Video,
-  X,
 } from 'lucide-react';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { VisitPatientBriefing } from '../components/appointments/VisitChartSnapshot';
