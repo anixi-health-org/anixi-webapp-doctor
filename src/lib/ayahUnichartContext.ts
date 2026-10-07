@@ -74,7 +74,7 @@ export function clinicImportAgentSuffix(ctx: AskAnixiContext): string {
   return (
     ` Context: The portal already completed UniCharts OCR/import for this clinic session.${job}${counts} ` +
     `Results summary: ${summary.replace(/\s+/g, ' ').slice(0, 1200)} ` +
-    'Do not ask the admin to upload the PDF or CSV again. Use analyze-patient-import-job, verify-unicharts-roster, and list-practice-panel for follow-ups; re-run-unichart-import-job if they need a refill after fixes.'
+    'Do not ask the admin to upload the PDF or CSV again. Do not call verify-unicharts-roster or re-run-unichart-import-job unless they explicitly ask to compare the PDF to the roster or to run the import again. Answer from this summary first.'
   );
 }
 

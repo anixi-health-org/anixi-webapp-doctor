@@ -91,7 +91,7 @@ export function formatAskAnixiError(err: unknown): string {
       }
       return err.message;
     }
-    if (err.message === 'Failed to fetch') {
+    if (/^network error$/i.test(err.message) || err.message === 'Failed to fetch') {
       if (process.env.NODE_ENV === 'production' || process.env.REACT_APP_AYAH_USE_CLOUD_ONLY === 'true') {
         return 'Cannot reach Ayah right now. Check your connection and try again.';
       }

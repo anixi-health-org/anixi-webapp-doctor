@@ -43,7 +43,6 @@ import {
 } from '../../lib/unichartPdfImportJob';
 import {
   clinicImportAgentSuffix,
-  clinicImportFollowUpPrompt,
   clinicImportSessionFromRefs,
   mergeClinicImportSession,
   unichartAgentContextSuffix,
@@ -513,9 +512,6 @@ export default function ClinicAyahPage() {
                   m.id === assistantId ? { ...m, content: formatAyahReply(reply) } : m,
                 ),
               );
-              void sendMessage(clinicImportFollowUpPrompt(file.name, reply), {
-                hideUser: true,
-              });
             } catch (err) {
               const detail = err instanceof Error ? err.message : 'Unknown error';
               setMessages((prev) =>
@@ -627,9 +623,6 @@ export default function ClinicAyahPage() {
                 m.id === assistantId ? { ...m, content: formatAyahReply(reply) } : m,
               ),
             );
-            void sendMessage(clinicImportFollowUpPrompt(file.name, reply), {
-              hideUser: true,
-            });
           } catch (err) {
             const detail = err instanceof Error ? err.message : 'Unknown error';
             setMessages((prev) =>
