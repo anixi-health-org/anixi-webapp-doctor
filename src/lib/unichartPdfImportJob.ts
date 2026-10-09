@@ -6,6 +6,7 @@ import {
   type UnichartBatchApplyResult,
 } from '../services/djangoApiService';
 import { formatUnichartBatchApplySummary } from './unichartBatchApplySummary';
+import { invalidateDoctorPatientPanelCache } from '../services/patientManagementService';
 
 export async function startUnichartPdfImport(
   file: File,
@@ -30,6 +31,7 @@ export async function pollUnichartImportJob(
     const job = await djangoGetImportJobStatus(jobId);
     onProgress?.(job);
     if (terminal.has(job.status)) {
+      if (job.status === 'completed') invalidateDoctorPatientPanelCache();
       return job;
     }
     await new Promise((resolve) => setTimeout(resolve, 1500));

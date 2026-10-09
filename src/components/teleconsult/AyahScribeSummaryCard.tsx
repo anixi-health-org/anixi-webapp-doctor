@@ -5,6 +5,8 @@ import type { ConsultScribeNote } from '../../lib/consultScribeNote';
 type Props = {
   note: ConsultScribeNote;
   onApply: () => void;
+  /** Detail-only view (patient chart / last encounter). */
+  readOnly?: boolean;
 };
 
 function Section({ title, body }: { title: string; body: string }) {
@@ -17,7 +19,7 @@ function Section({ title, body }: { title: string; body: string }) {
   );
 }
 
-export function AyahScribeSummaryCard({ note, onApply }: Props) {
+export function AyahScribeSummaryCard({ note, onApply, readOnly = false }: Props) {
   return (
     <div className="rounded-xl border border-[#427160]/25 bg-gradient-to-b from-[#eef4f1] to-white p-5 shadow-sm">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -64,14 +66,16 @@ export function AyahScribeSummaryCard({ note, onApply }: Props) {
           ) : null}
         </div>
 
-        <button
-          type="button"
-          onClick={onApply}
-          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#427160] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#365c4e]"
-        >
-          <CheckIcon className="h-4 w-4" />
-          Use in clinical note
-        </button>
+        {!readOnly ? (
+          <button
+            type="button"
+            onClick={onApply}
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#427160] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#365c4e]"
+          >
+            <CheckIcon className="h-4 w-4" />
+            Use in clinical note
+          </button>
+        ) : null}
       </div>
     </div>
   );

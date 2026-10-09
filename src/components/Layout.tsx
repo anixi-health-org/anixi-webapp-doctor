@@ -136,6 +136,12 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
 
   const closeMobile = () => setMobileNavOpen(false);
 
+  const practiceName =
+    practiceSession?.practice?.tradingName?.trim() ||
+    practiceSession?.practice?.name?.trim() ||
+    (user && 'practiceName' in user ? String(user.practiceName || '').trim() : '') ||
+    'Your practice';
+
   const primaryNav: NavItem[] = [
     { name: 'Ayah', href: '/ayah', icon: SparklesIcon },
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
@@ -222,30 +228,31 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
       <div className="flex min-w-0 flex-1 md:pl-64">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 border-b border-[#e1e7ef] bg-white">
-          <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setMobileNavOpen(true)}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-[#e1e7ef] text-[#65758b] transition-all duration-200 hover:border-[#427160]/30 hover:bg-[#eef4f1] hover:text-[#427160] md:hidden"
-                aria-label="Open navigation"
-              >
-                <Bars3Icon className="h-5 w-5" />
-              </button>
-              <div className="hidden min-w-0 flex-1 md:block md:max-w-md lg:max-w-lg">
+          <div className="flex h-16 items-center gap-3 px-4 sm:gap-4 sm:px-6 lg:px-8">
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(true)}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-[#e1e7ef] text-[#65758b] transition-all duration-200 hover:border-[#427160]/30 hover:bg-[#eef4f1] hover:text-[#427160] md:hidden"
+              aria-label="Open navigation"
+            >
+              <Bars3Icon className="h-5 w-5" />
+            </button>
+            <div className="min-w-0 flex-1 md:max-w-[min(320px,30vw)] md:flex-none">
+              <h1 className="truncate font-heading text-lg font-bold tracking-tight text-[#1a4d4d] sm:text-xl md:text-2xl">
+                {practiceName}
+              </h1>
+            </div>
+            <div className="hidden min-w-0 flex-1 justify-center px-2 md:flex">
+              <div className="w-full max-w-xl">
                 <GlobalPatientSearch variant="expanded" />
               </div>
             </div>
-
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
               <div className="md:hidden">
                 <GlobalPatientSearch />
               </div>
               <NotificationBell />
-              <UserProfileMenu
-                subtitle="Physician"
-                displayLabel={clinicianHeaderLabel(user?.displayName)}
-              />
+              <UserProfileMenu displayLabel={clinicianHeaderLabel(user?.displayName)} />
             </div>
           </div>
         </header>

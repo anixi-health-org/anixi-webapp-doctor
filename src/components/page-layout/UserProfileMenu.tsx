@@ -32,7 +32,12 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isCaregiver = user?.role === 'caregiver';
-  const isClinicAdmin = usesClinicAdminPortal(practiceSession);
+  const isClinicAdmin =
+    usesClinicAdminPortal(practiceSession) ||
+    (user != null &&
+      'accountKind' in user &&
+      user.accountKind === 'clinic_admin' &&
+      user.role === 'doctor');
   const isMarketPartner = joinIntent === 'market_partner' && user?.role === 'staff';
   const displayName = user?.displayName || (isCaregiver ? 'Caregiver' : 'Doctor');
   const initial = displayName.charAt(0).toUpperCase();
@@ -50,7 +55,7 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
       : isMarketPartner
         ? 'Market Partner'
         : isClinicAdmin
-          ? 'Clinic admin'
+          ? 'Clinic/Hospital admin'
           : 'Physician');
 
   useEffect(() => {

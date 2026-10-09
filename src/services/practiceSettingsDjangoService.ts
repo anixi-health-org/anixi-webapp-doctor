@@ -24,6 +24,7 @@ import {
   djangoUpdateBookingPolicy,
 } from './djangoApiService';
 import type { SoftBlock } from '../types';
+import { parsePracticeOrgType } from '../lib/doctorAccess';
 
 function mapPractice(row: Record<string, unknown>): Practice {
   return {
@@ -31,7 +32,7 @@ function mapPractice(row: Record<string, unknown>): Practice {
     name: String(row.name ?? 'Practice'),
     timezone: String(row.timezone ?? 'Africa/Johannesburg'),
     ownerId: String(row.ownerId ?? ''),
-    orgType: row.orgType === 'clinic' ? 'clinic' : 'solo',
+    orgType: parsePracticeOrgType(row.orgType),
     tradingName: row.tradingName as string | undefined,
     bhfPracticeNumber: row.bhfPracticeNumber as string | undefined,
     locations: (row.locations as Practice['locations']) ?? [],
@@ -134,7 +135,7 @@ export async function djangoGetBookableBlocksForPractice(practiceId: string): Pr
 
 export async function djangoProvisionPracticeForDoctor(
   uid: string,
-  options?: { name?: string; orgType?: 'solo' | 'clinic'; timezone?: string },
+  options?: { name?: string; orgType?: 'solo' | 'clinic' | 'hospital'; timezone?: string },
 ): Promise<{ practice: Practice; member: PracticeMember; bookingPolicy: BookingPolicy }> {
   const result = await djangoProvisionPractice(options as Record<string, unknown>);
   return {

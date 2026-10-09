@@ -89,6 +89,7 @@ export const updatePractice = async (
       | 'tradingName'
       | 'bhfPracticeNumber'
       | 'publicListing'
+      | 'billingProfile'
     >
   >,
 ): Promise<void> => {

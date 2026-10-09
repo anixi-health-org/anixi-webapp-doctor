@@ -1,17 +1,26 @@
 import type { Doctor, Practice, PracticeSession, ProfessionalUser } from '../types';
 import type { JoinPath } from '../types/auth';
 import type { ProfessionalProfileFormData } from '../types/doctorProfile';
+import { normalizeBillingProfile } from './practiceBillingProfile';
 
-/** Practice owner for a clinic org (portal admin, not the same as an invited clinician). */
+/** Clinic and hospital share one access model. Solo is a private practice. */
+export function isManagedOrgType(orgType: string | null | undefined): boolean {
+  return orgType === 'clinic' || orgType === 'hospital';
+}
+
+export function parsePracticeOrgType(value: unknown): 'solo' | 'clinic' | 'hospital' {
+  if (value === 'clinic' || value === 'hospital' || value === 'solo') return value;
+  return 'solo';
+}
+
+/** Practice owner for a clinic or hospital (portal admin, not an invited clinician). */
 export function isClinicOwner(session: PracticeSession | null): boolean {
-  return (
-    session?.practice?.orgType === 'clinic' && session?.member?.role === 'owner'
-  );
+  return isManagedOrgType(session?.practice?.orgType) && session?.member?.role === 'owner';
 }
 
 /** Users who operate the clinic admin portal (not individual clinician workflows). */
 export function usesClinicAdminPortal(session: PracticeSession | null): boolean {
-  if (session?.practice?.orgType !== 'clinic') return false;
+  if (!session || !isManagedOrgType(session.practice?.orgType)) return false;
   const role = session.member?.role;
   if (
     role === 'owner' ||
@@ -29,7 +38,7 @@ export function usesClinicAdminPortal(session: PracticeSession | null): boolean 
 
 /** Owner, administrator, and practice manager can switch clinic ops ↔ clinical workspace. */
 export function canSwitchWorkspaces(session: PracticeSession | null): boolean {
-  if (session?.practice?.orgType !== 'clinic') return false;
+  if (!session || !isManagedOrgType(session.practice?.orgType)) return false;
   const role = session.member?.role;
   return role === 'owner' || role === 'administrator' || role === 'practice_manager';
 }
@@ -47,7 +56,7 @@ export function isClinicEmployedClinician(
   session: PracticeSession | null,
   hints?: ClinicEmployedHints,
 ): boolean {
-  if (session?.practice?.orgType === 'clinic') {
+  if (session && isManagedOrgType(session.practice?.orgType)) {
     if (canSwitchWorkspaces(session)) return false;
     const role = session.member?.role;
     if (role === 'doctor' || role === 'nurse' || session.member?.isClinician === true) {
@@ -65,18 +74,18 @@ export function isClinicEmployedClinician(
 
 /** Private / independent practice — the doctor owns branding, billing, hours, and roster. */
 export function isIndependentPractice(session: PracticeSession | null): boolean {
-  return session?.practice?.orgType !== 'clinic';
+  return !isManagedOrgType(session?.practice?.orgType);
 }
 
 /** Hospital/clinic org — front desk and clinic admin own ops; employed doctors do not. */
 export function isClinicManagedPractice(session: PracticeSession | null): boolean {
-  return session?.practice?.orgType === 'clinic';
+  return isManagedOrgType(session?.practice?.orgType);
 }
 
 /** Who may edit operational settings (hours, blocks, branding, booking rules). */
 export function canManageOperationalSettings(session: PracticeSession | null): boolean {
   if (!session?.practice) return false;
-  if (session.practice.orgType !== 'clinic') {
+  if (!isManagedOrgType(session.practice.orgType)) {
     const role = session.member?.role;
     if (role === 'owner') return true;
     const permissions = session.member?.permissions;
@@ -186,17 +195,46 @@ export function inheritClinicPracticeFields(
   const city = String(listing?.city || '').trim();
   const address = String(primary?.address || '').trim();
 
+  const billing = normalizeBillingProfile(practice.billingProfile);
+
   return {
-    practiceType: locationType === 'hospital' || practice.orgType === 'clinic'
+    practiceType: locationType === 'hospital' || isManagedOrgType(practice.orgType)
       ? 'Hospital-based'
       : 'Group Practice',
     practiceName: (practice.tradingName || practice.name || '').trim(),
     timezone: practice.timezone || 'Africa/Johannesburg',
     practiceNumber: (practice.bhfPracticeNumber || '').trim(),
+    vatNumber: (billing.vatNumber || '').trim(),
     practiceFacility: locationType === 'hospital' ? 'Private Hospital' : 'Private Clinic',
     province,
     city,
     practiceAddress: address,
+    logoUrl: (practice.logoUrl || '').trim(),
+  };
+}
+
+/** Clinic-employed physicians use the parent practice for ops, billing, and letterhead. */
+export function shouldInheritClinicPracticeSettings(
+  practiceSession: PracticeSession | null,
+  clinicEmployed: boolean,
+): boolean {
+  return (
+    clinicEmployed &&
+    Boolean(practiceSession?.practice) &&
+    isManagedOrgType(practiceSession?.practice?.orgType)
+  );
+}
+
+/** Merge parent clinic branding and billing onto the doctor record for clinical workflows. */
+export function mergeDoctorWithClinicPractice(doctor: Doctor, practice: Practice): Doctor {
+  const inherited = inheritClinicPracticeFields(practice);
+  return {
+    ...doctor,
+    practiceName: inherited.practiceName || doctor.practiceName,
+    officeAddress: inherited.practiceAddress || doctor.officeAddress,
+    practiceNumberBhf: inherited.practiceNumber || doctor.practiceNumberBhf,
+    vatNumber: inherited.vatNumber || doctor.vatNumber,
+    logoUrl: inherited.logoUrl || doctor.logoUrl,
   };
 }
 

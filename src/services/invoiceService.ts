@@ -1,5 +1,9 @@
 import { Doctor, Invoice, InvoiceLineItem, InvoiceStatus, Practice } from '../types';
 import { SA_VAT_RATE, computeVatBreakdown } from '../lib/southAfrica';
+import {
+  bankingDetailsNoteFromProfile,
+  normalizeBillingProfile,
+} from '../lib/practiceBillingProfile';
 import { sendPatientNotification } from './notificationService';
 import { createDoctorNotification } from './doctorNotificationService';
 import {
@@ -9,6 +13,7 @@ import {
   djangoPatchInvoice,
   isDjangoApiEnabled,
 } from './djangoApiService';
+import { isManagedOrgType } from '../lib/doctorAccess';
 
 export interface CreateInvoiceOptions {
   vatRate?: number;
@@ -52,10 +57,13 @@ export const invoiceOptionsFromPracticeContext = (
     appointmentId,
     practiceId || practice?.id,
   );
-  if (practice?.orgType !== 'clinic') return base;
+  if (!practice || !isManagedOrgType(practice.orgType)) return base;
+  const billing = normalizeBillingProfile(practice.billingProfile);
   return {
     ...base,
     bhfPracticeNumber: practice.bhfPracticeNumber || base.bhfPracticeNumber,
+    vatNumber: billing.vatNumber || base.vatNumber,
+    bankDetailsNote: bankingDetailsNoteFromProfile(billing) || base.bankDetailsNote,
   };
 };
 
@@ -280,14 +288,25 @@ export const createPracticeInvoice = async (input: {
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error('Enter an amount greater than zero');
   }
-  const description = input.description.trim() || 'Consultation';
+  const rawDescription = input.description.trim() || 'Consultation';
+  const description =
+    rawDescription.toLowerCase() === 'consultation'
+      ? 'Consultation/visit'
+      : rawDescription;
   const row = await djangoCreateInvoice({
     practiceId: input.practiceId,
     patientId: input.patientId,
     doctorId: input.doctorId,
     amountCents: Math.round(amount * 100),
     currency: 'ZAR',
-    lineItems: [{ description, quantity: 1, amount }],
+    lineItems: [
+      {
+        description,
+        quantity: 1,
+        amount,
+        procedureCode: '0190',
+      },
+    ],
     status: 'sent',
     invoiceNumber: `INV-${Date.now().toString().slice(-8)}`,
     bhfPracticeNumber: input.bhfPracticeNumber,

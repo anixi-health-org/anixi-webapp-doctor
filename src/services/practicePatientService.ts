@@ -7,6 +7,7 @@ import {
   type DjangoPracticePatient,
 } from './djangoApiService';
 import { sanitizeContactEmail } from '../lib/contactEmail';
+import { invalidateDoctorPatientPanelCache } from './patientManagementService';
 import type { Patient } from '../types';
 
 export type PracticePatientQuery = {
@@ -26,6 +27,7 @@ function mapPracticePatient(row: {
   patientId: string;
   email: string;
   displayName: string;
+  profileImageUrl?: string | null;
   phoneNumber?: string;
   practiceId?: string | null;
   assignedDoctorId?: string | null;
@@ -37,6 +39,7 @@ function mapPracticePatient(row: {
     id: row.patientId,
     email: sanitizeContactEmail(row.email),
     displayName: (row.displayName || '').trim(),
+    photoURL: row.profileImageUrl?.trim() || undefined,
     unichartChartName: row.unichartChartName?.trim() || undefined,
     phoneNumber: row.phoneNumber || undefined,
     role: 'patient' as const,
@@ -79,6 +82,7 @@ export const updatePracticePatientAssignedDoctor = async (
   assignedDoctorId: string | null,
 ): Promise<void> => {
   await djangoAssignPracticePatient(practiceId, patientId, assignedDoctorId);
+  invalidateDoctorPatientPanelCache();
 };
 
 export const bulkAssignPracticePatients = async (
@@ -89,7 +93,11 @@ export const bulkAssignPracticePatients = async (
     allMatching?: boolean;
     q?: string;
   },
-) => djangoBulkAssignPracticePatients(practiceId, payload);
+) => {
+  const result = await djangoBulkAssignPracticePatients(practiceId, payload);
+  invalidateDoctorPatientPanelCache();
+  return result;
+};
 
 export const getPracticePatientAccount = async (
   practiceId: string,
@@ -100,4 +108,8 @@ export const updatePracticePatientAccount = async (
   practiceId: string,
   patientId: string,
   patch: Record<string, unknown>,
-): Promise<DjangoPracticePatient> => djangoPatchPracticePatientAccount(practiceId, patientId, patch);
+): Promise<DjangoPracticePatient> => {
+  const updated = await djangoPatchPracticePatientAccount(practiceId, patientId, patch);
+  invalidateDoctorPatientPanelCache();
+  return updated;
+};

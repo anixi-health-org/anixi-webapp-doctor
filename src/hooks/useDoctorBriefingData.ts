@@ -192,24 +192,19 @@ export function useDoctorBriefingData() {
     }
 
     setLoading(true);
-    let patientsReady = false;
     let appointmentsReady = false;
 
     const maybeDone = () => {
-      if (patientsReady && appointmentsReady) setLoading(false);
+      // Render the workspace once appointments are in; panel can finish afterward.
+      if (appointmentsReady) setLoading(false);
     };
 
     const unsubPatients = listenToDoctorPatients(
       user.id,
       (list) => {
         setPatients(list);
-        patientsReady = true;
-        maybeDone();
       },
-      () => {
-        patientsReady = true;
-        maybeDone();
-      },
+      () => undefined,
     );
 
     const unsubAppointments = listenToDoctorAppointments(

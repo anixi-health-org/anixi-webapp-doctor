@@ -7,11 +7,17 @@ import {
   RefreshCw,
   Send,
 } from 'lucide-react';
-import { useAuth } from '../hooks/AuthContext';
+import { useClinicInheritedDoctor } from '../hooks/useClinicInheritedDoctor';
 import { useDoctorCurrency } from '../hooks/useDoctorCurrency';
 import { getInvoicesByDoctor, updateInvoiceStatus, resendInvoice } from '../services/invoiceService';
-import { generateInvoicePDF, buildInvoiceLetterhead, fetchPracticeLogoDataUrl } from '../services/invoicePdfService';
+import {
+  buildClinicInvoicePdfContext,
+  generateInvoicePDF,
+  buildInvoiceLetterhead,
+  fetchPracticeLogoDataUrl,
+} from '../services/invoicePdfService';
 import { Invoice, InvoiceStatus } from '../types';
+import { isManagedOrgType } from '../lib/doctorAccess';
 import { Toast, InvoicePageSkeleton } from '../components/ui';
 import { PageShell } from '../components/page-layout';
 import { LetterheadSetupBanner } from '../components/invoices/LetterheadSetupBanner';
@@ -76,10 +82,8 @@ const SUMMARY_CARDS = [
 ];
 
 export const InvoicesPage: React.FC = () => {
-  const { user, practiceSession } = useAuth();
+  const { doctor, practice } = useClinicInheritedDoctor();
   const { formatAmount } = useDoctorCurrency();
-  const doctor = user?.role === 'doctor' ? user : null;
-  const practice = practiceSession?.practice;
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [summary, setSummary] = useState<Summary>({
     issued: 0,
@@ -201,12 +205,16 @@ export const InvoicesPage: React.FC = () => {
         practice,
         treatingClinicianName: invoice.doctorName,
       });
+      const managed = isManagedOrgType(practice?.orgType);
       const logoDataUrl = await fetchPracticeLogoDataUrl(
-        practice?.orgType === 'clinic' ? undefined : doctor?.id,
-        practice?.orgType === 'clinic' ? practice.logoUrl : doctor?.logoUrl,
-        { skipDoctorLogoStore: practice?.orgType === 'clinic' }
+        managed ? undefined : doctor?.id,
+        managed ? practice?.logoUrl : doctor?.logoUrl,
+        { skipDoctorLogoStore: managed }
       );
-      await generateInvoicePDF(invoice, { ...letterhead, logoDataUrl });
+      const pdfContext = managed
+        ? await buildClinicInvoicePdfContext(practice, invoice.patientId)
+        : {};
+      await generateInvoicePDF(invoice, { ...letterhead, logoDataUrl }, pdfContext);
     } catch {
       setToast({ visible: true, message: 'Failed to generate PDF', type: 'error' });
     } finally {
@@ -240,7 +248,7 @@ export const InvoicesPage: React.FC = () => {
         <div>
           <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">Invoices</h1>
           <p className="mt-1 text-[13px] text-[#65758b]">
-            {practice?.orgType === 'clinic'
+            {isManagedOrgType(practice?.orgType)
               ? 'Clinic invoices use organisation letterhead. Hospital and clinic billing is managed by the practice, not by individual employed doctors.'
               : 'Private practice invoices use your own letterhead, BHF number, and banking details.'}
           </p>

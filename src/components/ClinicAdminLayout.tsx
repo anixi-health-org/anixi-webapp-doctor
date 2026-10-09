@@ -26,10 +26,13 @@ import { AnixiLogo } from './brand/AnixiLogo';
 import { ClinicErrorBoundary } from './clinic/ClinicErrorBoundary';
 import { UserProfileMenu } from './page-layout/UserProfileMenu';
 
+type NavSectionId = 'today' | 'care' | 'business' | 'admin';
+
 type NavItem = {
   name: string;
   href: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  section: NavSectionId;
   requires?:
     | 'manageMembers'
     | 'managePatients'
@@ -38,70 +41,91 @@ type NavItem = {
     | 'viewBilling';
 };
 
+const NAV_SECTION_LABELS: Record<NavSectionId, string> = {
+  today: '',
+  care: 'People & care',
+  business: 'Billing & insights',
+  admin: 'Compliance & setup',
+};
+
+const NAV_SECTION_ORDER: NavSectionId[] = ['today', 'care', 'business', 'admin'];
+
+/** Daily workflow first, then roster/AI, billing/analytics, compliance last. */
 const mainNav: NavItem[] = [
-  { name: 'Overview', href: '/clinic', icon: HomeIcon },
-  { name: 'Ayah', href: '/clinic/ayah', icon: SparklesIcon },
+  { section: 'today', name: 'Overview', href: '/clinic', icon: HomeIcon },
   {
-    name: 'Team & doctors',
-    href: '/clinic/team',
-    icon: UserGroupIcon,
-    requires: 'manageMembers',
-  },
-  {
-    name: 'Patients',
-    href: '/clinic/patients',
-    icon: UsersIcon,
-    requires: 'managePatients',
-  },
-  {
+    section: 'today',
     name: 'Schedule',
     href: '/clinic/schedule',
     icon: CalendarDaysIcon,
     requires: 'manageAppointments',
   },
   {
+    section: 'today',
     name: 'Front desk',
     href: '/clinic/queue',
     icon: QueueListIcon,
     requires: 'manageAppointments',
   },
   {
+    section: 'today',
     name: 'Rooms',
     href: '/clinic/rooms',
     icon: BuildingOffice2Icon,
     requires: 'manageAppointments',
   },
   {
-    name: 'Reports',
-    href: '/clinic/reports',
-    icon: ChartBarIcon,
+    section: 'care',
+    name: 'Patients',
+    href: '/clinic/patients',
+    icon: UsersIcon,
+    requires: 'managePatients',
   },
+  { section: 'care', name: 'Ayah', href: '/clinic/ayah', icon: SparklesIcon },
   {
-    name: 'Audit log',
-    href: '/clinic/audit',
-    icon: DocumentTextIcon,
+    section: 'care',
+    name: 'Team & doctors',
+    href: '/clinic/team',
+    icon: UserGroupIcon,
     requires: 'manageMembers',
   },
   {
+    section: 'business',
     name: 'Invoices',
     href: '/clinic/invoices',
     icon: BanknotesIcon,
     requires: 'viewBilling',
   },
   {
+    section: 'business',
     name: 'Claims',
     href: '/clinic/claims',
     icon: ClipboardDocumentListIcon,
     requires: 'viewBilling',
   },
   {
+    section: 'business',
+    name: 'Reports',
+    href: '/clinic/reports',
+    icon: ChartBarIcon,
+  },
+  {
+    section: 'admin',
     name: 'Clinic settings',
     href: '/clinic/settings',
     icon: Cog6ToothIcon,
   },
+  {
+    section: 'admin',
+    name: 'Audit log',
+    href: '/clinic/audit',
+    icon: DocumentTextIcon,
+    requires: 'manageMembers',
+  },
 ];
 
 const supportNav: NavItem = {
+  section: 'admin',
   name: 'Support',
   href: '/clinic/support',
   icon: LifebuoyIcon,
@@ -190,11 +214,37 @@ const ClinicAdminShell: React.FC = () => {
     setAdherenceRulesPracticeContext(practiceSession?.practice?.id);
   }, [practiceSession?.practice?.id]);
 
+  const navBySection = React.useMemo(() => {
+    const grouped = new Map<NavSectionId, NavItem[]>();
+    for (const section of NAV_SECTION_ORDER) {
+      grouped.set(section, []);
+    }
+    for (const item of visibleNav) {
+      grouped.get(item.section)?.push(item);
+    }
+    return NAV_SECTION_ORDER.map((section) => ({
+      section,
+      label: NAV_SECTION_LABELS[section],
+      items: grouped.get(section) ?? [],
+    })).filter((block) => block.items.length > 0);
+  }, [visibleNav]);
+
   const sidebarNav = (onNavigate?: () => void) => (
     <nav className="flex flex-1 flex-col overflow-hidden px-3 pb-5 pt-2">
-      <div className="flex-1 space-y-1 overflow-y-auto">
-        {visibleNav.map((item) => (
-          <NavLink key={item.name} item={item} isActive={isActive} onNavigate={onNavigate} />
+      <div className="flex-1 space-y-4 overflow-y-auto">
+        {navBySection.map((block) => (
+          <div key={block.section}>
+            {block.label ? (
+              <p className="mb-1.5 px-3.5 text-[10px] font-semibold uppercase tracking-wider text-white/50">
+                {block.label}
+              </p>
+            ) : null}
+            <div className="space-y-1">
+              {block.items.map((item) => (
+                <NavLink key={item.href} item={item} isActive={isActive} onNavigate={onNavigate} />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
       <div className="mt-4 border-t border-white/15 pt-4">
@@ -228,7 +278,7 @@ const ClinicAdminShell: React.FC = () => {
                 {clinicName}
               </h1>
             </div>
-            <UserProfileMenu subtitle="Clinic admin" displayLabel={firstName} />
+            <UserProfileMenu displayLabel={firstName} />
           </div>
         </header>
 

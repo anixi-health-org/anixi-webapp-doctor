@@ -63,20 +63,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     setUser(professional);
-    const flags = await readUserFlags();
+    const flagsPromise = readUserFlags();
+
+    const sessionPromise = shouldLoadPracticeSession(professional)
+      ? loadDjangoPracticeSession(professional.id).catch(() => null)
+      : Promise.resolve(null);
+
+    const [flags, session] = await Promise.all([flagsPromise, sessionPromise]);
     setJoinIntent(flags.joinIntent);
     setClinicOnboardingComplete(flags.clinicOnboardingComplete);
-
-    if (shouldLoadPracticeSession(professional)) {
-      try {
-        const session = await loadDjangoPracticeSession(professional.id);
-        setPracticeSession(session);
-      } catch {
-        setPracticeSession(null);
-      }
-    } else {
-      setPracticeSession(null);
-    }
+    setPracticeSession(session);
   };
 
   useEffect(() => {

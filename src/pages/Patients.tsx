@@ -13,6 +13,7 @@ import { Patient } from '../types';
 import { getDoctorPatients, listenToDoctorPatients } from '../services/patientManagementService';
 import { listPracticePatientsPage } from '../services/practicePatientService';
 import { isThrottledMessage, parseRetrySeconds } from '../utils/apiThrottle';
+import { isManagedOrgType } from '../lib/doctorAccess';
 import { listPracticeClinicians } from '../services/practiceSettingsService';
 import { patientAccountStatus, type PatientAccountStatus } from '../utils/patientRosterStatus';
 import {
@@ -32,7 +33,7 @@ export const Patients: React.FC = () => {
   const navigate = useNavigate();
   const doctorId = user?.id;
   const practice = practiceSession?.practice;
-  const showClinicRoster = practice?.orgType === 'clinic' && Boolean(practice.id);
+  const showClinicRoster = isManagedOrgType(practice?.orgType) && Boolean(practice?.id);
 
   const [activeTab, setActiveTab] = useState<TabType>('assigned');
   const [patients, setPatients] = useState<Patient[]>([]);

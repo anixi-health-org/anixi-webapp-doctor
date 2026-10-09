@@ -1,12 +1,25 @@
 import {
+  djangoDeleteMedicalFile,
   djangoListMedicalFiles,
   djangoMediaUrlToStorageKey,
+  djangoUploadMedicalFile,
 } from './djangoApiService';
 import {
   formatMedicalFileSubtitle,
   formatMedicalFileTitle,
 } from '../lib/medicalFileDisplay';
 import { mapInBatches } from '../utils/asyncBatch';
+
+export type PatientMedicalFileCategory = 'xrays' | 'blood_tests' | 'notes';
+
+export const PATIENT_MEDICAL_FILE_CATEGORIES: {
+  id: PatientMedicalFileCategory;
+  label: string;
+}[] = [
+  { id: 'notes', label: 'Medical notes & reports' },
+  { id: 'blood_tests', label: 'Blood tests & labs' },
+  { id: 'xrays', label: 'X-rays & imaging' },
+];
 
 export interface PatientUploadedFile {
   id: string;
@@ -19,6 +32,9 @@ export interface PatientUploadedFile {
   mimeType: string;
   sizeBytes: number | null;
   uploadedAt: Date | null;
+  uploadedByRole?: string;
+  uploadedByName?: string;
+  notes?: string;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -79,16 +95,27 @@ export const getPatientUploadedFiles = async (
         mimeType,
         storageKey,
       });
+      const uploadedByRole = String(row.uploadedByRole ?? '');
+      const uploadedByName = String(row.uploadedByName ?? '');
       files.push({
         id,
         patientId,
         category,
         name,
-        subtitle: formatMedicalFileSubtitle({ category, mimeType, sizeBytes }),
+        subtitle: formatMedicalFileSubtitle({
+          category,
+          mimeType,
+          sizeBytes,
+          uploadedByRole,
+          uploadedByName,
+        }),
         url: rawUrl,
         storageKey,
         mimeType,
         sizeBytes,
+        uploadedByRole,
+        uploadedByName,
+        notes: String(row.notes ?? ''),
         uploadedAt:
           typeof uploadedAtRaw === 'string' || uploadedAtRaw instanceof Date
             ? new Date(String(uploadedAtRaw))
@@ -98,4 +125,49 @@ export const getPatientUploadedFiles = async (
   }
 
   return files.sort((a, b) => (b.uploadedAt?.getTime() ?? 0) - (a.uploadedAt?.getTime() ?? 0));
+};
+
+export const getPatientMedicalFiles = async (
+  patientId: string,
+): Promise<PatientUploadedFile[]> => getPatientUploadedFiles([patientId]);
+
+export const uploadPatientMedicalFile = async (input: {
+  patientId: string;
+  file: File;
+  category: PatientMedicalFileCategory;
+  title?: string;
+  notes?: string;
+}): Promise<PatientUploadedFile> => {
+  const title = (input.title ?? input.file.name).trim() || 'Medical document';
+  const uploaded = await djangoUploadMedicalFile(input.file, input.file.name, {
+    patientId: input.patientId,
+    title,
+    category: input.category,
+    notes: input.notes?.trim(),
+  });
+  const rows = await getPatientMedicalFiles(input.patientId);
+  const match = rows.find((row) => row.id === uploaded.recordId);
+  if (match) return match;
+  return {
+    id: uploaded.recordId ?? uploaded.storageKey,
+    patientId: input.patientId,
+    category: input.category,
+    name: title,
+    subtitle: formatMedicalFileSubtitle({
+      category: input.category,
+      mimeType: uploaded.mimeType,
+      sizeBytes: uploaded.sizeBytes,
+      uploadedByRole: 'clinician',
+    }),
+    url: uploaded.url,
+    storageKey: uploaded.storageKey,
+    mimeType: uploaded.mimeType,
+    sizeBytes: uploaded.sizeBytes,
+    uploadedAt: new Date(),
+    uploadedByRole: 'clinician',
+  };
+};
+
+export const removePatientMedicalFile = async (fileId: string): Promise<void> => {
+  await djangoDeleteMedicalFile(fileId);
 };

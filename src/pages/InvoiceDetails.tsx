@@ -2,14 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { getInvoiceById, updateInvoiceRecord, updateInvoiceStatus } from '../services/invoiceService';
 import {
+  buildClinicInvoicePdfContext,
   buildInvoiceLetterhead,
   fetchPracticeLogoDataUrl,
   generateInvoicePDF,
 } from '../services/invoicePdfService';
 import { useAuth } from '../hooks/useAuth';
+import { useClinicInheritedDoctor } from '../hooks/useClinicInheritedDoctor';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import { getAppointmentById } from '../services/appointmentService';
-import { Doctor, Invoice } from '../types';
+import { Invoice } from '../types';
+import { isManagedOrgType } from '../lib/doctorAccess';
 import { SA_VAT_RATE, computeVatBreakdown } from '../lib/southAfrica';
 import { resolvePracticeLogoUrl } from '../lib/doctorAvatar';
 import { PageShell } from '../components/page-layout';
@@ -20,9 +23,8 @@ const statusLabel = (status: string) =>
 const InvoiceDetails: React.FC = () => {
   const { invoiceId } = useParams<{ invoiceId: string }>();
   const { navigateBack } = useNavigateWithFallback();
-  const { user, practiceSession } = useAuth();
-  const doctor = user?.role === 'doctor' ? (user as Doctor) : null;
-  const practice = practiceSession?.practice;
+  const { user } = useAuth();
+  const { doctor, practice } = useClinicInheritedDoctor();
   const [invoice, setInvoice] = useState<(Invoice & { patientName?: string }) | null>(null);
   const [editing, setEditing] = useState(false);
   const [desc, setDesc] = useState('');
@@ -104,7 +106,7 @@ const InvoiceDetails: React.FC = () => {
   const vatAmount = invoice.vatAmount ?? vatBreakdown.vatAmount;
   const totalIncl = invoice.totalAmount ?? vatBreakdown.total;
   const currency = invoice.currency || 'ZAR';
-  const isClinicInvoice = practice?.orgType === 'clinic';
+  const isClinicInvoice = isManagedOrgType(practice?.orgType);
   const logoUrl = resolvePracticeLogoUrl(
     isClinicInvoice ? practice?.logoUrl : doctor?.logoUrl,
     isClinicInvoice ? undefined : doctor?.profileImageUrl
@@ -158,16 +160,23 @@ const InvoiceDetails: React.FC = () => {
         logoUrl || (isClinicInvoice ? practice?.logoUrl : doctor?.logoUrl),
         { skipDoctorLogoStore: isClinicInvoice }
       );
+      const pdfContext = isClinicInvoice
+        ? await buildClinicInvoicePdfContext(practice, invoice.patientId)
+        : {};
       await Promise.race([
-        generateInvoicePDF(invoice, {
-          ...letterhead,
-          logoDataUrl,
-          licenseNumber: invoice.hpcsaNumber || doctor?.licenseNumber,
-          practiceNumberBhf:
-            invoice.bhfPracticeNumber ||
-            (isClinicInvoice ? practice?.bhfPracticeNumber : doctor?.practiceNumberBhf),
-          vatNumber: invoice.vatNumber || doctor?.vatNumber,
-        }),
+        generateInvoicePDF(
+          invoice,
+          {
+            ...letterhead,
+            logoDataUrl,
+            licenseNumber: invoice.hpcsaNumber || doctor?.licenseNumber,
+            practiceNumberBhf:
+              invoice.bhfPracticeNumber ||
+              (isClinicInvoice ? practice?.bhfPracticeNumber : doctor?.practiceNumberBhf),
+            vatNumber: invoice.vatNumber || doctor?.vatNumber,
+          },
+          pdfContext,
+        ),
         new Promise<never>((_, reject) =>
           setTimeout(
             () => reject(new Error('PDF generation timed out. Please try again.')),

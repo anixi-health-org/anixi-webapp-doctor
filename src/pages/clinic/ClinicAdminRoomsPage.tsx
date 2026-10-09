@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { BulkRoomImportPanel } from '../../components/clinic/BulkRoomImportPanel';
 import { ClinicSecondaryAction } from '../../components/clinic/ClinicSecondaryAction';
-import { PageHeader, PageShell } from '../../components/page-layout';
+import { PageShell } from '../../components/page-layout';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import {
@@ -55,29 +55,26 @@ export const ClinicAdminRoomsPage: React.FC = () => {
     }
   };
 
+  const roomsDescription = hasRooms
+    ? 'Rooms used for front-desk scheduling across this clinic. Assign them from the queue and track utilization on Reports.'
+    : 'Bulk import your room list from CSV, or add rooms one at a time for front-desk scheduling.';
+
   return (
     <PageShell maxWidth="wide" className="py-6 sm:py-8">
-      <PageHeader
-        title="Rooms"
-        description={
-          hasRooms
-            ? 'Rooms used for front-desk scheduling across this clinic.'
-            : 'Bulk import your room list from CSV, or add rooms one at a time for front-desk scheduling.'
-        }
-        actions={
-          canManage && hasRooms ? (
-            <ClinicSecondaryAction
-              open={csvOpen}
-              onToggle={() => setCsvOpen((open) => !open)}
-              revealLabel="Import rooms from CSV"
-              hideLabel="Hide CSV import"
-            />
-          ) : null
-        }
-      />
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <p className="max-w-2xl text-sm leading-relaxed text-[#65758b]">{roomsDescription}</p>
+        {canManage && hasRooms ? (
+          <ClinicSecondaryAction
+            open={csvOpen}
+            onToggle={() => setCsvOpen((open) => !open)}
+            revealLabel="Import rooms from CSV"
+            hideLabel="Hide CSV import"
+          />
+        ) : null}
+      </div>
 
       {showCsv && !hasRooms && practice ? (
-        <div className="mt-2">
+        <div className="mb-6">
           <BulkRoomImportPanel
             practice={practice}
             onComplete={() => void refreshPracticeSession()}
@@ -86,9 +83,8 @@ export const ClinicAdminRoomsPage: React.FC = () => {
       ) : null}
 
       {canManage ? (
-        <div className="mt-6 rounded-2xl border border-[#e1e7ef] bg-white p-5">
-          <h2 className="text-sm font-semibold text-[#1a4d4d]">Add single room</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-4">
+        <div className="rounded-2xl border border-[#e1e7ef] bg-white p-5">
+          <div className="grid gap-3 sm:grid-cols-4">
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -129,7 +125,7 @@ export const ClinicAdminRoomsPage: React.FC = () => {
         </div>
       ) : null}
 
-      <div className="mt-8 overflow-hidden rounded-2xl border border-[#e1e7ef] bg-white">
+      <div className="mt-6 overflow-hidden rounded-2xl border border-[#e1e7ef] bg-white">
         <table className="min-w-full text-left text-sm">
           <thead className="bg-[#fafcfb] text-xs font-semibold uppercase tracking-wide text-[#65758b]">
             <tr>

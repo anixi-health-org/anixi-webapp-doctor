@@ -1,18 +1,30 @@
 import jsPDF from 'jspdf';
+import {
+  hasPdfFieldContent,
+  visiblePdfFields,
+  type PdfFieldRow,
+} from '../lib/practicePatientRecordPdfFormat';
 import type { DjangoPracticePatient } from './djangoApiService';
+import { fetchPracticeLogoDataUrl } from './invoicePdfService';
 
-const BRAND_RGB: [number, number, number] = [66, 89, 80];
-const MUTED_RGB: [number, number, number] = [100, 116, 139];
-const INK_RGB: [number, number, number] = [30, 41, 59];
+const BRAND: [number, number, number] = [26, 77, 77];
+const MUTED: [number, number, number] = [100, 116, 139];
+const INK: [number, number, number] = [30, 41, 59];
+const PANEL_FILL: [number, number, number] = [248, 250, 249];
+const PANEL_BORDER: [number, number, number] = [223, 230, 225];
 
 export type PracticePatientRecordPdfInput = {
   patient: DjangoPracticePatient;
   practiceName: string;
+  practiceTradingName?: string;
+  practiceLogoUrl?: string;
+  practiceAddress?: string;
+  practiceBhf?: string;
   clinicCode?: string;
   assignedDoctorName?: string;
 };
 
-type PdfField = { label: string; value: string };
+type PdfField = PdfFieldRow;
 
 type PdfSection = { title: string; fields: PdfField[] };
 
@@ -53,7 +65,9 @@ function formatEncounters(
 ): string {
   if (!rows?.length) return '—';
   return rows
-    .map((row) => [row.date, row.type, row.number ? `#${row.number}` : ''].filter(Boolean).join(' · '))
+    .map((row) =>
+      [row.date, row.type, row.number ? `#${row.number}` : ''].filter(Boolean).join(' · '),
+    )
     .join('\n');
 }
 
@@ -62,12 +76,8 @@ function formatWeight(value?: string): string {
   return /kg|lb/i.test(value) ? value.trim() : `${value.trim()} kg`;
 }
 
-function hasContent(value: string): boolean {
-  return value.trim() !== '' && value.trim() !== '—';
-}
-
 function sectionHasContent(fields: PdfField[]): boolean {
-  return fields.some((field) => hasContent(field.value));
+  return fields.some((field) => hasPdfFieldContent(field.value));
 }
 
 function buildSections(input: PracticePatientRecordPdfInput): PdfSection[] {
@@ -94,9 +104,9 @@ function buildSections(input: PracticePatientRecordPdfInput): PdfSection[] {
     { label: 'Work phone', value: dash(p.workPhone) },
     { label: 'Emergency contact name', value: dash(p.emergencyContactName) },
     { label: 'Emergency contact phone', value: dash(p.emergencyContactPhone) },
-    { label: 'Contact status', value: dash(p.contactStatus) },
+    { label: 'Role / contact status', value: dash(p.contactStatus) },
     { label: 'Institution', value: dash(p.institution) },
-    { label: 'Address', value: dash(p.address) },
+    { label: 'Address', value: dash(p.address), fullWidth: true },
   ];
 
   const medicalAid: PdfField[] = [
@@ -112,26 +122,30 @@ function buildSections(input: PracticePatientRecordPdfInput): PdfSection[] {
     { label: 'Guarantor name', value: dash(p.guarantorName) },
     { label: 'Guarantor phone', value: dash(p.guarantorPhone) },
     { label: 'Relationship to guarantor', value: dash(p.guarantorRelationship) },
-    { label: 'Guarantor remarks', value: dash(p.guarantorRemarks) },
+    { label: 'Guarantor remarks', value: dash(p.guarantorRemarks), fullWidth: true },
   ];
 
   const clinical: PdfField[] = [
-    { label: 'Past medical history (narrative)', value: dash(p.pastMedicalHistoryText) },
-    { label: 'Family history', value: dash(p.familyHistoryText) },
-    { label: 'Social history', value: dash(p.socialHistoryText) },
-    { label: 'Master problems list', value: formatList(p.masterProblemsList) },
-    { label: 'Active problems', value: formatList(p.activeProblems) },
-    { label: 'Recent encounters', value: formatEncounters(p.recentUnichartEncounters) },
+    { label: 'Past medical history', value: dash(p.pastMedicalHistoryText), fullWidth: true },
+    { label: 'Family history', value: dash(p.familyHistoryText), fullWidth: true },
+    { label: 'Social history', value: dash(p.socialHistoryText), fullWidth: true },
+    { label: 'Master problems list', value: formatList(p.masterProblemsList), fullWidth: true },
+    { label: 'Active problems', value: formatList(p.activeProblems), fullWidth: true },
+    {
+      label: 'Recent encounters',
+      value: formatEncounters(p.recentUnichartEncounters),
+      fullWidth: true,
+    },
     { label: 'Language', value: dash(p.language) },
     { label: 'Marital status', value: dash(p.maritalStatus) },
     { label: 'Occupation', value: dash(p.occupation) },
     { label: 'Employment status', value: dash(p.employmentStatus) },
     { label: 'Blood group', value: dash(p.bloodGroup) },
     { label: 'Weight', value: formatWeight(p.weight) },
-    { label: 'Allergies', value: formatList(p.allergies) },
-    { label: 'Conditions', value: formatList(p.previousHealthConditions) },
-    { label: 'Previous surgeries', value: formatList(p.previousSurgeries) },
-    { label: 'Previous medications', value: formatList(p.previousMedications) },
+    { label: 'Allergies', value: formatList(p.allergies), fullWidth: true },
+    { label: 'Conditions', value: formatList(p.previousHealthConditions), fullWidth: true },
+    { label: 'Previous surgeries', value: formatList(p.previousSurgeries), fullWidth: true },
+    { label: 'Previous medications', value: formatList(p.previousMedications), fullWidth: true },
     { label: 'Preferred hospital', value: dash(p.preferredHospital) },
     { label: 'Caregiver', value: dash(caregiver) },
   ];
@@ -150,22 +164,25 @@ function buildSections(input: PracticePatientRecordPdfInput): PdfSection[] {
   ];
 
   const sections: PdfSection[] = [
-    { title: 'Identity', fields: identity },
-    { title: 'Contact', fields: contact },
+    { title: 'Identity', fields: visiblePdfFields(identity) },
+    { title: 'Contact', fields: visiblePdfFields(contact) },
   ];
 
   if (sectionHasContent(medicalAid)) {
-    sections.push({ title: 'Medical aid', fields: medicalAid });
+    sections.push({ title: 'Medical aid', fields: visiblePdfFields(medicalAid) });
   }
   if (sectionHasContent(guarantor)) {
-    sections.push({ title: 'Guarantor (UniCharts)', fields: guarantor });
+    sections.push({ title: 'Guarantor (UniCharts)', fields: visiblePdfFields(guarantor) });
   }
   if (sectionHasContent(clinical)) {
-    sections.push({ title: 'UniCharts clinical record', fields: clinical });
+    sections.push({
+      title: 'UniCharts clinical record',
+      fields: visiblePdfFields(clinical),
+    });
   }
-  sections.push({ title: 'Care team', fields: careTeam });
+  sections.push({ title: 'Care team & account', fields: visiblePdfFields(careTeam, { keepEmpty: true }) });
 
-  return sections;
+  return sections.filter((section) => section.fields.length > 0);
 }
 
 export function practicePatientRecordFileName(displayName?: string): string {
@@ -178,40 +195,259 @@ export function practicePatientRecordFileName(displayName?: string): string {
   return `patient-record-${base || 'export'}.pdf`;
 }
 
+function pageHeight(doc: jsPDF): number {
+  return doc.internal.pageSize.getHeight();
+}
+
 function ensureSpace(doc: jsPDF, y: number, needed: number, margin: number): number {
-  const pageHeight = doc.internal.pageSize.getHeight();
-  if (y + needed <= pageHeight - margin) {
+  if (y + needed <= pageHeight(doc) - margin) {
     return y;
   }
   doc.addPage();
   return margin;
 }
 
-function drawField(
+function measureFieldHeight(doc: jsPDF, field: PdfField, width: number): number {
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  const lines = doc.splitTextToSize(field.value, width) as string[];
+  return 5 + Math.max(lines.length, 1) * 4.2 + 3;
+}
+
+function drawFieldCell(
   doc: jsPDF,
   field: PdfField,
   x: number,
   y: number,
   width: number,
-  margin: number,
 ): number {
-  let cursor = ensureSpace(doc, y, 28, margin);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(...MUTED);
+  doc.text(field.label.toUpperCase(), x, y);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...INK);
+  const lines = doc.splitTextToSize(field.value, width) as string[];
+  let cy = y + 4.5;
+  for (const line of lines) {
+    doc.text(line, x, cy);
+    cy += 4.2;
+  }
+  return cy - y + 2;
+}
+
+function shouldUseFullWidth(field: PdfField, colWidth: number, doc: jsPDF): boolean {
+  if (field.fullWidth) return true;
+  if (field.value.includes('\n')) return true;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  return doc.getTextWidth(field.value) > colWidth - 2;
+}
+
+function drawSectionPanel(
+  doc: jsPDF,
+  section: PdfSection,
+  startY: number,
+  margin: number,
+  contentWidth: number,
+): number {
+  const padding = 5;
+  const colGap = 6;
+  const colWidth = (contentWidth - padding * 2 - colGap) / 2;
+  const titleH = 10;
+  const fields = section.fields;
+
+  let contentH = padding + titleH;
+  let index = 0;
+  while (index < fields.length) {
+    const field = fields[index]!;
+    if (shouldUseFullWidth(field, colWidth, doc)) {
+      contentH += measureFieldHeight(doc, field, contentWidth - padding * 2) + 2;
+      index += 1;
+      continue;
+    }
+    const right = fields[index + 1];
+    const leftH = measureFieldHeight(doc, field, colWidth);
+    const rightH =
+      right && !shouldUseFullWidth(right, colWidth, doc)
+        ? measureFieldHeight(doc, right, colWidth)
+        : 0;
+    contentH += Math.max(leftH, rightH) + 2;
+    index += right && !shouldUseFullWidth(right, colWidth, doc) ? 2 : 1;
+  }
+  contentH += padding;
+
+  let y = ensureSpace(doc, startY, contentH + 4, margin);
+
+  doc.setFillColor(...PANEL_FILL);
+  doc.setDrawColor(...PANEL_BORDER);
+  doc.setLineWidth(0.35);
+  doc.roundedRect(margin, y, contentWidth, contentH, 2, 2, 'FD');
+
+  let cursor = y + padding + 4;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.setTextColor(...MUTED_RGB);
-  doc.text(field.label.toUpperCase(), x, cursor);
+  doc.setTextColor(...MUTED);
+  doc.text(section.title.toUpperCase(), margin + padding, cursor);
+  cursor += titleH - 2;
 
-  cursor += 10;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.setTextColor(...INK_RGB);
-  const lines = doc.splitTextToSize(field.value, width) as string[];
-  for (const line of lines) {
-    cursor = ensureSpace(doc, cursor, 14, margin);
-    doc.text(line, x, cursor);
-    cursor += 12;
+  index = 0;
+  while (index < fields.length) {
+    const field = fields[index]!;
+    const leftX = margin + padding;
+    const rightX = margin + padding + colWidth + colGap;
+
+    if (shouldUseFullWidth(field, colWidth, doc)) {
+      cursor = ensureSpace(doc, cursor, measureFieldHeight(doc, field, contentWidth - padding * 2), margin);
+      const h = drawFieldCell(doc, field, leftX, cursor, contentWidth - padding * 2);
+      cursor += h + 2;
+      index += 1;
+      continue;
+    }
+
+    const right = fields[index + 1];
+    const pairRight =
+      right && !shouldUseFullWidth(right, colWidth, doc) ? right : undefined;
+    const leftH = drawFieldCell(doc, field, leftX, cursor, colWidth);
+    const rightH = pairRight
+      ? drawFieldCell(doc, pairRight, rightX, cursor, colWidth)
+      : 0;
+    cursor += Math.max(leftH, rightH) + 2;
+    index += pairRight ? 2 : 1;
   }
-  return cursor + 4;
+
+  return y + contentH + 6;
+}
+
+function fitLogoBox(naturalW: number, naturalH: number, maxW: number, maxH: number) {
+  if (!naturalW || !naturalH) return { w: maxW, h: maxH };
+  const ratio = naturalW / naturalH;
+  let w = maxW;
+  let h = w / ratio;
+  if (h > maxH) {
+    h = maxH;
+    w = h * ratio;
+  }
+  return { w, h };
+}
+
+async function drawLetterhead(
+  doc: jsPDF,
+  input: PracticePatientRecordPdfInput,
+  layout: { margin: number; right: number; contentWidth: number },
+): Promise<number> {
+  const { margin, right, contentWidth } = layout;
+  const practiceName = (input.practiceTradingName || input.practiceName).trim() || 'Clinic';
+  const logoDataUrl = input.practiceLogoUrl
+    ? await fetchPracticeLogoDataUrl(undefined, input.practiceLogoUrl, {
+        skipDoctorLogoStore: true,
+      })
+    : undefined;
+
+  let headerBottom = margin;
+  let textLeft = margin;
+  let logoDrawn = false;
+  const LOGO_MAX_W = 44;
+  const LOGO_MAX_H = 28;
+
+  if (logoDataUrl) {
+    try {
+      const img = new Image();
+      img.src = logoDataUrl;
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('logo decode failed'));
+      });
+      const box = fitLogoBox(img.naturalWidth, img.naturalHeight, LOGO_MAX_W, LOGO_MAX_H);
+      const format = logoDataUrl.includes('image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(logoDataUrl, format, margin, margin, box.w, box.h);
+      headerBottom = Math.max(headerBottom, margin + box.h);
+      textLeft = margin + box.w + 5;
+      logoDrawn = true;
+    } catch {
+      // continue without logo
+    }
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(logoDrawn ? 12 : 14);
+  doc.setTextColor(...BRAND);
+  doc.text(practiceName, logoDrawn ? textLeft : margin, margin + 7);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...MUTED);
+  const metaLines = [
+    input.practiceBhf ? `BHF: ${input.practiceBhf}` : '',
+    input.practiceAddress ?? '',
+  ].filter(Boolean);
+  let ry = margin + 5;
+  for (const line of metaLines) {
+    for (const wrapped of doc.splitTextToSize(line, 72) as string[]) {
+      doc.text(wrapped, right, ry, { align: 'right' });
+      ry += 4;
+    }
+  }
+  headerBottom = Math.max(headerBottom, ry, margin + LOGO_MAX_H) + 3;
+
+  doc.setDrawColor(...BRAND);
+  doc.setLineWidth(0.6);
+  doc.line(margin, headerBottom, right, headerBottom);
+
+  let y = headerBottom + 8;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(...BRAND);
+  doc.text('PATIENT RECORD', margin, y);
+
+  y += 8;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...INK);
+  doc.text(dash(input.patient.displayName), margin, y);
+
+  y += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...MUTED);
+  const sublines = [
+    `Warrior profile · ${practiceName}`,
+    input.assignedDoctorName ? `Assigned clinician: ${input.assignedDoctorName}` : '',
+    `Generated ${new Date().toLocaleString('en-ZA')}`,
+  ].filter(Boolean);
+  for (const line of sublines) {
+    doc.text(line, margin, y);
+    y += 4.2;
+  }
+
+  y += 4;
+  doc.setDrawColor(...PANEL_BORDER);
+  doc.setLineWidth(0.3);
+  doc.line(margin, y, margin + contentWidth, y);
+  return y + 8;
+}
+
+function drawFooters(doc: jsPDF, practiceName: string, margin: number, right: number): void {
+  const total = doc.getNumberOfPages();
+  for (let page = 1; page <= total; page += 1) {
+    doc.setPage(page);
+    const footerY = pageHeight(doc) - 10;
+    doc.setDrawColor(...PANEL_BORDER);
+    doc.setLineWidth(0.3);
+    doc.line(margin, footerY - 3, right, footerY - 3);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`${practiceName} · Anixi Health`, margin, footerY);
+    doc.text(
+      `Confidential · Page ${page} of ${total}`,
+      right,
+      footerY,
+      { align: 'right' },
+    );
+  }
 }
 
 export async function generatePracticePatientRecordPDF(
@@ -222,71 +458,41 @@ export async function generatePracticePatientRecordPDF(
   const MARGIN = 16;
   const CONTENT_W = PAGE_W - MARGIN * 2;
   const RIGHT = PAGE_W - MARGIN;
+  const practiceName = (input.practiceTradingName || input.practiceName).trim() || 'Clinic';
 
-  const practiceName = input.practiceName.trim() || 'Clinic';
-  let y = MARGIN;
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(...BRAND_RGB);
-  doc.text('Patient record', MARGIN, y);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.setTextColor(...MUTED_RGB);
-  y += 7;
-  doc.text(practiceName, MARGIN, y);
-  y += 5;
-  doc.text(`Warrior: ${dash(input.patient.displayName)}`, MARGIN, y);
-  y += 5;
-  doc.text(`Generated ${new Date().toLocaleString('en-ZA')}`, MARGIN, y);
-
-  y += 8;
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.3);
-  doc.line(MARGIN, y, RIGHT, y);
-  y += 10;
+  let y = await drawLetterhead(doc, input, {
+    margin: MARGIN,
+    right: RIGHT,
+    contentWidth: CONTENT_W,
+  });
 
   for (const section of buildSections(input)) {
-    y = ensureSpace(doc, y, 24, MARGIN);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.setTextColor(...BRAND_RGB);
-    doc.text(section.title, MARGIN, y);
-    y += 8;
-
-    const rows =
-      section.title === 'Identity' || section.title === 'Contact' || section.title === 'Care team'
-        ? section.fields
-        : section.fields.filter((field) => hasContent(field.value));
-
-    for (const field of rows) {
-      y = drawField(doc, field, MARGIN, y, CONTENT_W, MARGIN);
-    }
-
-    y += 4;
+    y = drawSectionPanel(doc, section, y, MARGIN, CONTENT_W);
   }
 
-  const FOOTER_Y = 287;
-  doc.setDrawColor(226, 232, 240);
-  doc.line(MARGIN, FOOTER_Y, RIGHT, FOOTER_Y);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(148, 163, 184);
-  doc.text('Anixi Health · POPIA-aware clinic record export', MARGIN, FOOTER_Y + 4);
-  doc.text('Confidential — for clinical use only', RIGHT, FOOTER_Y + 4, { align: 'right' });
-
+  drawFooters(doc, practiceName, MARGIN, RIGHT);
   doc.save(practicePatientRecordFileName(input.patient.displayName));
 }
 
 export async function downloadPracticePatientRecordPDF(options: {
   patient: DjangoPracticePatient;
-  practice: { name: string; clinicCode?: string };
+  practice: {
+    name: string;
+    tradingName?: string;
+    logoUrl?: string;
+    bhfPracticeNumber?: string;
+    clinicCode?: string;
+    locations?: Array<{ address?: string }>;
+  };
   assignedDoctorName?: string;
 }): Promise<void> {
   await generatePracticePatientRecordPDF({
     patient: options.patient,
     practiceName: options.practice.name,
+    practiceTradingName: options.practice.tradingName,
+    practiceLogoUrl: options.practice.logoUrl,
+    practiceAddress: options.practice.locations?.[0]?.address,
+    practiceBhf: options.practice.bhfPracticeNumber,
     clinicCode: options.practice.clinicCode,
     assignedDoctorName: options.assignedDoctorName,
   });

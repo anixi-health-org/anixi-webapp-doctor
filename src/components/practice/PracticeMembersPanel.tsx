@@ -215,7 +215,7 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
       )}
 
       {variant === 'clinic' && (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-[#344256]">Current team</h2>
             <p className="mt-1 text-sm text-[#65758b]">

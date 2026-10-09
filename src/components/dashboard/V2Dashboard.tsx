@@ -11,15 +11,14 @@ import { Activity, HeartPulse } from 'lucide-react';
 import clsx from 'clsx';
 import { Patient, Appointment } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
+import { isManagedOrgType } from '../../lib/doctorAccess';
 import { listenToDoctorAppointments } from '../../services/appointmentService';
 import {
   getDoctorPatientGrowth,
   type DoctorPatientGrowth,
 } from '../../services/patientManagementService';
-import {
-  getPracticeDashboardStats,
-  type PracticeDashboardStats,
-} from '../../services/practiceDashboardService';
+import type { PracticeDashboardStats } from '../../services/practiceDashboardService';
+import { usePracticeDashboardStats } from '../../hooks/usePracticeDashboardStats';
 import { clinicianGivenName } from '../../lib/clinicianName';
 import { patientAccountStatus, patientAccountStatusLabel } from '../../utils/patientRosterStatus';
 import { DashboardPageSkeleton } from '../ui/Skeleton';
@@ -160,7 +159,7 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
   const navigate = useNavigate();
   const { user, practiceSession } = useAuth();
   const firstName = clinicianGivenName(user?.displayName);
-  const isClinic = practiceSession?.practice?.orgType === 'clinic';
+  const isClinic = isManagedOrgType(practiceSession?.practice?.orgType);
   const scheduleTimeZone =
     practiceSession?.practice?.timezone?.trim() || detectBrowserTimezone();
 
@@ -168,7 +167,11 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
   const [appointmentsLoading, setAppointmentsLoading] = useState(true);
   const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
   const [patientGrowth, setPatientGrowth] = useState<DoctorPatientGrowth | null>(null);
-  const [practiceStats, setPracticeStats] = useState<PracticeDashboardStats | null>(null);
+  const practiceStatsQuery = usePracticeDashboardStats(
+    practiceSession?.practice?.id,
+    isClinic,
+  );
+  const practiceStats: PracticeDashboardStats | null = practiceStatsQuery.data ?? null;
   const [recordsTab, setRecordsTab] = useState<'patients' | 'appointments'>('patients');
   const [patientsPage, setPatientsPage] = useState(0);
   const [dateRange, setDateRange] = useState<DateRangeKey>('today');
@@ -213,24 +216,6 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
       cancelled = true;
     };
   }, [user?.id, patients.length]);
-
-  useEffect(() => {
-    if (!isClinic || !practiceSession?.practice?.id) {
-      setPracticeStats(null);
-      return;
-    }
-    let cancelled = false;
-    getPracticeDashboardStats(practiceSession.practice.id)
-      .then((stats) => {
-        if (!cancelled) setPracticeStats(stats);
-      })
-      .catch(() => {
-        if (!cancelled) setPracticeStats(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isClinic, practiceSession?.practice?.id]);
 
   useEffect(() => {
     if (!rangeOpen) return;

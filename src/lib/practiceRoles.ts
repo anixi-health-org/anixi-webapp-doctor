@@ -272,22 +272,21 @@ export function permissionsForRole(role: PracticeRole): PracticePermissions {
   return { ...ROLE_PERMISSION_PRESETS[role] };
 }
 
-/** Merge older permission docs with new flags (defaults from role preset). */
+/** Stored flags only. Missing keys stay false until an administrator assigns a role. */
 export function normalizePermissions(
   raw: Partial<PracticePermissions> | undefined,
-  role: PracticeRole = 'delegate'
+  _role: PracticeRole = 'delegate'
 ): PracticePermissions {
-  const preset = permissionsForRole(role);
   return {
-    manageAppointments: raw?.manageAppointments ?? preset.manageAppointments,
-    manageSoftBlocks: raw?.manageSoftBlocks ?? preset.manageSoftBlocks,
-    overrideConflicts: raw?.overrideConflicts ?? preset.overrideConflicts,
-    editBookingPolicies: raw?.editBookingPolicies ?? preset.editBookingPolicies,
-    managePatients: raw?.managePatients ?? preset.managePatients,
-    manageMembers: raw?.manageMembers ?? preset.manageMembers,
-    viewAllDoctors: raw?.viewAllDoctors ?? preset.viewAllDoctors,
-    viewBilling: raw?.viewBilling ?? preset.viewBilling,
-    manageContent: raw?.manageContent ?? preset.manageContent,
+    manageAppointments: raw?.manageAppointments === true,
+    manageSoftBlocks: raw?.manageSoftBlocks === true,
+    overrideConflicts: raw?.overrideConflicts === true,
+    editBookingPolicies: raw?.editBookingPolicies === true,
+    managePatients: raw?.managePatients === true,
+    manageMembers: raw?.manageMembers === true,
+    viewAllDoctors: raw?.viewAllDoctors === true,
+    viewBilling: raw?.viewBilling === true,
+    manageContent: raw?.manageContent === true,
   };
 }
 

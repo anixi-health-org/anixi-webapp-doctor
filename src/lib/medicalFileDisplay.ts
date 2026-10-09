@@ -51,9 +51,18 @@ export function formatMedicalFileSubtitle(params: {
   category?: string;
   mimeType?: string;
   sizeBytes?: number | null;
+  uploadedByRole?: string;
+  uploadedByName?: string;
 }): string {
   const label = CATEGORY_LABELS[params.category ?? ''] ?? 'Document';
-  const parts = [`${label} · uploaded by patient`];
+  const role = (params.uploadedByRole ?? 'patient').toLowerCase();
+  const uploader =
+    role === 'clinician'
+      ? params.uploadedByName?.trim()
+        ? `uploaded by ${params.uploadedByName.trim()} (clinic)`
+        : 'uploaded by clinic team'
+      : 'uploaded by patient';
+  const parts = [`${label} · ${uploader}`];
   if (params.sizeBytes && params.sizeBytes > 0) {
     const kb = params.sizeBytes / 1024;
     parts.push(kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(kb))} KB`);

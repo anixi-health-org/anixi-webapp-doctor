@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { PageHeader, PageShell } from '../../components/page-layout';
+import { Link } from 'react-router-dom';
+import { PageShell } from '../../components/page-layout';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { getPracticeWideAppointments } from '../../services/appointmentService';
@@ -119,23 +120,30 @@ export const ClinicAdminQueuePage: React.FC = () => {
 
   return (
     <PageShell maxWidth="wide" className="py-6 sm:py-8">
-      <PageHeader
-        title="Front desk queue"
-        description="Check patients in, assign rooms, and track who is waiting for today's appointments."
-      />
-
       {error ? (
-        <p className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </p>
       ) : null}
 
       {loading ? (
-        <p className="mt-6 text-sm text-[#65758b]">Loading queue…</p>
+        <p className="text-sm text-[#65758b]">Loading queue…</p>
       ) : queue.length === 0 ? (
-        <p className="mt-6 text-sm text-[#65758b]">No active appointments for today.</p>
+        <div className="rounded-2xl border border-[#e1e7ef] bg-white px-6 py-14 text-center">
+          <p className="text-base font-semibold text-[#344256]">No one in the queue for today</p>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-[#65758b]">
+            Today&apos;s confirmed appointments show up here so you can check patients in and assign
+            rooms.
+          </p>
+          <Link
+            to="/clinic/schedule"
+            className="mt-6 inline-flex rounded-full bg-[#1a4d4d] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+          >
+            Open schedule
+          </Link>
+        </div>
       ) : (
-        <div className="mt-8 overflow-hidden rounded-2xl border border-[#e1e7ef] bg-white">
+        <div className="overflow-hidden rounded-2xl border border-[#e1e7ef] bg-white">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-[#fafcfb] text-xs font-semibold uppercase tracking-wide text-[#65758b]">
               <tr>

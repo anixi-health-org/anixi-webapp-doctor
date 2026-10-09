@@ -9,7 +9,6 @@ import { PageHeader, PageShell } from '../../components/page-layout';
 import { ListRowsSkeleton, PageHeaderSkeleton, Skeleton } from '../../components/ui/Skeleton';
 import { useAuth } from '../../hooks/useAuth';
 import { getDoctorAppointments } from '../../services/appointmentService';
-import { getDoctorPatients } from '../../services/patientManagementService';
 import {
   getPatientUploadedFiles,
   patientFileCategoryLabel,
@@ -91,7 +90,10 @@ export const MedicalRecordsPage: React.FC = () => {
   const [patientFiles, setPatientFiles] = useState<PatientUploadedFile[]>([]);
   const [patientNames, setPatientNames] = useState<Map<string, string>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
+  const [filesLoading, setFilesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const MAX_PATIENT_FILE_LOOKUPS = 40;
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'documents' | 'notes'>('all');
   const { requests: pendingShares } = useIncomingRecordShares(user?.id);
@@ -103,17 +105,15 @@ export const MedicalRecordsPage: React.FC = () => {
     }
     setIsLoading(true);
     setError(null);
+    setPatientFiles([]);
     try {
-      const [data, patients, sharedGrants] = await Promise.all([
+      const [data, sharedGrants] = await Promise.all([
         getDoctorAppointments(user.id),
-        getDoctorPatients(user.id),
         getPatientsSharingRecords(user.id).catch(() => []),
       ]);
       setAppointments(data);
 
-      const names = new Map(
-        patients.map((patient) => [patient.id, patient.displayName || patient.email || patient.id]),
-      );
+      const names = new Map<string, string>();
       sharedGrants.forEach((grant) => {
         if (!names.has(grant.patientId)) {
           names.set(grant.patientId, grant.patientName || 'Shared patient');
@@ -125,6 +125,7 @@ export const MedicalRecordsPage: React.FC = () => {
         }
       });
       setPatientNames(names);
+      setIsLoading(false);
 
       const filePatientIds = Array.from(
         new Set(
@@ -133,14 +134,25 @@ export const MedicalRecordsPage: React.FC = () => {
             ...sharedGrants.map((grant) => grant.patientId),
           ].filter(Boolean),
         ),
-      );
-      const files = await getPatientUploadedFiles(filePatientIds);
-      setPatientFiles(files);
+      ).slice(0, MAX_PATIENT_FILE_LOOKUPS);
+
+      if (filePatientIds.length === 0) {
+        return;
+      }
+
+      setFilesLoading(true);
+      try {
+        const files = await getPatientUploadedFiles(filePatientIds);
+        setPatientFiles(files);
+      } catch {
+        setPatientFiles([]);
+      } finally {
+        setFilesLoading(false);
+      }
     } catch (err) {
       setError(userFacingLoadError(err, 'Could not load medical records'));
       setAppointments([]);
-      setPatientFiles([]);
-    } finally {
+      setPatientNames(new Map());
       setIsLoading(false);
     }
   }, [user?.id]);
@@ -185,7 +197,9 @@ export const MedicalRecordsPage: React.FC = () => {
         kind: 'document',
         id: `patient-file-${file.id}`,
         title: file.name,
-        subtitle: file.subtitle || `${patientFileCategoryLabel(file.category)} · uploaded by patient`,
+        subtitle:
+          file.subtitle ||
+          `${patientFileCategoryLabel(file.category)} · ${file.uploadedByRole === 'clinician' ? 'uploaded by clinic' : 'uploaded by patient'}`,
         patientId: file.patientId,
         patientName: patientNames.get(file.patientId) ?? 'Patient',
         date: file.uploadedAt,
@@ -238,6 +252,10 @@ export const MedicalRecordsPage: React.FC = () => {
         <div className="mb-4 rounded-[12px] border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {error}
         </div>
+      )}
+
+      {filesLoading && (
+        <p className="mb-3 text-[13px] text-[#65758b]">Loading patient-uploaded documents…</p>
       )}
 
       {user?.id && (

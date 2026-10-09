@@ -66,8 +66,8 @@ export interface PracticeMember {
     updatedAt: Date;
 }
 
-/** Solo private practice vs multi-doctor clinic/branch */
-export type PracticeOrgType = 'solo' | 'clinic';
+/** Solo private practice vs clinic or hospital. */
+export type PracticeOrgType = 'solo' | 'clinic' | 'hospital';
 
 export interface PracticeLocation {
     id: string;
@@ -110,6 +110,18 @@ export interface ConsultTypeSetting {
     bufferMinutes: number;
 }
 
+/** VAT & banking for clinic invoice PDFs (Clinic settings). */
+export interface PracticeBillingProfile {
+    vatNumber?: string;
+    bankName?: string;
+    accountHolder?: string;
+    accountNumber?: string;
+    accountType?: string;
+    branchName?: string;
+    swiftCode?: string;
+    branchCode?: string;
+}
+
 export interface Practice {
     id: string;
     name: string;
@@ -137,6 +149,7 @@ export interface Practice {
     acceptedSchemes?: MedicalSchemeCatalogItem[];
     acceptedPlans?: MedicalSchemePlanCatalogItem[];
     configureAcceptedSchemes?: boolean;
+    billingProfile?: PracticeBillingProfile;
     /** Optional vital alert rules (client may also store overrides locally). */
     vitalMetricRules?: import('../lib/vitalMetricRules').VitalMetricRulesConfig;
     createdAt: Date;
@@ -800,8 +813,11 @@ export interface InvoiceLineItem {
     description: string;
     quantity: number;
     amount: number; // unit amount ex-VAT
+    /** SAMA / tariff procedure code (invoice Code column). */
+    procedureCode?: string;
     icd10Code?: string;
     icd10Description?: string;
+    nappiCode?: string;
 }
 
 export interface Invoice {

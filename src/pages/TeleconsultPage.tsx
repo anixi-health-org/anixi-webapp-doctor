@@ -130,7 +130,7 @@ export const TeleconsultPage: React.FC = () => {
   const [notesOpen, setNotesOpen] = useState(true);
   const [notesStatus, setNotesStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [mediaHint, setMediaHint] = useState<string | null>(null);
-  const [scribeEnabled, setScribeEnabled] = useState(false);
+  const [scribeEnabled, setScribeEnabled] = useState(true);
   const [scribeFinalizing, setScribeFinalizing] = useState(false);
   const scribeRef = useRef<LiveKitScribeHandle>(null);
   const [scribeState, setScribeState] = useState<LiveKitScribeState>({
@@ -455,7 +455,9 @@ export const TeleconsultPage: React.FC = () => {
           <p className="truncate text-sm font-semibold">
             Teleconsult{appointment?.patientName ? ` · ${appointment.patientName}` : ''}
           </p>
-          <p className="truncate text-xs text-white/70">Virtual video visit</p>
+          <p className="truncate text-xs text-white/70">
+            Virtual video visit · Ayah scribe {scribeEnabled ? 'on' : 'paused'}
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <button

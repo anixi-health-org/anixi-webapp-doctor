@@ -3,7 +3,18 @@ import { Invoice } from '../types';
 import { SA_VAT_RATE, computeVatBreakdown } from '../lib/southAfrica';
 import { resolvePracticeLogoUrl } from '../lib/doctorAvatar';
 import type { DoctorLetterheadData } from '../lib/invoiceLetterhead';
-import { djangoFetchDocumentUrl, djangoGetMe, djangoResolveMediaUrl } from './djangoApiService';
+import {
+  renderSaClinicInvoicePdf,
+  type SaClinicInvoicePdfContext,
+} from '../lib/saClinicDocumentPdf';
+import { normalizeBillingProfile } from '../lib/practiceBillingProfile';
+import type { Practice } from '../types';
+import {
+  djangoFetchDocumentUrl,
+  djangoGetMe,
+  djangoGetPatientChart,
+  djangoResolveMediaUrl,
+} from './djangoApiService';
 
 export type { DoctorLetterheadData } from '../lib/invoiceLetterhead';
 export {
@@ -254,8 +265,10 @@ async function enrichLetterhead(
       (profile.licenseNumber as string | undefined) ||
       (profile.hpcsaRegistrationNumber as string | undefined) ||
       licenseNumber;
-    phoneNumber = (me?.phoneNumber as string | undefined) || phoneNumber;
-    email = (me?.email as string | undefined) || email;
+    if (!lockPracticeBranding) {
+      phoneNumber = (me?.phoneNumber as string | undefined) || phoneNumber;
+      email = (me?.email as string | undefined) || email;
+    }
     displayName = (me?.displayName as string | undefined) || displayName;
   } catch (error) {
     console.warn('[invoicePdf] enrich letterhead failed', error);
@@ -280,11 +293,63 @@ async function enrichLetterhead(
   };
 }
 
+function pickMedicalAidFromChart(chart: Record<string, unknown> | null | undefined): {
+  medicalAidName?: string;
+  medicalAidNumber?: string;
+} {
+  if (!chart) return {};
+  const profile =
+    (chart.medicalProfile as Record<string, unknown> | undefined) ??
+    (chart.profile as Record<string, unknown> | undefined);
+  const medicalAid =
+    (profile?.medicalAid as Record<string, unknown> | undefined) ??
+    (chart.medicalAid as Record<string, unknown> | undefined);
+  if (!medicalAid || typeof medicalAid !== 'object') return {};
+  const provider = String(medicalAid.provider ?? medicalAid.schemeName ?? '').trim();
+  const memberNumber = String(
+    medicalAid.memberNumber ?? medicalAid.memberNo ?? medicalAid.number ?? '',
+  ).trim();
+  return {
+    medicalAidName: provider || undefined,
+    medicalAidNumber: memberNumber || undefined,
+  };
+}
+
+/** VAT, banking, and patient medical aid for clinic invoice PDFs. */
+export async function buildClinicInvoicePdfContext(
+  practice: Practice | null | undefined,
+  patientId?: string,
+): Promise<SaClinicInvoicePdfContext> {
+  const billingProfile = normalizeBillingProfile(practice?.billingProfile);
+  const ctx: SaClinicInvoicePdfContext = { billingProfile };
+  if (!patientId?.trim()) return ctx;
+  try {
+    const chart = await withTimeout(
+      djangoGetPatientChart(patientId.trim()),
+      5000,
+      'patient chart for invoice',
+    );
+    return { ...ctx, ...pickMedicalAidFromChart(chart ?? undefined) };
+  } catch (error) {
+    console.warn('[invoicePdf] medical aid lookup skipped', error);
+    return ctx;
+  }
+}
+
 export async function generateInvoicePDF(
   invoice: Invoice,
-  doctorInput: DoctorLetterheadData
+  doctorInput: DoctorLetterheadData,
+  pdfContext: SaClinicInvoicePdfContext = {},
 ): Promise<void> {
-  const doctor = await enrichLetterhead(doctorInput);
+  const doctorEnriched = await enrichLetterhead(doctorInput);
+  const billingProfile = pdfContext.billingProfile;
+  const doctor: DoctorLetterheadData = {
+    ...doctorEnriched,
+    vatNumber:
+      billingProfile?.vatNumber?.trim() ||
+      doctorEnriched.vatNumber?.trim() ||
+      undefined,
+  };
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const PAGE_W = 210;
   const MARGIN = 18;
@@ -333,18 +398,24 @@ export async function generateInvoicePDF(
   doc.setFontSize(8.5);
   doc.setTextColor(...MUTED_RGB);
 
-  const infoLines = [
-    !logoImg && doctor.displayName && doctor.displayName !== practiceName
-      ? doctor.displayName
-      : '',
-    !logoImg ? doctor.specialty ?? '' : '',
-    doctor.licenseNumber ? `HPCSA: ${doctor.licenseNumber}` : '',
-    doctor.practiceNumberBhf ? `BHF: ${doctor.practiceNumberBhf}` : '',
-    doctor.vatNumber ? `VAT: ${doctor.vatNumber}` : '',
-    doctor.phoneNumber ? `Tel: ${doctor.phoneNumber}` : '',
-    doctor.email ?? '',
-    doctor.officeAddress ?? '',
-  ].filter(Boolean);
+  const isPracticeBranding = doctor.brandingSource === 'practice';
+  const infoLines = isPracticeBranding
+    ? [
+        doctor.practiceNumberBhf ? `BHF: ${doctor.practiceNumberBhf}` : '',
+        doctor.officeAddress ?? '',
+      ].filter(Boolean)
+    : [
+        !logoImg && doctor.displayName && doctor.displayName !== practiceName
+          ? doctor.displayName
+          : '',
+        !logoImg ? doctor.specialty ?? '' : '',
+        doctor.licenseNumber ? `HPCSA: ${doctor.licenseNumber}` : '',
+        doctor.practiceNumberBhf ? `BHF: ${doctor.practiceNumberBhf}` : '',
+        doctor.vatNumber ? `VAT: ${doctor.vatNumber}` : '',
+        doctor.phoneNumber ? `Tel: ${doctor.phoneNumber}` : '',
+        doctor.email ?? '',
+        doctor.officeAddress ?? '',
+      ].filter(Boolean);
 
   let ry = MARGIN + 5;
   for (const line of infoLines) {
@@ -361,6 +432,34 @@ export async function generateInvoicePDF(
   doc.line(MARGIN, headerBottom, RIGHT, headerBottom);
 
   let y = headerBottom + 10;
+
+  const useClinicTemplate =
+    doctor.brandingSource === 'practice' || Boolean(invoice.practiceId);
+
+  if (useClinicTemplate) {
+    renderSaClinicInvoicePdf(doc, y, invoice, doctor, pdfContext, {
+      margin: MARGIN,
+      pageWidth: PAGE_W,
+      contentWidth: CONTENT_W,
+      right: RIGHT,
+    });
+    const FOOTER_Y = 285;
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.line(MARGIN, FOOTER_Y, RIGHT, FOOTER_Y);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text(practiceName, MARGIN, FOOTER_Y + 4);
+    doc.text(
+      `Generated ${new Date().toLocaleDateString('en-ZA')}`,
+      RIGHT,
+      FOOTER_Y + 4,
+      { align: 'right' },
+    );
+    doc.save(`${invoice.invoiceNumber}.pdf`);
+    return;
+  }
 
   // ── Title + status ────────────────────────────────────────────────────────
   doc.setFont('helvetica', 'bold');

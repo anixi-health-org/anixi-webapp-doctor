@@ -17,7 +17,7 @@ import { ClinicAdminSetupBanner } from '../../components/clinic/ClinicAdminSetup
 import { DayAgendaView } from '../../components/calendar/DayAgendaView';
 import { toDateKey, parseDateKey, asDate } from '../../components/calendar/calendarDateUtils';
 import { Toast, AppointmentsPageSkeleton } from '../../components/ui';
-import { PageHeader, PageShell } from '../../components/page-layout';
+import { PageShell } from '../../components/page-layout';
 import { TabBar, TabPill } from '../../components/ui/TabPill';
 import clsx from 'clsx';
 
@@ -249,11 +249,6 @@ export const ClinicAdminSchedulePage: React.FC = () => {
     return record;
   }, [clinicianAppointments, doctorLabelById]);
 
-  const selectedClinicianName =
-    selectedDoctorId === 'all'
-      ? null
-      : doctorLabelById.get(selectedDoctorId) || 'this clinician';
-
   if (isLoading && appointments.length === 0) {
     return (
       <PageShell maxWidth="wide" className="py-6 sm:py-8">
@@ -272,35 +267,18 @@ export const ClinicAdminSchedulePage: React.FC = () => {
         />
       )}
 
-      <PageHeader
-        title="Schedule"
-        description="See who is booked with your clinicians, then open a visit or add a new one."
-        actions={
-          canBook ? (
-            <button
-              type="button"
-              onClick={() => setShowCreateModal(true)}
-              disabled={setup.doctorCount === 0}
-              className="inline-flex h-10 items-center rounded-lg bg-anixi-green px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#365c4f] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              + New appointment
-            </button>
-          ) : undefined
-        }
-      />
-
       {!setup.loading && !setup.isReady && (
-        <ClinicAdminSetupBanner steps={setup.steps} className="mb-6" />
+        <ClinicAdminSetupBanner steps={setup.steps} className="mb-5" />
       )}
 
       {loadError ? (
-        <p className="mb-6 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p className="mb-5 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
           {loadError}
         </p>
       ) : null}
 
       {clinicians.length === 0 && !isLoading && (
-        <div className="mb-6 rounded-2xl border border-[#e1e7ef] bg-white p-5">
+        <div className="mb-5 rounded-2xl border border-[#e1e7ef] bg-white p-5">
           <p className="text-sm font-semibold text-[#344256]">No clinicians on the team yet</p>
           <p className="mt-1 text-sm text-[#65758b]">
             Invite a doctor, nurse, or other clinician before you can book visits. Administrators and
@@ -315,24 +293,40 @@ export const ClinicAdminSchedulePage: React.FC = () => {
         </div>
       )}
 
-      <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <TabBar>
-          <TabPill active={viewTab === 'list'} onClick={() => setViewTab('list')}>
-            List
-          </TabPill>
-          <TabPill active={viewTab === 'day'} onClick={() => setViewTab('day')}>
-            Day view
-          </TabPill>
-        </TabBar>
-        <div className="flex items-center gap-2">
-          <label htmlFor="clinician-filter" className="text-sm font-medium text-[#65758b]">
-            Clinician
-          </label>
+      <div className="rounded-2xl border border-[#e1e7ef] bg-gradient-to-b from-white to-[#f8fafc] p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <TabBar className="w-full shrink-0 sm:w-auto">
+            <TabPill active={viewTab === 'list'} onClick={() => setViewTab('list')}>
+              List
+            </TabPill>
+            <TabPill active={viewTab === 'day'} onClick={() => setViewTab('day')}>
+              Day view
+            </TabPill>
+          </TabBar>
+          {canBook ? (
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              disabled={setup.doctorCount === 0}
+              className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-full bg-anixi-green px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365c4f] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            >
+              <span aria-hidden className="text-lg leading-none">
+                +
+              </span>
+              New appointment
+            </button>
+          ) : null}
+        </div>
+        <div className="mt-4 flex flex-col gap-2 border-t border-[#e1e7ef]/80 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#8FA0B6]">
+            {viewTab === 'list' ? 'Filter by clinician' : 'Day view for'}
+          </p>
           <select
             id="clinician-filter"
             value={selectedDoctorId}
             onChange={(event) => setSelectedDoctorId(event.target.value)}
-            className="rounded-lg border border-[#e1e7ef] bg-white px-3 py-2 text-sm text-[#344256]"
+            aria-label="Clinician"
+            className="w-full rounded-xl border border-[#e1e7ef] bg-white px-3 py-2.5 text-sm font-medium text-[#344256] shadow-sm sm:max-w-xs"
           >
             <option value="all">All clinicians</option>
             {clinicians.map((clinician) => (
@@ -346,7 +340,11 @@ export const ClinicAdminSchedulePage: React.FC = () => {
 
       {viewTab === 'list' && (
         <>
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div
+            className="mt-5 flex flex-wrap gap-2 rounded-2xl border border-[#e1e7ef] bg-white p-3 shadow-sm"
+            role="group"
+            aria-label="Visit status"
+          >
             {LIST_FILTERS.map((item) => (
               <button
                 key={item.key}
@@ -356,15 +354,15 @@ export const ClinicAdminSchedulePage: React.FC = () => {
                 className={clsx(
                   'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition',
                   listFilter === item.key
-                    ? 'bg-anixi-green text-white'
-                    : 'border border-[#e1e7ef] bg-white text-[#65758b] hover:border-anixi-green/40 hover:text-[#344256]',
+                    ? 'bg-anixi-green text-white shadow-sm'
+                    : 'bg-[#f4f7f6] text-[#65758b] hover:bg-[#eef2f0] hover:text-[#344256]',
                 )}
               >
                 {item.label}
                 <span
                   className={clsx(
-                    'rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
-                    listFilter === item.key ? 'bg-white/15 text-white' : 'bg-[#f4f7f6] text-[#344256]',
+                    'min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-[11px] font-bold tabular-nums',
+                    listFilter === item.key ? 'bg-white/20 text-white' : 'bg-white text-[#344256]',
                   )}
                 >
                   {filterCounts[item.key]}
@@ -372,20 +370,6 @@ export const ClinicAdminSchedulePage: React.FC = () => {
               </button>
             ))}
           </div>
-
-          <p className="mt-4 text-sm text-[#65758b]">
-            {listFilter === 'upcoming'
-              ? selectedClinicianName
-                ? `Open visits with ${selectedClinicianName}.`
-                : 'Open visits across your clinicians.'
-              : listFilter === 'today'
-                ? selectedClinicianName
-                  ? `Today's diary for ${selectedClinicianName}.`
-                  : "Today's diary across your clinicians."
-                : `${LIST_FILTERS.find((item) => item.key === listFilter)?.label} visits${
-                    selectedClinicianName ? ` for ${selectedClinicianName}` : ''
-                  }.`}
-          </p>
 
           <div className="mt-4">
             <AppointmentList
@@ -401,8 +385,8 @@ export const ClinicAdminSchedulePage: React.FC = () => {
       )}
 
       {viewTab === 'day' && (
-        <div className="mt-6 space-y-4">
-          <div className="grid grid-cols-7 gap-2">
+        <div className="mt-5 space-y-4">
+          <div className="grid grid-cols-7 gap-2 rounded-2xl border border-[#e1e7ef] bg-white p-3 shadow-sm sm:gap-2">
             {weekDays.map((day) => {
               const key = toDateKey(day);
               const isSelected = key === selectedDate;

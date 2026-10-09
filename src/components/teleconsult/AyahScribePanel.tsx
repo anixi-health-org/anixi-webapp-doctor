@@ -47,8 +47,8 @@ export function AyahScribePanel({
             ) : null}
           </div>
           <p className="mt-0.5 text-xs leading-relaxed text-[#65758b]">
-            Captures doctor and patient audio from the LiveKit call and drafts a SOAP note after
-            the visit.
+            Ayah joins in the background, transcribes the video visit, and prepares a summary for
+            you when the call ends. Uncheck to pause listening.
           </p>
           {enabled ? (
             <p className="mt-1 text-[10px] text-[#94a3b8]">

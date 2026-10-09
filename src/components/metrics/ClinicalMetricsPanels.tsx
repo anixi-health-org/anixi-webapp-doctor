@@ -20,35 +20,62 @@ const Card: React.FC<{ label: string; value: string | number; hint?: string }> =
 
 export const RosterClinicalMetricsGrid: React.FC<{
   metrics: RosterClinicalMetrics;
-}> = ({ metrics }) => (
-  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-    <Card label="Patients" value={metrics.patientCount} hint={`${metrics.daysBack}d window`} />
-    <Card
-      label="Needs attention"
-      value={metrics.needingAttention}
-      hint="Adherence, vitals, bookings"
-    />
-    <Card
-      label="Avg adherence"
-      value={metrics.avgAdherence != null ? `${metrics.avgAdherence}%` : '—'}
-    />
-    <Card
-      label="Urgent vitals"
-      value={metrics.vitalsUrgentPatients}
-      hint={`${metrics.vitalsWarningPatients} with warnings`}
-    />
-    <Card
-      label="Appointments"
-      value={metrics.appointments.total}
-      hint={`${metrics.appointments.completionRate}% completed`}
-    />
-    <Card label="Pending bookings" value={metrics.appointments.pending} />
-    <Card label="Lab documents" value={metrics.labsDocuments} />
-    <Card label="Symptom check-ins" value={metrics.symptomCheckIns} hint="Mood logs" />
-    <Card label="Active treatments" value={metrics.activeTreatments} />
-    <Card label="Chronic patients" value={metrics.chronicPatients} />
-  </div>
-);
+  variant?: 'default' | 'practice';
+}> = ({ metrics, variant = 'default' }) => {
+  const adherenceHint =
+    metrics.patientsWithAdherenceData != null
+      ? `${metrics.patientsWithAdherenceData.toLocaleString()} warriors with dose logs`
+      : undefined;
+  const avgAdherenceValue =
+    metrics.avgAdherence != null
+      ? `${metrics.avgAdherence}%`
+      : variant === 'practice'
+        ? 'No dose data yet'
+        : '—';
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+      <Card
+        label="Roster size"
+        value={metrics.patientCount.toLocaleString()}
+        hint="Imported clinic patients"
+      />
+      <Card
+        label="Needs follow-up"
+        value={metrics.needingAttention.toLocaleString()}
+        hint="Low adherence in the last window"
+      />
+      <Card label="Avg adherence" value={avgAdherenceValue} hint={adherenceHint} />
+      {variant === 'practice' && metrics.vitalsReadings != null ? (
+        <Card
+          label="Vital sign logs"
+          value={metrics.vitalsReadings.toLocaleString()}
+          hint={`Last ${metrics.daysBack} days · all warriors`}
+        />
+      ) : (
+        <Card
+          label="Urgent vitals"
+          value={metrics.vitalsUrgentPatients}
+          hint={`${metrics.vitalsWarningPatients} with warnings`}
+        />
+      )}
+      <Card
+        label="Visits (period)"
+        value={metrics.appointments.total.toLocaleString()}
+        hint={`${metrics.appointments.completionRate}% completed · ${metrics.daysBack}d`}
+      />
+      <Card label="Awaiting confirm" value={metrics.appointments.pending.toLocaleString()} />
+      <Card label="Documents on file" value={metrics.labsDocuments.toLocaleString()} />
+      <Card
+        label="Symptom check-ins"
+        value={metrics.symptomCheckIns.toLocaleString()}
+        hint="Mood & symptom logs"
+      />
+      <Card label="Active treatments" value={metrics.activeTreatments.toLocaleString()} />
+      <Card label="Chronic care profiles" value={metrics.chronicPatients.toLocaleString()} />
+    </div>
+  );
+};
 
 export const PatientClinicalMetricsPanel: React.FC<{
   metrics: PatientClinicalMetrics;

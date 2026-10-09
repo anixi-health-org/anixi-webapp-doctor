@@ -1,4 +1,5 @@
 import { djangoListSharingRequests } from '../../services/djangoApiService';
+import { subscribeDoctorLiveChannel } from '../doctorLiveDataHub';
 import { IncomingSharingRequest, PatientSharingRequest } from './types';
 
 export type Unsubscribe = () => void;
@@ -73,7 +74,8 @@ export const listenToIncomingSharingRequests = (
     onError(new Error('Doctor ID is required'));
     return () => {};
   }
-  return pollSharingRequests(
+  return subscribeDoctorLiveChannel(
+    `sharing-incoming:${doctorId}`,
     () => getIncomingSharingRequests(doctorId),
     onUpdate,
     onError,

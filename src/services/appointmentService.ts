@@ -3,6 +3,7 @@ import { convertTimestamp } from '../utils/dateFormatter';
 import {
   djangoBookAppointment,
   djangoAttachAppointmentDocument,
+  djangoGetPracticePatientEncounterSummaries,
   djangoListAppointments,
   djangoPatchAppointment,
   djangoResolveMediaUrl,
@@ -18,6 +19,7 @@ import {
 } from './appointmentCanonical';
 import { calendarDateKeyInTimeZone } from '../lib/timezones';
 import { logAppointmentEvent } from './centralEventLogService';
+import { subscribeDoctorLiveChannel } from './doctorLiveDataHub';
 
 export type Unsubscribe = () => void;
 
@@ -282,31 +284,6 @@ const mapDjangoAppointments = (
     .filter((row): row is Appointment => row != null)
     .sort((a, b) => b.date.getTime() - a.date.getTime());
 
-function pollAppointments(
-  load: () => Promise<Appointment[]>,
-  onUpdate: (appointments: Appointment[]) => void,
-  onError: (error: Error) => void,
-  intervalMs = 30_000
-): Unsubscribe {
-  let cancelled = false;
-  const poll = async () => {
-    try {
-      const appointments = await load();
-      if (!cancelled) onUpdate(appointments);
-    } catch (err) {
-      if (!cancelled) {
-        onError(err instanceof Error ? err : new Error('Failed to load appointments'));
-      }
-    }
-  };
-  void poll();
-  const timer = setInterval(poll, intervalMs);
-  return () => {
-    cancelled = true;
-    clearInterval(timer);
-  };
-}
-
 export const migrateDoctorAppointmentsToGlobal = async (_doctorId: string): Promise<number> => {
   console.warn(
     '[appointmentService] migrateDoctorAppointmentsToGlobal is deprecated under Django API'
@@ -337,17 +314,18 @@ export const listenToDoctorAppointments = (
     return () => {};
   }
 
-  return pollAppointments(
+  return subscribeDoctorLiveChannel(
+    `appointments:${doctorId}`,
     () => getDoctorAppointments(doctorId),
     onAppointmentsUpdate,
-    (error) => onError?.(error)
+    (error) => onError?.(error),
   );
 };
 
 /** All appointments for a clinic/practice (clinic admin schedule view). */
 export const getPracticeWideAppointments = async (
   practiceId: string,
-  opts?: { fromDate?: string; toDate?: string; doctorId?: string },
+  opts?: { fromDate?: string; toDate?: string; doctorId?: string; throwOnError?: boolean },
 ): Promise<Appointment[]> => {
   try {
     const rows = await djangoListAppointments({
@@ -359,6 +337,9 @@ export const getPracticeWideAppointments = async (
     return mapDjangoAppointments(rows as Array<Record<string, unknown>>, 'unknown');
   } catch (error) {
     console.error('Error in getPracticeWideAppointments:', error);
+    if (opts?.throwOnError) {
+      throw error instanceof Error ? error : new Error('Could not load practice appointments');
+    }
     return [];
   }
 };
@@ -571,6 +552,15 @@ export const getMobileAppAppointments = async (doctorId: string): Promise<Appoin
 /**
  * Every visit this doctor has with one patient, newest first.
  */
+export const getPracticePatientEncounterAppointments = async (
+  practiceId: string,
+  patientId: string,
+): Promise<Appointment[]> => {
+  if (!practiceId || !patientId) return [];
+  const payload = await djangoGetPracticePatientEncounterSummaries(practiceId, patientId);
+  return mapDjangoAppointments(payload?.appointments ?? [], 'unknown');
+};
+
 export const getDoctorPatientAppointments = async (
   doctorId: string,
   patientId: string
@@ -578,11 +568,13 @@ export const getDoctorPatientAppointments = async (
   if (!doctorId || !patientId) return [];
 
   try {
-    const rows = await djangoListAppointments('doctor');
-    const filtered = (rows as Array<Record<string, unknown>>).filter(
-      (row) => String(row.patientId ?? '') === patientId
-    );
-    return mapDjangoAppointments(filtered, doctorId);
+    const rows = await djangoListAppointments({
+      role: 'doctor',
+      patientId,
+      includeActions: true,
+      limit: 80,
+    });
+    return mapDjangoAppointments(rows as Array<Record<string, unknown>>, doctorId);
   } catch (error) {
     console.error('[appointmentService] doctor-owned patient appointments', error);
     return [];

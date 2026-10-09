@@ -19,7 +19,7 @@ export type DashboardResolvedData = {
 
 export function useDoctorDashboardData() {
   const { user, practiceSession } = useAuth();
-  const { snapshot, loading: briefingLoading } = useDoctorBriefingData();
+  const { snapshot, loading: briefingLoading, practiceSnapshot } = useDoctorBriefingData();
   const [growth, setGrowth] = useState<DoctorPatientGrowth | null>(null);
   const timeZone =
     practiceSession?.practice?.timezone?.trim() || detectBrowserTimezone();
@@ -153,7 +153,7 @@ export function useDoctorDashboardData() {
     timeZone,
   ]);
 
-  return { resolved, loading: briefingLoading, snapshot };
+  return { resolved, loading: briefingLoading, snapshot, practiceSnapshot };
 }
 
 export function resolveWidgetStat(

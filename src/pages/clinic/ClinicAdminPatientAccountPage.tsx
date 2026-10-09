@@ -12,7 +12,9 @@ import { listPracticeClinicians } from '../../services/practiceSettingsService';
 import { sendPatientDownloadInvite } from '../../services/patientManagementService';
 import { downloadPracticePatientRecordPDF } from '../../services/practicePatientRecordPdfService';
 import type { DjangoPracticePatient } from '../../services/djangoApiService';
-import { unichartsChartNameLabel } from '../../lib/patientDisplayName';
+import { PatientRecentEncountersPanel } from '../../components/patients/PatientRecentEncountersPanel';
+import { PracticePatientHero } from '../../components/patients/PracticePatientHero';
+import { PatientMedicalFilesSection } from '../../components/patients/PatientMedicalFilesSection';
 import type { PracticeMember } from '../../types';
 
 const fieldClass =
@@ -305,7 +307,14 @@ export const ClinicAdminPatientAccountPage: React.FC = () => {
       const assigned = clinicians.find((row) => row.uid === draft.assignedDoctorId);
       await downloadPracticePatientRecordPDF({
         patient: snapshot,
-        practice: { name: practice.name, clinicCode: practice.clinicCode },
+        practice: {
+          name: practice.name,
+          tradingName: practice.tradingName,
+          logoUrl: practice.logoUrl,
+          bhfPracticeNumber: practice.bhfPracticeNumber,
+          clinicCode: practice.clinicCode,
+          locations: practice.locations,
+        },
         assignedDoctorName: assigned?.displayName || assigned?.email,
       });
     } catch (err) {
@@ -359,15 +368,6 @@ export const ClinicAdminPatientAccountPage: React.FC = () => {
       setDraft((current) => ({ ...current, [key]: value }));
     };
 
-  const encountersDisplay =
-    account?.recentUnichartEncounters?.length
-      ? account.recentUnichartEncounters
-          .map((row) =>
-            [row.date, row.type, row.number ? `#${row.number}` : ''].filter(Boolean).join(' · '),
-          )
-          .join('\n')
-      : '';
-
   return (
     <PageShell className="py-6 sm:py-8">
       <button
@@ -380,12 +380,8 @@ export const ClinicAdminPatientAccountPage: React.FC = () => {
       </button>
       <PageHeader
         className="mt-3"
-        title={account?.displayName || 'Patient account'}
-        description={
-          isEditing
-            ? 'Edit mode — update fields and save when you are done.'
-            : 'Patient roster and clinical record. Use Edit to make changes.'
-        }
+        title="Patient profile"
+        description={isEditing ? 'Editing — save when done.' : 'Roster & clinical chart.'}
         actions={
           account ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -413,23 +409,7 @@ export const ClinicAdminPatientAccountPage: React.FC = () => {
         }
       />
       {account ? (
-        <p className="mt-1 text-sm text-[#65758b]">
-          {(() => {
-            const chartLabel = unichartsChartNameLabel(
-              account.displayName,
-              account.unichartChartName,
-            );
-            if (!chartLabel) return null;
-            return (
-              <>
-                UniCharts chart name:{' '}
-                <span className="font-medium text-[#344256]">{chartLabel}</span>
-                {' · '}
-                Roster uses given name(s) then surname for easier search.
-              </>
-            );
-          })()}
-        </p>
+        <PracticePatientHero className="mt-4" patient={account} isEditing={isEditing} />
       ) : null}
 
       {loading ? (
@@ -719,9 +699,18 @@ export const ClinicAdminPatientAccountPage: React.FC = () => {
                 placeholder="One problem per line"
               />
               <div className="sm:col-span-2">
-                <p className="text-xs font-medium text-[#65758b]">Recent encounters</p>
-                <p className={`${readOnlyClass} whitespace-pre-line`}>{encountersDisplay || '—'}</p>
-                <p className="mt-1 text-[11px] text-[#8FA0B6]">Synced from imported encounters (not editable here).</p>
+                {account && account.patientId ? (
+                  <PatientRecentEncountersPanel
+                    patientId={account.patientId}
+                    practiceId={practice?.id}
+                    unichartEncounters={account.recentUnichartEncounters}
+                  />
+                ) : (
+                  <>
+                    <p className="text-xs font-medium text-[#65758b]">Recent encounters</p>
+                    <p className={`${readOnlyClass} text-sm text-[#65758b]`}>—</p>
+                  </>
+                )}
               </div>
               <ProfileField
                 label="Language"
@@ -813,6 +802,10 @@ export const ClinicAdminPatientAccountPage: React.FC = () => {
               />
             </div>
           </section>
+
+          {account?.patientId ? (
+            <PatientMedicalFilesSection patientId={account.patientId} />
+          ) : null}
 
           <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">Care team</p>

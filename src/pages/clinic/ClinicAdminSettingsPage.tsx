@@ -10,7 +10,7 @@ import { PracticeLogoUploader } from '../../components/practice/PracticeLogoUplo
 import { LetterheadSetupBanner } from '../../components/invoices/LetterheadSetupBanner';
 import { Toast, SettingsPageSkeleton } from '../../components/ui';
 import { TabBar, TabPill } from '../../components/ui/TabPill';
-import { PageHeader, PageShell } from '../../components/page-layout';
+import { PageShell } from '../../components/page-layout';
 import {
   listPracticeClinicians,
   updatePractice,
@@ -19,7 +19,8 @@ import { djangoRotateClinicCode } from '../../services/djangoApiService';
 import { ClinicMedicalAidPanel } from '../../components/clinic/ClinicMedicalAidPanel';
 import { ClinicPublicListingPanel } from '../../components/clinic/ClinicPublicListingPanel';
 import { memberDisplayLabel } from '../../services/practiceMemberService';
-import type { Doctor, PracticeLocation, PracticeMember } from '../../types';
+import { normalizeBillingProfile } from '../../lib/practiceBillingProfile';
+import type { Doctor, PracticeBillingProfile, PracticeLocation, PracticeMember } from '../../types';
 
 type Tab = 'profile' | 'listing' | 'medical-aid' | 'booking' | 'schedules';
 
@@ -59,6 +60,8 @@ export const ClinicAdminSettingsPage: React.FC = () => {
     bhfPracticeNumber: '',
   });
   const [savingProfile, setSavingProfile] = useState(false);
+  const [billingDraft, setBillingDraft] = useState<PracticeBillingProfile>({});
+  const [savingBilling, setSavingBilling] = useState(false);
   const [clinicCode, setClinicCode] = useState('');
   const [rotatingCode, setRotatingCode] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
@@ -90,6 +93,7 @@ export const ClinicAdminSettingsPage: React.FC = () => {
         tradingName: practice.tradingName || '',
         bhfPracticeNumber: practice.bhfPracticeNumber || '',
       });
+      setBillingDraft(normalizeBillingProfile(practice.billingProfile));
     }
   }, [practice]);
 
@@ -186,6 +190,24 @@ export const ClinicAdminSettingsPage: React.FC = () => {
     }
   };
 
+  const handleSaveBilling = async () => {
+    if (!practice || !canEditProfile) return;
+    setSavingBilling(true);
+    try {
+      await updatePractice(practice.id, { billingProfile: normalizeBillingProfile(billingDraft) });
+      await refreshPracticeSession();
+      setToast({ visible: true, message: 'Billing & document details saved.', type: 'success' });
+    } catch (e: unknown) {
+      setToast({
+        visible: true,
+        message: e instanceof Error ? e.message : 'Failed to save billing details.',
+        type: 'error',
+      });
+    } finally {
+      setSavingBilling(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
     if (!practice || !profileDraft.name.trim() || !canEditProfile) return;
     setSavingProfile(true);
@@ -260,11 +282,7 @@ export const ClinicAdminSettingsPage: React.FC = () => {
         />
       )}
 
-      <PageHeader
-        title="Clinic settings"
-      />
-
-      <TabBar className="mt-6">
+      <TabBar>
         {visibleTabs.map((tab) => (
           <TabPill
             key={tab.id}
@@ -383,6 +401,56 @@ export const ClinicAdminSettingsPage: React.FC = () => {
                       </p>
                     </div>
                   </div>
+                )}
+              </section>
+
+              <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
+                  Billing & documents
+                </p>
+                <p className="mt-2 text-sm text-[#65758b]">
+                  VAT and banking details print on clinic invoices (see template in docs). Prescriptions use the same letterhead.
+                </p>
+                {canEditProfile ? (
+                  <>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      {(
+                        [
+                          ['vatNumber', 'VAT registration number'],
+                          ['bankName', 'Bank name'],
+                          ['accountHolder', 'Account holder'],
+                          ['accountNumber', 'Account number'],
+                          ['accountType', 'Account type'],
+                          ['branchName', 'Branch name'],
+                          ['swiftCode', 'SWIFT / BIC'],
+                          ['branchCode', 'Branch code'],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <div key={key}>
+                          <label className="text-xs font-medium text-[#65758b]">{label}</label>
+                          <input
+                            value={billingDraft[key] ?? ''}
+                            onChange={(e) =>
+                              setBillingDraft((d) => ({ ...d, [key]: e.target.value }))
+                            }
+                            className="mt-1 w-full rounded-lg border border-[#e1e7ef] px-3 py-2 text-sm"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={savingBilling}
+                      onClick={() => void handleSaveBilling()}
+                      className="mt-4 rounded-lg bg-anixi-green px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {savingBilling ? 'Saving…' : 'Save billing details'}
+                    </button>
+                  </>
+                ) : (
+                  <p className="mt-4 text-sm text-[#65758b]">
+                    Contact your clinic administrator to update invoice banking details.
+                  </p>
                 )}
               </section>
 

@@ -6,7 +6,7 @@ import { Toast } from '../components/ui';
 import { useAuth } from '../hooks/AuthContext';
 import { AuthLayout } from '../components/auth/AuthLayout';
 import { RegisterPrompt } from '../components/auth/AuthLinks';
-import { professionalHomePath } from '../lib/doctorAccess';
+import { professionalHomePath, isManagedOrgType } from '../lib/doctorAccess';
 
 const inputClassName =
   'mt-1.5 block w-full rounded-xl border border-[#d9e0da] bg-white px-3.5 py-3 text-[15px] text-[#1f2a26] placeholder:text-[#9aa59f] shadow-sm transition focus:border-anixi-green focus:outline-none focus:ring-2 focus:ring-anixi-green/20 disabled:bg-[#f4f6f5] [&:-webkit-autofill]:shadow-[inset_0_0_0_1000px_#fff]';
@@ -47,7 +47,7 @@ export const Login: React.FC = () => {
         hasPractice: Boolean(practiceSession),
         clinicOnboardingComplete,
         isClinicOwner:
-          practiceSession?.practice?.orgType === 'clinic' &&
+          isManagedOrgType(practiceSession?.practice?.orgType) &&
           practiceSession?.member?.role === 'owner',
         practiceSession,
       }),

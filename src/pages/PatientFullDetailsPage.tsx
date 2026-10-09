@@ -11,6 +11,8 @@ import {
   UserCircleIcon,
 } from '@heroicons/react/24/outline';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import { PatientLastEncounterSummary } from '../components/patients/PatientLastEncounterSummary';
+import { PatientMedicalFilesSection } from '../components/patients/PatientMedicalFilesSection';
 import { PageShell } from '../components/page-layout';
 import { PatientProfileSkeleton } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
@@ -180,6 +182,14 @@ export const PatientFullDetailsPage: React.FC = () => {
         </div>
       )}
 
+      {patient.id && user?.id ? (
+        <PatientLastEncounterSummary
+          className="mb-6"
+          patientId={patient.id}
+          doctorId={user.id}
+        />
+      ) : null}
+
       <div className="mb-6 overflow-hidden rounded-xl border border-[#e1e7ef] bg-white shadow-sm">
         <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:p-6">
           {patient.photoURL ? (
@@ -346,6 +356,10 @@ export const PatientFullDetailsPage: React.FC = () => {
             <p className="text-sm text-gray-500">No active treatments recorded.</p>
           )}
         </SectionCard>
+
+        {patient.id ? (
+          <PatientMedicalFilesSection patientId={patient.id} className="mb-6 border-0 shadow-none" />
+        ) : null}
 
         <SectionCard title="Care quick links" icon={HeartIcon}>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

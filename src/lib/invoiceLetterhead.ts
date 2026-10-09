@@ -1,4 +1,6 @@
 import type { Practice } from '../types';
+import { isManagedOrgType } from './doctorAccess';
+import { normalizeBillingProfile, type PracticeBillingProfile } from './practiceBillingProfile';
 
 export interface DoctorLetterheadData {
   doctorId?: string;
@@ -33,6 +35,7 @@ export type PracticeLetterheadSource = {
   logoUrl?: string;
   bhfPracticeNumber?: string;
   locations?: Array<{ address?: string }>;
+  billingProfile?: PracticeBillingProfile | Record<string, unknown>;
 };
 
 export type DoctorLetterheadSource = {
@@ -76,15 +79,16 @@ export function buildPracticeLetterhead(
   treatingClinicianName?: string
 ): DoctorLetterheadData {
   const primaryAddress = practice?.locations?.[0]?.address?.trim();
+  const billing = normalizeBillingProfile(practice?.billingProfile);
   return {
     doctorId: doctor?.id,
     displayName: treatingClinicianName || doctor?.displayName || 'Clinician',
     specialty: doctor?.specialty,
     licenseNumber: doctor?.licenseNumber,
     practiceNumberBhf: practice?.bhfPracticeNumber || doctor?.practiceNumberBhf,
-    vatNumber: doctor?.vatNumber,
-    phoneNumber: doctor?.phoneNumber,
-    email: doctor?.email,
+    vatNumber: billing.vatNumber || doctor?.vatNumber,
+    phoneNumber: undefined,
+    email: undefined,
     officeAddress: primaryAddress || doctor?.officeAddress,
     logoUrl: practice?.logoUrl,
     practiceName: (practice?.tradingName || practice?.name || '').trim() || 'Clinic',
@@ -97,7 +101,7 @@ export function buildInvoiceLetterhead(params: {
   practice?: PracticeLetterheadSource | null;
   treatingClinicianName?: string;
 }): DoctorLetterheadData {
-  if (params.practice?.orgType === 'clinic') {
+  if (isManagedOrgType(params.practice?.orgType)) {
     return buildPracticeLetterhead(
       params.practice,
       params.doctor,

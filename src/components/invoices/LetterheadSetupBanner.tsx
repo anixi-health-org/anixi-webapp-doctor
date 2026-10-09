@@ -5,6 +5,7 @@ import { getMissingClinicLetterheadFields } from '../../lib/invoiceLetterhead';
 import { usePermissions } from '../../hooks/usePermissions';
 import { getDoctorProfile } from '../../services/doctorService';
 import type { Doctor, Practice } from '../../types';
+import { isManagedOrgType } from '../../lib/doctorAccess';
 
 /** Fields the invoice PDF letterhead is built from - see invoicePdfService. */
 export const LETTERHEAD_FIELDS = [
@@ -87,7 +88,7 @@ export const LetterheadSetupBanner: React.FC<LetterheadSetupBannerProps> = ({
   const { isClinicEmployedClinician } = usePermissions();
   const [dismissed, setDismissed] = useState(false);
   const [resolvedDoctor, setResolvedDoctor] = useState<Doctor | null | undefined>(doctor);
-  const isClinicPractice = practice?.orgType === 'clinic';
+  const isClinicPractice = isManagedOrgType(practice?.orgType);
 
   useEffect(() => {
     setResolvedDoctor(doctor);

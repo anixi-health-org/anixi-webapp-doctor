@@ -19,6 +19,7 @@ export const usePracticePermissions = (doctorUid: string | undefined) =>
       return ensurePracticePermissions(doctorUid!);
     },
     enabled: Boolean(doctorUid),
+    staleTime: 60_000,
   });
 
 export const useInviteDelegate = (doctorUid: string | undefined, doctorName: string) => {

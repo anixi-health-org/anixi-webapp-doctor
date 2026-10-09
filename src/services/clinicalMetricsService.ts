@@ -20,14 +20,13 @@ import {
   djangoListAdherence,
   djangoListMedicalFiles,
   djangoListMood,
+  djangoGetPracticeClinicalMetrics,
   djangoListRosterMetrics,
   type DjangoAdherenceRecord,
   type DjangoRosterMetricRow,
 } from './djangoApiService';
 import { getDoctorAppointments } from './appointmentService';
 import { getDoctorPatients, getPatientStatus } from './patientManagementService';
-import { listPracticePatients } from './practicePatientService';
-import { listPracticeClinicians } from './practiceSettingsService';
 import { convertTimestamp } from '../utils/dateFormatter';
 
 export type ClinicalAttentionReason =
@@ -83,8 +82,10 @@ export type RosterClinicalMetrics = {
   scopeId: string;
   daysBack: number;
   patientCount: number;
+  patientsWithAdherenceData?: number;
   needingAttention: number;
   avgAdherence: number | null;
+  vitalsReadings?: number;
   vitalsUrgentPatients: number;
   vitalsWarningPatients: number;
   appointments: {
@@ -390,73 +391,113 @@ function metricsFromRosterRow(
   return { ...base, needsAttention: attentionReasons.length > 0, attentionReasons };
 }
 
+const MAX_PER_PATIENT_METRICS_FANOUT = 50;
+
 /** Doctor-scoped clinical metrics across the roster. */
 export async function getDoctorClinicalMetrics(
   doctorId: string,
   options?: { daysBack?: number; practiceId?: string | null }
 ): Promise<RosterClinicalMetrics> {
   const daysBack = options?.daysBack ?? 30;
-  const [patients, appointments, rollup] = await Promise.all([
-    getDoctorPatients(doctorId),
+  const [appointments, rollup] = await Promise.all([
     getDoctorAppointments(doctorId),
     djangoListRosterMetrics(daysBack),
   ]);
 
-  if (rollup?.patients) {
-    const byId = new Map(rollup.patients.map((row) => [row.patientId, row]));
-    const metrics = patients.map((patient) =>
-      metricsFromRosterRow(patient, byId.get(patient.id), appointments, daysBack),
+  if (rollup != null && Array.isArray(rollup.patients)) {
+    const metrics = rollup.patients.map((row) =>
+      metricsFromRosterRow(
+        {
+          id: row.patientId,
+          displayName: row.displayName || 'Patient',
+          email: '',
+        } as Patient,
+        row,
+        appointments,
+        daysBack,
+      ),
     );
     return rollupPatients('doctor', doctorId, daysBack, metrics, appointments);
   }
 
-  const metrics = await mapPool(patients, 2, (patient) =>
+  const patients = await getDoctorPatients(doctorId);
+  const capped = patients.slice(0, MAX_PER_PATIENT_METRICS_FANOUT);
+  const metrics = await mapPool(capped, 3, (patient) =>
     getPatientClinicalMetrics(patient, {
       daysBack,
       appointments,
       practiceId: options?.practiceId,
       includeLabsAndSymptoms: true,
-    })
+    }),
   );
 
   return rollupPatients('doctor', doctorId, daysBack, metrics, appointments);
 }
 
-/** Practice-scoped clinical metrics (all practice patients). */
+function mapPracticeClinicalPayload(
+  practiceId: string,
+  data: Awaited<ReturnType<typeof djangoGetPracticeClinicalMetrics>>,
+): RosterClinicalMetrics {
+  const attentionPatients: PatientClinicalMetrics[] = (data.attentionPatients ?? []).map((row) => ({
+    patientId: row.patientId,
+    displayName: row.displayName || 'Patient',
+    daysBack: data.daysBack,
+    adherence: {
+      rate: row.adherenceRate ?? 0,
+      band: 'low',
+      taken: 0,
+      missed: 0,
+      pending: 0,
+    },
+    vitals: {
+      readings: 0,
+      urgent: 0,
+      warning: 0,
+      normal: 0,
+      worst: 'unknown',
+    },
+    appointments: {
+      total: 0,
+      completed: 0,
+      cancelled: 0,
+      pending: 0,
+      upcoming: 0,
+    },
+    labs: { documentCount: 0 },
+    symptoms: { checkIns: 0 },
+    treatment: { activeTreatments: 0, chronicConditions: 0 },
+    needsAttention: true,
+    attentionReasons: ['adherence_low'],
+  }));
+
+  return {
+    scope: 'practice',
+    scopeId: practiceId,
+    daysBack: data.daysBack,
+    patientCount: data.patientCount,
+    patientsWithAdherenceData: data.patientsWithAdherenceData,
+    needingAttention: data.needingAttention,
+    avgAdherence: data.avgAdherence,
+    vitalsReadings: data.vitalsReadings,
+    vitalsUrgentPatients: data.vitalsUrgentPatients,
+    vitalsWarningPatients: data.vitalsWarningPatients,
+    appointments: data.appointments,
+    labsDocuments: data.labsDocuments,
+    symptomCheckIns: data.symptomCheckIns,
+    activeTreatments: data.activeTreatments,
+    chronicPatients: data.chronicPatients,
+    patients: attentionPatients,
+  };
+}
+
+/** Practice-scoped clinical metrics (full roster via server aggregation). */
 export async function getPracticeClinicalMetrics(
   practiceId: string,
   options?: { daysBack?: number }
 ): Promise<RosterClinicalMetrics> {
   const daysBack = options?.daysBack ?? 30;
-  const [patients, clinicians, rollup] = await Promise.all([
-    listPracticePatients(practiceId),
-    listPracticeClinicians(practiceId).catch(() => []),
-    djangoListRosterMetrics(daysBack),
-  ]);
-
-  const doctorIds = clinicians.map((c) => c.uid);
-  const appointmentLists = await Promise.all(
-    doctorIds.map((id) => getDoctorAppointments(id).catch(() => [] as Appointment[]))
-  );
-  const appointments = appointmentLists.flat();
-  if (rollup?.patients) {
-    const byId = new Map(rollup.patients.map((row) => [row.patientId, row]));
-    const metrics = patients.map((patient) =>
-      metricsFromRosterRow(patient, byId.get(patient.id), appointments, daysBack),
-    );
-    return rollupPatients('practice', practiceId, daysBack, metrics, appointments);
-  }
-
-  const metrics = await mapPool(patients, 2, (patient) =>
-    getPatientClinicalMetrics(patient, {
-      daysBack,
-      appointments,
-      practiceId,
-      includeLabsAndSymptoms: true,
-    })
-  );
-
-  return rollupPatients('practice', practiceId, daysBack, metrics, appointments);
+  const data = await djangoGetPracticeClinicalMetrics(practiceId, daysBack);
+  return mapPracticeClinicalPayload(practiceId, data);
 }
 
 export function attentionReasonLabel(reason: ClinicalAttentionReason): string {

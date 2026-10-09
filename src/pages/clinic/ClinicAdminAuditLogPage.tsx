@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { PageHeader, PageShell } from '../../components/page-layout';
+import { PageShell } from '../../components/page-layout';
 import { useAuth } from '../../hooks/AuthContext';
 import {
   auditActionLabel,
@@ -46,23 +46,18 @@ export const ClinicAdminAuditLogPage: React.FC = () => {
 
   return (
     <PageShell maxWidth="wide" className="py-6 sm:py-8">
-      <PageHeader
-        title="Audit log"
-        description="Append-only record of clinic admin actions for compliance and oversight."
-      />
-
       {error ? (
-        <p className="mt-6 text-sm text-red-600">{error}</p>
+        <p className="text-sm text-red-600">{error}</p>
       ) : null}
 
       {loading ? (
-        <p className="mt-6 text-sm text-[#65758b]">Loading audit log…</p>
+        <p className="text-sm text-[#65758b]">Loading audit log…</p>
       ) : entries.length === 0 ? (
-        <p className="mt-6 text-sm text-[#65758b]">
+        <p className="text-sm text-[#65758b]">
           No audit events yet. Actions on the queue, team, and billing will appear here.
         </p>
       ) : (
-        <div className="mt-8 overflow-hidden rounded-2xl border border-[#e1e7ef] bg-white">
+        <div className="overflow-hidden rounded-2xl border border-[#e1e7ef] bg-white">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-[#fafcfb] text-xs font-semibold uppercase tracking-wide text-[#65758b]">
               <tr>

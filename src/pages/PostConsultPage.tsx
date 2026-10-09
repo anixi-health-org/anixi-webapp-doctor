@@ -37,6 +37,10 @@ import {
 import type { Pharmacy } from '../types';
 import { jsPDF } from 'jspdf';
 import {
+  buildPrescriptionPdfDocument,
+  type BuildPrescriptionPdfParams,
+} from '../services/prescriptionPdfService';
+import {
   AYAH_SCRIBE_ACTION_ID,
   AYAH_SCRIBE_TITLE,
 } from '../services/consultScribeService';
@@ -1038,110 +1042,21 @@ const doctor = user?.role === 'doctor' ? user : null;
     }
   };
 
-  const createPrescriptionPdfDocument = () => {
-    const content = (prescriptionDraft || latestPrescriptionDraft?.content || '').trim();
-    const appointmentDate = appointment?.date
+  const prescriptionPdfParams = (): BuildPrescriptionPdfParams => ({
+    doctor,
+    practice: practiceSession?.practice,
+    patientName: appointment?.patientName || 'Patient',
+    appointmentDateLabel: appointment?.date
       ? new Date(appointment.date).toLocaleDateString('en-ZA', {
           month: 'short',
           day: '2-digit',
           year: 'numeric',
         })
-      : 'N/A';
-
-    const fileSafePatient = (appointment?.patientName || 'patient')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
-
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'pt',
-      format: 'a4',
-      compress: true,
-    });
-
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 48;
-    const contentWidth = pageWidth - margin * 2;
-    let cursorY = margin;
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(20);
-    doc.text('Prescription', margin, cursorY);
-
-    cursorY += 28;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
-    doc.text(`Doctor: ${user?.displayName || 'Doctor'}`, margin, cursorY);
-    cursorY += 16;
-    if (doctor?.licenseNumber) {
-      doc.text(`HPCSA: ${doctor.licenseNumber}`, margin, cursorY);
-      cursorY += 16;
-    }
-    if (doctor?.practiceNumberBhf) {
-      doc.text(`BHF: ${doctor.practiceNumberBhf}`, margin, cursorY);
-      cursorY += 16;
-    }
-    doc.text(`Patient: ${appointment?.patientName || 'Patient'}`, margin, cursorY);
-    cursorY += 16;
-    doc.text(`Appointment: ${appointmentDate}`, margin, cursorY);
-    if (nappiCode.trim()) {
-      cursorY += 16;
-      doc.text(`NAPPI: ${nappiCode.trim()}`, margin, cursorY);
-    }
-    if (resolvedPrescriptionIcd10) {
-      cursorY += 16;
-      doc.text(`ICD-10: ${resolvedPrescriptionIcd10}`, margin, cursorY);
-    }
-
-    cursorY += 24;
-    doc.setDrawColor(220, 220, 220);
-    doc.roundedRect(margin, cursorY, contentWidth, pageHeight - cursorY - margin, 8, 8);
-
-    cursorY += 24;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.text('Medication and Instructions', margin + 14, cursorY);
-
-    cursorY += 18;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
-
-    const normalizedContent = content.length > 0 ? content : 'No prescription content available.';
-    const paragraphs = normalizedContent.split(/\n+/);
-
-    for (const paragraph of paragraphs) {
-      const lines = doc.splitTextToSize(paragraph || ' ', contentWidth - 28) as string[];
-
-      for (const line of lines) {
-        if (cursorY > pageHeight - margin - 14) {
-          doc.addPage();
-          cursorY = margin;
-        }
-        doc.text(line, margin + 14, cursorY);
-        cursorY += 16;
-      }
-
-      cursorY += 6;
-    }
-
-    return {
-      doc,
-      fileName: `prescription-${fileSafePatient || 'patient'}-${new Date().toISOString().split('T')[0]}.pdf`,
-    };
-  };
-
-  const buildPrescriptionPdf = () => {
-    const { doc, fileName } = createPrescriptionPdfDocument();
-    doc.save(fileName);
-  };
-
-  const createPrescriptionPdfBlobUrl = () => {
-    const { doc } = createPrescriptionPdfDocument();
-    const pdfBlob = doc.output('blob');
-    return URL.createObjectURL(pdfBlob);
-  };
+      : 'N/A',
+    content: (prescriptionDraft || latestPrescriptionDraft?.content || '').trim(),
+    icd10Code: resolvedPrescriptionIcd10,
+    nappiCode: nappiCode.trim() || undefined,
+  });
 
   const createDoctorLetterPdfDocument = () => {
     const content = doctorLetterDraft.trim();
@@ -1286,9 +1201,10 @@ const doctor = user?.role === 'doctor' ? user : null;
     setShowPreviewModal(true);
   };
 
-  const openPrescriptionWindow = (printMode: boolean) => {
+  const openPrescriptionWindow = async (printMode: boolean) => {
     try {
-      const blobUrl = createPrescriptionPdfBlobUrl();
+      const { doc } = await buildPrescriptionPdfDocument(prescriptionPdfParams());
+      const blobUrl = URL.createObjectURL(doc.output('blob'));
       openPdfPreview(blobUrl, 'prescription');
 
       if (printMode) {
@@ -1423,7 +1339,7 @@ const doctor = user?.role === 'doctor' ? user : null;
       setToast({ visible: true, message: 'Save or add a prescription first.', type: 'error' });
       return;
     }
-    openPrescriptionWindow(false);
+    void openPrescriptionWindow(false);
   };
 
   const exportPrescription = () => {
@@ -1431,12 +1347,15 @@ const doctor = user?.role === 'doctor' ? user : null;
       setToast({ visible: true, message: 'Save or add a prescription first.', type: 'error' });
       return;
     }
-    try {
-      buildPrescriptionPdf();
-      setToast({ visible: true, message: 'PDF exported successfully.', type: 'success' });
-    } catch {
-      setToast({ visible: true, message: 'Failed to export PDF.', type: 'error' });
-    }
+    void (async () => {
+      try {
+        const { doc, fileName } = await buildPrescriptionPdfDocument(prescriptionPdfParams());
+        doc.save(fileName);
+        setToast({ visible: true, message: 'PDF exported successfully.', type: 'success' });
+      } catch {
+        setToast({ visible: true, message: 'Failed to export PDF.', type: 'error' });
+      }
+    })();
   };
 
   const saveDocument = async () => {
@@ -1738,6 +1657,18 @@ const doctor = user?.role === 'doctor' ? user : null;
 
         {callEnded ? (
           <>
+            {fromTeleconsult && ayahScribeParsed ? (
+              <div className="mb-2">
+                <p className="mb-3 text-sm font-semibold text-[#0E2340]">
+                  Ayah summary from your video visit
+                </p>
+                <AyahScribeSummaryCard
+                  note={ayahScribeParsed}
+                  onApply={() => setNoteValue(ayahScribeParsed.fullText)}
+                />
+              </div>
+            ) : null}
+
             {/* Encounter summary */}
             <div className="rounded-xl border border-[#e1e7ef] bg-[#f8fafc] px-5 py-4">
               <div className="grid gap-x-6 gap-y-3 sm:grid-cols-4">

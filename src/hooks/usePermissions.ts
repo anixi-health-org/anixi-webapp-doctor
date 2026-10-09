@@ -4,6 +4,7 @@ import { EMPTY_PERMISSIONS, normalizePermissions } from '../lib/practiceRoles';
 import {
   canManageOperationalSettings,
   isClinicEmployedClinician,
+  isManagedOrgType,
 } from '../lib/doctorAccess';
 
 export const usePermissions = () => {
@@ -33,7 +34,7 @@ export const usePermissions = () => {
       role === 'practice_manager' || role === 'administrator' || isOwner,
     isDelegate: role === 'delegate',
     isClinician: Boolean(practiceSession?.member?.isClinician),
-    isClinic: orgType === 'clinic',
+    isClinic: isManagedOrgType(orgType),
     isClinicEmployedClinician: clinicEmployed,
     canManageOperationalSettings: canManageOps,
     can: (permission: keyof PracticePermissions): boolean => {

@@ -86,7 +86,16 @@ import InvoicesPage from './pages/InvoicesPage';
 import InvoiceCreate from './pages/InvoiceCreate';
 import InvoiceDetails from './pages/InvoiceDetails';
 import PrintDocumentsPage from './pages/PrintDocumentsPage';
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: true,
+      refetchOnMount: false,
+    },
+  },
+});
 
 const SignUpRedirect: React.FC = () => {
   const [searchParams] = useSearchParams();

@@ -13,6 +13,7 @@ import {
   updateInvoiceStatus,
 } from '../../services/invoiceService';
 import {
+  buildClinicInvoicePdfContext,
   buildInvoiceLetterhead,
   fetchPracticeLogoDataUrl,
   generateInvoicePDF,
@@ -149,7 +150,8 @@ export const ClinicAdminInvoicesPage: React.FC = () => {
       const logoDataUrl = await fetchPracticeLogoDataUrl(undefined, practice?.logoUrl, {
         skipDoctorLogoStore: true,
       });
-      await generateInvoicePDF(invoice, { ...letterhead, logoDataUrl });
+      const pdfContext = await buildClinicInvoicePdfContext(practice, invoice.patientId);
+      await generateInvoicePDF(invoice, { ...letterhead, logoDataUrl }, pdfContext);
     } catch {
       setToast({ visible: true, message: 'Failed to generate PDF', type: 'error' });
     } finally {
@@ -159,14 +161,7 @@ export const ClinicAdminInvoicesPage: React.FC = () => {
 
   return (
     <PageShell>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-heading text-2xl font-bold text-[#1a4d4d]">Clinic invoices</h1>
-          <p className="mt-1 text-sm text-[#65758b]">
-          Track invoices across every clinician in this hospital or clinic. Organisation letterhead
-          and BHF number apply.
-          </p>
-        </div>
+      <div className="mb-6 flex justify-end">
         <button
           type="button"
           onClick={() => void loadData()}

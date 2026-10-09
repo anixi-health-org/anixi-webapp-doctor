@@ -9,6 +9,7 @@ export type PracticeAnalyticsReport = {
   completedThisMonth: number;
   noShowsThisMonth: number;
   checkedInToday: number;
+  rosterPatients: number;
   invoiceTotalThisMonth: number;
   paidInvoicesThisMonth: number;
   claimsDraft: number;
@@ -52,6 +53,7 @@ export async function getPracticeAnalyticsReport(
     completedThisMonth: dashboard.completedThisMonth,
     noShowsThisMonth: dashboard.noShowsThisMonth ?? 0,
     checkedInToday: dashboard.checkedInToday ?? 0,
+    rosterPatients: dashboard.rosterPatients ?? 0,
     invoiceTotalThisMonth,
     paidInvoicesThisMonth,
     claimsDraft: claims.filter((c) => c.status === 'draft').length,

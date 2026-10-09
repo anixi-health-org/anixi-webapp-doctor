@@ -551,7 +551,7 @@ export async function djangoUploadDocument(
   file: Blob,
   purpose: 'doctor-profile' | 'practice-logo' | 'medical-file' | 'appointment-document',
   filename: string,
-): Promise<{ storageKey: string; url: string; mimeType: string; sizeBytes: number }> {
+): Promise<{ storageKey: string; url: string; mimeType: string; sizeBytes: number; recordId?: string }> {
   if (!enabled()) throw new Error('Django API not configured');
   const token = await resolveAccessToken();
   const form = new FormData();
@@ -566,6 +566,54 @@ export async function djangoUploadDocument(
     body: form,
   });
   return djangoJson(res);
+}
+
+export async function djangoUploadMedicalFile(
+  file: Blob,
+  filename: string,
+  options: {
+    patientId: string;
+    title?: string;
+    category?: string;
+    notes?: string;
+    recordDate?: string;
+  },
+): Promise<{
+  storageKey: string;
+  url: string;
+  mimeType: string;
+  sizeBytes: number;
+  recordId?: string;
+}> {
+  if (!enabled()) throw new Error('Django API not configured');
+  const token = await resolveAccessToken();
+  const form = new FormData();
+  form.append('file', file, filename);
+  form.append('purpose', 'medical-file');
+  form.append('patientId', options.patientId);
+  if (options.title) form.append('title', options.title);
+  if (options.category) form.append('category', options.category);
+  if (options.notes) form.append('notes', options.notes);
+  if (options.recordDate) form.append('recordDate', options.recordDate);
+  const res = await fetch(`${API_BASE}/api/v1/documents/upload/`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'X-Client': 'doctor-web',
+    },
+    body: form,
+  });
+  return djangoJson(res);
+}
+
+export async function djangoDeleteMedicalFile(fileId: string): Promise<void> {
+  if (!enabled() || !fileId) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/documents/medical-files/${encodeURIComponent(fileId)}/`,
+    { method: 'DELETE', headers },
+  );
+  await djangoEnvelope(res);
 }
 
 export type UnichartPreview = {
@@ -936,10 +984,12 @@ export async function djangoPatchMe(patch: Record<string, unknown>) {
 export type AppointmentListQuery = {
   role?: 'doctor' | 'patient';
   practiceId?: string;
+  patientId?: string;
   fromDate?: string;
   toDate?: string;
   doctorId?: string;
   limit?: number;
+  includeActions?: boolean;
 };
 
 export function buildAppointmentListQuery(
@@ -957,8 +1007,10 @@ export function buildAppointmentListQuery(
   }
   if (opts.fromDate) query.set('fromDate', opts.fromDate);
   if (opts.toDate) query.set('toDate', opts.toDate);
+  if (opts.patientId) query.set('patientId', opts.patientId);
   if (opts.doctorId) query.set('doctorId', opts.doctorId);
   if (opts.limit) query.set('limit', String(opts.limit));
+  if (opts.includeActions) query.set('includeActions', '1');
   return query.toString();
 }
 
@@ -1114,17 +1166,35 @@ export async function djangoListCaregiverLinkedPatients() {
   return (await djangoJson<Array<Record<string, unknown>>>(res)) ?? [];
 }
 
+const sharingListCache = new Map<
+  string,
+  { expiresAt: number; rows: Array<Record<string, unknown>> }
+>();
+const sharingListInflight = new Map<string, Promise<Array<Record<string, unknown>>>>();
+
 export async function djangoListSharingRequests(role: 'clinician' | 'patient' = 'clinician') {
   if (!enabled() || !API_BASE) return [];
-  try {
-    const headers = await authHeaders();
-    const res = await fetch(`${API_BASE}/api/v1/patients/sharing/?role=${role}`, { headers });
-    if (!res.ok) return [];
-    return (await djangoJson<Array<Record<string, unknown>>>(res)) ?? [];
-  } catch (error) {
-    console.warn('djangoListSharingRequests failed:', error);
-    return [];
-  }
+  const cached = sharingListCache.get(role);
+  if (cached && cached.expiresAt > Date.now()) return cached.rows;
+  const pending = sharingListInflight.get(role);
+  if (pending) return pending;
+  const request = (async () => {
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`${API_BASE}/api/v1/patients/sharing/?role=${role}`, { headers });
+      if (!res.ok) return [];
+      const rows = (await djangoJson<Array<Record<string, unknown>>>(res)) ?? [];
+      sharingListCache.set(role, { expiresAt: Date.now() + 12_000, rows });
+      return rows;
+    } catch (error) {
+      console.warn('djangoListSharingRequests failed:', error);
+      return [];
+    } finally {
+      sharingListInflight.delete(role);
+    }
+  })();
+  sharingListInflight.set(role, request);
+  return request;
 }
 
 export async function djangoResolveSharing(requestId: string, decision: 'approved' | 'rejected') {
@@ -1409,6 +1479,8 @@ export async function djangoRotateClinicCode(practiceId: string): Promise<{ clin
 export type DjangoPracticePatient = {
   patientId: string;
   displayName: string;
+  /** Warrior app avatar (community profile), when set by the patient. */
+  profileImageUrl?: string | null;
   email: string;
   phoneNumber?: string;
   practiceId?: string | null;
@@ -1892,6 +1964,63 @@ export async function djangoGetPracticeStats(practiceId: string) {
   return djangoJson<Record<string, unknown>>(res);
 }
 
+export async function djangoGetPracticePatientEncounterSummaries(
+  practiceId: string,
+  patientId: string,
+) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/practices/${encodeURIComponent(practiceId)}/patients/${encodeURIComponent(patientId)}/encounter-summaries/`,
+    { headers },
+  );
+  return djangoJson<{
+    appointments: Array<Record<string, unknown>>;
+    unichartEncounters: Array<{ number?: string; date?: string; type?: string }>;
+  }>(res);
+}
+
+export type DjangoPracticeClinicalMetrics = {
+  daysBack: number;
+  patientCount: number;
+  patientsWithAdherenceData?: number;
+  needingAttention: number;
+  avgAdherence: number | null;
+  vitalsReadings?: number;
+  vitalsUrgentPatients: number;
+  vitalsWarningPatients: number;
+  appointments: {
+    total: number;
+    completed: number;
+    pending: number;
+    cancelled: number;
+    completionRate: number;
+  };
+  labsDocuments: number;
+  symptomCheckIns: number;
+  activeTreatments: number;
+  chronicPatients: number;
+  attentionPatients?: Array<{
+    patientId: string;
+    displayName?: string;
+    adherenceRate?: number;
+    reason?: string;
+  }>;
+};
+
+export async function djangoGetPracticeClinicalMetrics(
+  practiceId: string,
+  daysBack = 30,
+): Promise<DjangoPracticeClinicalMetrics> {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/practices/${encodeURIComponent(practiceId)}/clinical-metrics/?daysBack=${encodeURIComponent(String(daysBack))}`,
+    { headers },
+  );
+  return djangoJson<DjangoPracticeClinicalMetrics>(res);
+}
+
 export async function djangoGetPracticeScheduleMap(practiceId: string) {
   if (!enabled()) return { daySchedules: {}, weeklyHours: {} };
   const headers = await authHeaders();
@@ -2140,14 +2269,36 @@ export async function djangoAddEmployerEnrollment(
   return djangoJson<Record<string, unknown>>(res);
 }
 
+const mediaUrlCache = new Map<string, { url: string; expiresAt: number }>();
+
+function mediaUrlExpiry(token: string): number {
+  try {
+    const payloadPart = token.split('.')[1];
+    if (!payloadPart) return Date.now() + 60_000;
+    const payload = JSON.parse(
+      atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/')),
+    ) as { exp?: number };
+    if (!payload.exp) return Date.now() + 4 * 60_000;
+    return payload.exp * 1000 - 60_000;
+  } catch {
+    return Date.now() + 60_000;
+  }
+}
+
 export async function djangoFetchDocumentUrl(
   storageKey: string,
   forceRefresh = false,
 ): Promise<string | null> {
   if (!enabled() || !storageKey) return null;
-  const token = await resolveAccessToken(forceRefresh);
   const key = extractMediaStorageKey(storageKey) || storageKey;
-  return `${API_BASE}/api/v1/documents/media/${encodeMediaStorageKey(key)}/?access=${encodeURIComponent(token)}`;
+  if (!forceRefresh) {
+    const cached = mediaUrlCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.url;
+  }
+  const token = await resolveAccessToken(forceRefresh);
+  const url = `${API_BASE}/api/v1/documents/media/${encodeMediaStorageKey(key)}/?access=${encodeURIComponent(token)}`;
+  mediaUrlCache.set(key, { url, expiresAt: mediaUrlExpiry(token) });
+  return url;
 }
 
 /** Open a protected document in a new tab with a fresh access token. */

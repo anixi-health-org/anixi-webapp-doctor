@@ -17,6 +17,7 @@ export const useIncomingSharingRequests = (doctorUid: string | undefined) => {
     queryKey: sharingQueryKeys.incomingRequests(doctorUid ?? ''),
     queryFn: () => getIncomingSharingRequests(doctorUid!),
     enabled: Boolean(doctorUid),
+    staleTime: 30_000,
   });
 
   useEffect(() => {

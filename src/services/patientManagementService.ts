@@ -20,6 +20,7 @@ import {
   type DjangoPanelPatient,
 } from './djangoApiService';
 import { logPatientEvent } from './centralEventLogService';
+import { subscribeDoctorLiveChannel } from './doctorLiveDataHub';
 
 const patientAppUrl = () =>
   process.env.REACT_APP_PATIENT_APP_URL || 'https://anixihealth.com/activate';
@@ -173,15 +174,41 @@ export function mapPanelPatient(row: DjangoPanelPatient): Patient {
   };
 }
 
+const PANEL_CACHE_TTL_MS = 45_000;
+let panelCache: { expiresAt: number; patients: Patient[] } | null = null;
+let panelInflight: Promise<Patient[]> | null = null;
+
 export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> => {
   void doctorId;
   if (isDjangoApiEnabled()) {
-    const panel = await djangoListPatientPanel();
-    return panel.map(mapPanelPatient);
+    const now = Date.now();
+    if (panelCache && panelCache.expiresAt > now) {
+      return panelCache.patients;
+    }
+    if (panelInflight) {
+      return panelInflight;
+    }
+    panelInflight = (async () => {
+      try {
+        const panel = await djangoListPatientPanel();
+        const patients = panel.map(mapPanelPatient);
+        panelCache = { expiresAt: Date.now() + PANEL_CACHE_TTL_MS, patients };
+        return patients;
+      } finally {
+        panelInflight = null;
+      }
+    })();
+    return panelInflight;
   }
 
   return [];
 };
+
+/** Bust cached panel rows after roster mutations (assign, import, etc.). */
+export function invalidateDoctorPatientPanelCache(): void {
+  panelCache = null;
+  panelInflight = null;
+}
 export interface PatientRequest {
   id: string;
   patientId: string;
@@ -585,31 +612,12 @@ export const listenToDoctorPatients = (
   }
 
   if (isDjangoApiEnabled()) {
-    let cancelled = false;
-    const poll = async () => {
-      if (cancelled || document.visibilityState === 'hidden') return;
-      try {
-        const patients = await getDoctorPatients(doctorId);
-        if (!cancelled) onPatientsUpdate(patients);
-      } catch (error) {
-        if (!cancelled) {
-          onError(error instanceof Error ? error : new Error('Failed to load patients'));
-        }
-      }
-    };
-    void poll();
-    const timer = setInterval(poll, 60_000);
-    const onVisible = () => {
-      if (!cancelled && document.visibilityState === 'visible') {
-        void poll();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
+    return subscribeDoctorLiveChannel(
+      `patients:${doctorId}`,
+      () => getDoctorPatients(doctorId),
+      onPatientsUpdate,
+      onError,
+    );
   }
 
   onPatientsUpdate([]);
@@ -627,23 +635,12 @@ export const listenToDoctorSharingRequests = (
   }
 
   if (isDjangoApiEnabled()) {
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const requests = await getDoctorSharingRequests(doctorId);
-        if (!cancelled) onRequestsUpdate(requests);
-      } catch (error) {
-        if (!cancelled) {
-          onError(error instanceof Error ? error : new Error('Failed to load sharing requests'));
-        }
-      }
-    };
-    void poll();
-    const timer = setInterval(poll, 30_000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
+    return subscribeDoctorLiveChannel(
+      `sharing:${doctorId}`,
+      () => getDoctorSharingRequests(doctorId),
+      onRequestsUpdate,
+      onError,
+    );
   }
 
   onRequestsUpdate([]);

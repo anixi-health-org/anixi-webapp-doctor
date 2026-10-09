@@ -4,8 +4,10 @@ import { EMPTY_PROFILE_FORM } from '../types/doctorProfile';
 import {
   inheritClinicPracticeFields,
   isOnboardingFormComplete,
+  mergeDoctorWithClinicPractice,
   professionalHomePath,
 } from './doctorAccess';
+import type { Doctor } from '../types';
 
 const personalAndProfessional: ProfessionalProfileFormData = {
   ...EMPTY_PROFILE_FORM,
@@ -55,7 +57,26 @@ describe('inheritClinicPracticeFields', () => {
     expect(inherited.practiceAddress).toBe('12 Long Street, Cape Town');
     expect(inherited.city).toBe('Cape Town');
     expect(inherited.province).toBe('western cape');
-    expect(inherited.logoUrl).toBeUndefined();
+    expect(inherited.logoUrl).toBe('https://cdn.example/afrimed.png');
+    expect(inherited.vatNumber).toBe('');
+  });
+});
+
+describe('mergeDoctorWithClinicPractice', () => {
+  it('overlays clinic branding onto the physician profile', () => {
+    const doctor: Doctor = {
+      id: 'doc-1',
+      email: 'jarju@example.test',
+      displayName: 'Dr Jarjusey',
+      role: 'doctor',
+      practiceName: 'Old solo name',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const merged = mergeDoctorWithClinicPractice(doctor, clinic);
+    expect(merged.practiceName).toBe('AfriMed');
+    expect(merged.logoUrl).toBe('https://cdn.example/afrimed.png');
+    expect(merged.practiceNumberBhf).toBe('BHF-100');
   });
 });
 

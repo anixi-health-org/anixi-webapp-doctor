@@ -1,6 +1,7 @@
 import type { BookingPolicy, Practice, PracticeMember, PracticePermissions, PracticeSession } from '../types';
 import { normalizePermissions } from '../lib/practiceRoles';
-import { djangoGetPracticeSession, djangoResolveMediaUrl } from './djangoApiService';
+import { djangoGetPracticeSession } from './djangoApiService';
+import { parsePracticeOrgType } from '../lib/doctorAccess';
 
 function parsePractice(raw: Record<string, unknown>): Practice {
   return {
@@ -8,7 +9,7 @@ function parsePractice(raw: Record<string, unknown>): Practice {
     name: String(raw.name ?? 'Practice'),
     timezone: String(raw.timezone ?? 'Africa/Johannesburg'),
     ownerId: String(raw.ownerId ?? ''),
-    orgType: raw.orgType === 'clinic' ? 'clinic' : 'solo',
+    orgType: parsePracticeOrgType(raw.orgType),
     tradingName: raw.tradingName ? String(raw.tradingName) : undefined,
     bhfPracticeNumber: raw.bhfPracticeNumber ? String(raw.bhfPracticeNumber) : undefined,
     locations: Array.isArray(raw.locations) ? (raw.locations as Practice['locations']) : [],
@@ -27,6 +28,7 @@ function parsePractice(raw: Record<string, unknown>): Practice {
     configureAcceptedSchemes: raw.configureAcceptedSchemes === true,
     clinicCode: raw.clinicCode ? String(raw.clinicCode) : undefined,
     logoUrl: raw.logoUrl ? String(raw.logoUrl) : undefined,
+    billingProfile: (raw.billingProfile as Practice['billingProfile']) ?? undefined,
     createdAt: raw.createdAt ? new Date(String(raw.createdAt)) : new Date(),
     updatedAt: raw.updatedAt ? new Date(String(raw.updatedAt)) : new Date(),
   };
@@ -39,8 +41,7 @@ function parseMember(raw: Record<string, unknown>): PracticeMember {
     uid: String(raw.uid),
     practiceId: String(raw.practiceId),
     role,
-    // Empty {} from older solo-owner rows must fall back to role presets.
-    permissions: normalizePermissions(rawPermissions, role),
+    permissions: normalizePermissions(rawPermissions),
     status: (raw.status as PracticeMember['status']) ?? 'active',
     isClinician: Boolean(raw.isClinician),
     displayName: raw.displayName ? String(raw.displayName) : undefined,
@@ -70,12 +71,11 @@ export async function loadDjangoPracticeSession(_uid: string): Promise<PracticeS
   if (!payload) return null;
 
   const practice = parsePractice(payload.practice as Record<string, unknown>);
-  const resolvedLogo = await djangoResolveMediaUrl(practice.logoUrl);
   const member = parseMember(payload.member as Record<string, unknown>);
   const bookingPolicy = parseBookingPolicy(payload.bookingPolicy as Record<string, unknown>);
 
   return {
-    practice: resolvedLogo ? { ...practice, logoUrl: resolvedLogo } : practice,
+    practice,
     member,
     bookingPolicy,
   };

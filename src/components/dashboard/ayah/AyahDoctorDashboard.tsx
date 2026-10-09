@@ -3,7 +3,6 @@ import clsx from 'clsx';
 import { useAuth } from '../../../hooks/useAuth';
 import { useDoctorDashboard } from '../../../hooks/useDoctorDashboard';
 import { useDoctorDashboardData } from '../../../hooks/useDoctorDashboardData';
-import { useDoctorBriefingData } from '../../../hooks/useDoctorBriefingData';
 import type { DoctorDashboardWorkspace } from '../../../types/doctorDashboard';
 import { prepareDashboardWidgets } from '../../../lib/dashboardPresets';
 import { DashboardCanvas } from './DashboardCanvas';
@@ -14,8 +13,7 @@ import type { DashboardView } from './DashboardTabs';
 export function AyahDoctorDashboard() {
   const { user } = useAuth();
   const { workspace, activeBoard, loading, hasBoards, selectBoard } = useDoctorDashboard(user?.id);
-  const { resolved, loading: dataLoading } = useDoctorDashboardData();
-  const { practiceSnapshot } = useDoctorBriefingData();
+  const { resolved, practiceSnapshot } = useDoctorDashboardData();
   const [isCreating, setIsCreating] = useState(false);
   const [view, setView] = useState<DashboardView>('board');
   const [optimisticWorkspace, setOptimisticWorkspace] = useState<DoctorDashboardWorkspace | null>(null);
@@ -88,7 +86,7 @@ export function AyahDoctorDashboard() {
               activeBoardId={liveWorkspace?.activeBoardId ?? displayBoard?.id ?? null}
               view={view}
               resolved={resolved}
-              loading={loading || dataLoading}
+              loading={loading}
               firstName={firstName}
               onViewAll={() => setView('all')}
               onSelectBoard={(boardId) => {

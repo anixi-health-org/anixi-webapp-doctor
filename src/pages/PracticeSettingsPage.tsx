@@ -15,6 +15,7 @@ import { usePermissions } from '../hooks/usePermissions';
 import { usePracticeSettings } from '../hooks/usePracticeSettings';
 import { BookableBlocksEditor } from '../components/practice/BookableBlocksEditor';
 import { ClinicManagedNotice } from '../components/practice/ClinicManagedNotice';
+import { ClinicInheritedSettingsPanel } from '../components/practice/ClinicInheritedSettingsPanel';
 import { SoftBlocksEditor } from '../components/practice/SoftBlocksEditor';
 import { BookingPoliciesForm } from '../components/practice/BookingPoliciesForm';
 import { PracticePermissionsPanel } from '../components/practice/PracticePermissionsPanel';
@@ -68,7 +69,7 @@ const PracticeSettingsPage: React.FC = () => {
   const { bookableBlocks, softBlocks, bookingPolicy, isLoading, error, reload } =
     usePracticeSettings();
   const tabParam = searchParams.get('tab');
-  const defaultTab: Tab = isClinicEmployedClinician ? 'availability' : 'overview';
+  const defaultTab: Tab = 'overview';
   const [activeTab, setActiveTab] = useState<Tab>(
     isValidTab(tabParam) ? tabParam : defaultTab
   );
@@ -76,7 +77,8 @@ const PracticeSettingsPage: React.FC = () => {
   const visibleTabs = useMemo(() => {
     if (isClinicEmployedClinician) {
       return TAB_CONFIG.filter(
-        (tab) => tab.id === 'availability' || tab.id === 'policies',
+        (tab) =>
+          tab.id === 'overview' || tab.id === 'availability' || tab.id === 'policies',
       );
     }
     return TAB_CONFIG;
@@ -170,7 +172,7 @@ const PracticeSettingsPage: React.FC = () => {
   };
 
   const handleProvisionPractice = async () => {
-    if (!user?.id) return;
+    if (!user?.id || isClinicEmployedClinician) return;
     setProvisioning(true);
     try {
       await provisionPracticeForDoctor(user.id, {
@@ -203,15 +205,19 @@ const PracticeSettingsPage: React.FC = () => {
   if (!practice && isClinicEmployedClinician) {
     return (
       <PageShell className="max-w-2xl pb-12">
-        <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">Clinic settings</h1>
+        <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">My schedule</h1>
         <p className="mt-1 text-[13px] text-[#65758b]">
-          Practice settings for your account are owned by the clinic, not this doctor workspace.
+          We could not load your clinic workspace yet. Settings and records inherit from your clinic
+          administrator once the session loads.
         </p>
-        <ClinicManagedNotice
-          practiceName={doctor?.practiceName}
-          surface="settings"
-          className="mt-5"
-        />
+        <ClinicManagedNotice surface="settings" className="mt-5" />
+        <button
+          type="button"
+          onClick={() => void refreshPracticeSession()}
+          className="mt-4 text-[13px] font-semibold text-anixi-green hover:underline"
+        >
+          Reload clinic session
+        </button>
       </PageShell>
     );
   }
@@ -404,6 +410,14 @@ const PracticeSettingsPage: React.FC = () => {
         <>
           {activeTab === 'overview' && (
             <div className="space-y-4">
+              {isClinicEmployedClinician ? (
+                <ClinicInheritedSettingsPanel
+                  practice={practice}
+                  bookingPolicy={bookingPolicy}
+                />
+              ) : null}
+              {!isClinicEmployedClinician ? (
+              <>
               <section className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm sm:p-6">
                 <div className="mb-4">
                   <h2 className="text-base font-semibold text-[#0E2340]">How patients see you</h2>
@@ -652,6 +666,8 @@ const PracticeSettingsPage: React.FC = () => {
                   })}
                 </div>
               </section>
+              </>
+              ) : null}
             </div>
           )}
 

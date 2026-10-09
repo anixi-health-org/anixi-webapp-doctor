@@ -4,7 +4,7 @@ import { BulkPatientImportPanel } from '../../components/onboarding/BulkPatientI
 import { UnichartPdfImportPanel } from '../../components/clinic/UnichartPdfImportPanel';
 import { ClinicAddPatientPanel, type ClinicAddPatientResult } from '../../components/clinic/ClinicAddPatientPanel';
 import { ClinicSecondaryAction } from '../../components/clinic/ClinicSecondaryAction';
-import { PageHeader, PageShell } from '../../components/page-layout';
+import { PageShell } from '../../components/page-layout';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import {
@@ -15,6 +15,7 @@ import {
 import { listPracticeClinicians } from '../../services/practiceSettingsService';
 import { formatSaPhoneDisplay } from '../../lib/formatSaPhone';
 import { unichartsChartNameLabel } from '../../lib/patientDisplayName';
+import { PatientWarriorAvatar } from '../../components/patients/PatientWarriorAvatar';
 import type { Patient, PracticeMember } from '../../types';
 
 const PAGE_SIZE = 50;
@@ -265,15 +266,6 @@ export const ClinicAdminPatientsPage: React.FC = () => {
 
   return (
     <PageShell maxWidth="wide" className="py-6 sm:py-8">
-      <PageHeader
-        title="Patient roster"
-        description={
-          hasRoster
-            ? 'Search the clinic roster, assign doctors, and add or import patients.'
-            : 'Add one person at a time, import a UniCharts PDF (up to 50MB), or import a CSV. Patients activate in the Anixi app with your clinic code.'
-        }
-      />
-
       {!canManagePatients ? (
         <div className="mt-2 rounded-2xl border border-[#e1e7ef] bg-white p-5 text-sm text-[#65758b]">
           You can view the clinic roster but don&apos;t have permission to import patients.
@@ -287,7 +279,8 @@ export const ClinicAdminPatientsPage: React.FC = () => {
               Clinic activation code
             </p>
             <p className="mt-1 text-sm text-[#65758b]">
-              Every patient uses this same code in the Anixi app, then confirms their name and details against the roster.
+              Every patient uses this same code in the Anixi app, then confirms their name and details
+              against the roster.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -308,10 +301,7 @@ export const ClinicAdminPatientsPage: React.FC = () => {
       {showImport && !hasRoster ? <div className="mt-2">{importPanel}</div> : null}
 
       <div className={hasRoster || loading ? 'mt-2' : 'mt-10'}>
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-semibold text-[#344256]">
-            Imported patients {loading ? '' : `(${total})`}
-          </h2>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input
               type="search"
@@ -475,9 +465,14 @@ export const ClinicAdminPatientsPage: React.FC = () => {
                         <td className="px-4 py-3">
                           <Link
                             to={`/clinic/patients/${patient.id}`}
-                            className="block font-medium text-anixi-green hover:underline"
+                            className="flex items-center gap-3 font-medium text-anixi-green hover:underline"
                           >
-                            {patient.displayName || '-'}
+                            <PatientWarriorAvatar
+                              displayName={patient.displayName}
+                              profileImageUrl={patient.photoURL}
+                              size="sm"
+                            />
+                            <span>{patient.displayName || '-'}</span>
                           </Link>
                           {(() => {
                             const chartLabel = unichartsChartNameLabel(

@@ -5,6 +5,7 @@ import {
   djangoImportRosterPdf,
   type DjangoBulkImportJob,
 } from '../services/djangoApiService';
+import { invalidateDoctorPatientPanelCache } from '../services/patientManagementService';
 
 export async function startBulkRosterImport(
   file: File,
@@ -27,6 +28,7 @@ export async function pollBulkImportJob(
     const job = await djangoGetImportJobStatus(jobId);
     onProgress?.(job);
     if (terminal.has(job.status)) {
+      if (job.status === 'completed') invalidateDoctorPatientPanelCache();
       return job;
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
