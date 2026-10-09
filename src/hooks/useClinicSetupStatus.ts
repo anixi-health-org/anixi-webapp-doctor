@@ -21,6 +21,7 @@ export type ClinicSetupStatus = {
 export function useClinicSetupStatus(practiceId: string | undefined): ClinicSetupStatus {
   const [loading, setLoading] = useState(true);
   const [doctorCount, setDoctorCount] = useState(0);
+  const [activeMembers, setActiveMembers] = useState(0);
   const [patientCount, setPatientCount] = useState(0);
   const [pendingInvites, setPendingInvites] = useState(0);
   const [hasDoctorHours, setHasDoctorHours] = useState(false);
@@ -39,6 +40,7 @@ export function useClinicSetupStatus(practiceId: string | undefined): ClinicSetu
         getBookableBlocks(practiceId),
       ]);
       setDoctorCount(clinicians.length);
+      setActiveMembers(stats.activeMembers ?? 0);
       setPatientCount(stats.rosterPatients ?? 0);
       setPendingInvites(stats.pendingInvites ?? 0);
       setAppointmentCount(stats.appointmentCount ?? 0);
@@ -57,16 +59,17 @@ export function useClinicSetupStatus(practiceId: string | undefined): ClinicSetu
     void reload();
   }, [reload]);
 
-  const hasDoctors = doctorCount > 0;
+  /** Owner alone is not enough; match the Team page “Active members” card. */
+  const hasInvitedTeam = doctorCount > 0 || activeMembers >= 2;
   const hasPatients = patientCount > 0;
 
   const steps: SetupStep[] = [
     {
       id: 'doctors',
-      label: 'Invite your doctors',
-      description: 'Doctors receive an email to join and manage their own clinical portal.',
+      label: 'Invite your team',
+      description: 'Doctors and staff receive an email to join the clinic workspace.',
       href: '/clinic/team',
-      done: hasDoctors,
+      done: hasInvitedTeam,
     },
     {
       id: 'hours',
