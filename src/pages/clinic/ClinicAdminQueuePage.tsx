@@ -126,6 +126,12 @@ export const ClinicAdminQueuePage: React.FC = () => {
         </p>
       ) : null}
 
+      {error ? (
+        <p className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </p>
+      ) : null}
+
       {loading ? (
         <p className="text-sm text-[#65758b]">Loading queue…</p>
       ) : queue.length === 0 ? (

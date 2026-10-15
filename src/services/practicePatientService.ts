@@ -113,3 +113,24 @@ export const updatePracticePatientAccount = async (
   invalidateDoctorPatientPanelCache();
   return updated;
 };
+
+export const bulkAssignPracticePatients = async (
+  practiceId: string,
+  payload: {
+    assignedDoctorId: string | null;
+    patientIds?: string[];
+    allMatching?: boolean;
+    q?: string;
+  },
+) => djangoBulkAssignPracticePatients(practiceId, payload);
+
+export const getPracticePatientAccount = async (
+  practiceId: string,
+  patientId: string,
+): Promise<DjangoPracticePatient> => djangoGetPracticePatientAccount(practiceId, patientId);
+
+export const updatePracticePatientAccount = async (
+  practiceId: string,
+  patientId: string,
+  patch: Record<string, unknown>,
+): Promise<DjangoPracticePatient> => djangoPatchPracticePatientAccount(practiceId, patientId, patch);

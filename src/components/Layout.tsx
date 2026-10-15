@@ -10,6 +10,7 @@ import {
   HeartIcon,
   HomeIcon,
   QuestionMarkCircleIcon,
+  RectangleStackIcon,
   SparklesIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
@@ -187,6 +188,9 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
       href: '/practice-settings',
       icon: WrenchScrewdriverIcon,
     },
+    ...(canManageContent
+      ? [{ name: 'Content', href: '/content', icon: RectangleStackIcon } as NavItem]
+      : []),
   ];
 
   const supportNav: NavItem = {

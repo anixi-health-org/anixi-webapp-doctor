@@ -114,7 +114,10 @@ export const InviteAcceptPage: React.FC = () => {
     const acceptedRole = role || invite?.role;
 
     if (acceptedRole && clinicAdminRoles.includes(acceptedRole)) {
-      navigate(clinicAdminHomePath(), { replace: true });
+      navigate(
+        acceptedRole === 'content_creator' ? '/clinic/content' : clinicAdminHomePath(),
+        { replace: true }
+      );
       return;
     }
 

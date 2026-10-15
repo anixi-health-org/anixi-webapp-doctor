@@ -245,7 +245,6 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
       setFormData((prev) => ({ ...prev, profileImageUrl: url }));
       setPhotoPreview(url);
       setPhotoFile(null);
-      await refreshUser();
     } catch (err) {
       console.error('[ProfessionalProfileForm] photo upload failed:', err);
       setMessage(describeImageUploadError(err, 'photo'));
@@ -266,7 +265,6 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
       setFormData((prev) => ({ ...prev, logoUrl: url }));
       setLogoPreview(url);
       setLogoFile(null);
-      await refreshUser();
     } catch (err) {
       console.error('[ProfessionalProfileForm] logo upload failed:', err);
       setMessage(describeImageUploadError(err, 'logo'));

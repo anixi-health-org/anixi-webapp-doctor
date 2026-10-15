@@ -71,6 +71,7 @@ export async function loadDjangoPracticeSession(_uid: string): Promise<PracticeS
   if (!payload) return null;
 
   const practice = parsePractice(payload.practice as Record<string, unknown>);
+  const resolvedLogo = await djangoResolveMediaUrl(practice.logoUrl);
   const member = parseMember(payload.member as Record<string, unknown>);
   const bookingPolicy = parseBookingPolicy(payload.bookingPolicy as Record<string, unknown>);
 

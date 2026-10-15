@@ -65,6 +65,8 @@ import ClinicAdminQueuePage from './pages/clinic/ClinicAdminQueuePage';
 import ClinicAdminRoomsPage from './pages/clinic/ClinicAdminRoomsPage';
 import ClinicAdminReportsPage from './pages/clinic/ClinicAdminReportsPage';
 import ClinicAdminAuditLogPage from './pages/clinic/ClinicAdminAuditLogPage';
+import ContentLibraryPage from './pages/ContentLibraryPage';
+import { ContentPermissionRoute } from './components/ContentPermissionRoute';
 import EmployerDashboardPage from './pages/employer/EmployerDashboardPage';
 import { EmployerRoute } from './components/EmployerRoute';
 import {
