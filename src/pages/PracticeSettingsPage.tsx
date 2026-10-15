@@ -24,7 +24,6 @@ import { BookingPoliciesForm } from '../components/practice/BookingPoliciesForm'
 import { PracticePermissionsPanel } from '../components/practice/PracticePermissionsPanel';
 import { PracticeMembersPanel } from '../components/practice/PracticeMembersPanel';
 import { PracticeLogoUploader } from '../components/practice/PracticeLogoUploader';
-import { EventLogPanel } from '../components/practice/EventLogPanel';
 import { LetterheadSetupBanner } from '../components/invoices/LetterheadSetupBanner';
 import { VitalRulesEditor } from '../components/vitals/VitalRulesEditor';
 import { AdherenceRulesEditor } from '../components/adherence/AdherenceRulesEditor';

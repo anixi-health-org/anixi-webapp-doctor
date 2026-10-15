@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
-import { useAuth } from '../hooks/AuthContext';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import { useVitalRules } from '../hooks/useVitalRules';
 import { getVitalsLogs } from '../services/logsService';
@@ -26,7 +25,6 @@ const formatBloodPressure = (log?: VitalsLog): string => {
 
 export const VitalsHistoryPage: React.FC = () => {
   const { navigateBack } = useNavigateWithFallback();
-  const { practiceSession } = useAuth();
   const { patientId } = useParams<{ patientId: string }>();
   const { config } = useVitalRules();
   const [logs, setLogs] = useState<VitalsLog[]>([]);
