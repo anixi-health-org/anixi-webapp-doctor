@@ -7,7 +7,7 @@ import { usePermissions } from '../hooks/usePermissions';
 import { SharingRequestsList } from '../components/patients/SharingRequestsList';
 import { AddPatientModal } from '../components/patients/AddPatientModal';
 import { DoctorPatientRecordsTable } from '../components/patients/DoctorPatientRecordsTable';
-import { PatientsPageSkeleton } from '../components/ui';
+import { DataTablePageSkeleton, PatientsPageSkeleton } from '../components/ui';
 import { PageHeader, PageShell } from '../components/page-layout';
 import { Patient } from '../types';
 import { getDoctorPatients, listenToDoctorPatients } from '../services/patientManagementService';
@@ -438,7 +438,7 @@ export const Patients: React.FC = () => {
             />
           </div>
           {rosterLoading && rosterPatients.length === 0 ? (
-            <p className="px-4 py-12 text-center text-sm text-[#65758b]">Loading clinic roster...</p>
+            <DataTablePageSkeleton columns={5} rows={8} withToolbar={false} />
           ) : (
             <>
               <div className={rosterLoading ? 'opacity-60' : undefined}>

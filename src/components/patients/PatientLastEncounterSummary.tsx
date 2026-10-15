@@ -6,6 +6,7 @@ import {
   getLastPatientEncounterSummary,
   type PatientEncounterSummary,
 } from '../../services/encounterSummaryService';
+import { CardSkeleton } from '../ui/Skeleton';
 
 type Props = {
   patientId: string;
@@ -56,7 +57,7 @@ export const PatientLastEncounterSummary: React.FC<Props> = ({
       <section
         className={`rounded-2xl border border-[#e1e7ef] bg-[#f8fafc] px-5 py-4 ${className}`}
       >
-        <p className="text-sm text-[#65758b]">Loading last visit summary…</p>
+        <CardSkeleton rows={2} />
       </section>
     );
   }

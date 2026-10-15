@@ -44,8 +44,11 @@ type Tab =
   | 'availability'
   | 'soft-blocks'
   | 'policies'
+  | 'vitals'
+  | 'adherence'
   | 'permissions'
-  | 'team';
+  | 'team'
+  | 'event-log';
 
 const TAB_CONFIG: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', icon: Building2 },

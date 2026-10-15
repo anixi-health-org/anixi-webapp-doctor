@@ -20,6 +20,7 @@ import {
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { AppointmentDetails } from '../components/appointments/AppointmentDetails';
 import { ClinicManagedNotice } from '../components/practice/ClinicManagedNotice';
+import { Skeleton } from '../components/ui/Skeleton';
 
 type Tab = 'day' | 'week';
 
@@ -308,7 +309,11 @@ const PracticeCalendarPage: React.FC = () => {
               </p>
               <p className="mt-1 text-[12px] text-[#65758b]">{selectedLabel}</p>
               {loadingApts ? (
-                <p className="mt-3 text-[13px] text-[#8FA0B6]">Loading…</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-14 w-full rounded-lg" />
+                  ))}
+                </div>
               ) : (
                 <div className="mt-3">
                   <div className="grid grid-cols-2 gap-2">

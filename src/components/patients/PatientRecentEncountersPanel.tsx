@@ -11,6 +11,7 @@ import {
   type PatientEncounterTimelineItem,
   type UnichartEncounterRow,
 } from '../../services/encounterSummaryService';
+import { InlinePanelSkeleton } from '../ui/Skeleton';
 
 type Props = {
   patientId: string;
@@ -105,7 +106,9 @@ export const PatientRecentEncountersPanel: React.FC<Props> = ({
     <div className={className}>
       <p className="text-xs font-medium text-[#65758b]">Recent encounters</p>
       {loading ? (
-        <p className={`${readOnlyShell} text-sm text-[#65758b]`}>Loading encounter history…</p>
+        <div className={`${readOnlyShell} mt-1`}>
+          <InlinePanelSkeleton rows={3} />
+        </div>
       ) : items.length === 0 ? (
         <p className={`${readOnlyShell} text-sm text-[#65758b]`}>No encounters on file yet.</p>
       ) : (

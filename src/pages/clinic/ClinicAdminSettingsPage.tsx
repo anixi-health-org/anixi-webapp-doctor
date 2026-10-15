@@ -24,7 +24,14 @@ import { memberDisplayLabel } from '../../services/practiceMemberService';
 import { normalizeBillingProfile } from '../../lib/practiceBillingProfile';
 import type { Doctor, PracticeBillingProfile, PracticeLocation, PracticeMember } from '../../types';
 
-type Tab = 'profile' | 'listing' | 'medical-aid' | 'booking' | 'schedules';
+type Tab =
+  | 'profile'
+  | 'listing'
+  | 'medical-aid'
+  | 'booking'
+  | 'vitals'
+  | 'adherence'
+  | 'schedules';
 
 const TAB_CONFIG: { id: Tab; label: string }[] = [
   { id: 'profile', label: 'Clinic profile' },

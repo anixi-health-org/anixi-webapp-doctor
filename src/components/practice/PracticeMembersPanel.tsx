@@ -11,6 +11,7 @@ import {
   ROLE_LABELS,
   permissionsForRole,
 } from '../../lib/practiceRoles';
+import { ListRowsSkeleton, PageLoadingState } from '../ui/Skeleton';
 import {
   createPracticeInvite,
   listPracticeInvites,
@@ -306,6 +307,13 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
           Active members {loading ? '' : `(${members.length})`}
         </div>
         <ul className="divide-y divide-gray-100">
+          {loading && members.length === 0 ? (
+            <li className="p-4">
+              <PageLoadingState label="Loading team members">
+                <ListRowsSkeleton rows={5} />
+              </PageLoadingState>
+            </li>
+          ) : null}
           {members.map((m) => {
             const label = memberDisplayLabel(m, practice.ownerId);
             return (

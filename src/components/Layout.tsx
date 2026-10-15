@@ -93,7 +93,7 @@ function NavLink({
 
 const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const { user, practiceSession } = useAuth();
-  const { isClinicEmployedClinician } = usePermissions();
+  const { isClinicEmployedClinician, canManageContent } = usePermissions();
   const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const { requests: sharingRequests } = useIncomingSharingRequests(user?.id);

@@ -13,7 +13,8 @@ import {
   updatePracticePatientAssignedDoctor,
 } from '../../services/practicePatientService';
 import { listPracticeClinicians } from '../../services/practiceSettingsService';
-import { formatSaPhoneDisplay } from '../../lib/formatSaPhone';
+import { formatSaPhoneIntlDisplay } from '../../lib/formatSaPhone';
+import { DataTablePageSkeleton } from '../../components/ui';
 import { unichartsChartNameLabel } from '../../lib/patientDisplayName';
 import { PatientWarriorAvatar } from '../../components/patients/PatientWarriorAvatar';
 import type { Patient, PracticeMember } from '../../types';
@@ -418,7 +419,7 @@ export const ClinicAdminPatientsPage: React.FC = () => {
         ) : null}
         <div className="overflow-hidden rounded-2xl border border-[#e1e7ef] bg-white shadow-sm">
           {loading ? (
-            <p className="p-6 text-sm text-[#65758b]">Loading roster...</p>
+            <DataTablePageSkeleton columns={6} rows={8} />
           ) : patients.length === 0 ? (
             <p className="p-6 text-sm text-[#65758b]">
               {debouncedSearch
@@ -446,7 +447,6 @@ export const ClinicAdminPatientsPage: React.FC = () => {
                       <th className="px-4 py-3">Phone</th>
                       <th className="px-4 py-3">Account</th>
                       <th className="px-4 py-3">Assigned doctor</th>
-                      {canManagePatients ? <th className="px-4 py-3"> </th> : null}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#eef2f6]">
@@ -492,8 +492,8 @@ export const ClinicAdminPatientsPage: React.FC = () => {
                         <td className="px-4 py-3 font-mono text-xs">
                           {patient.email || '—'}
                         </td>
-                        <td className="px-4 py-3 text-[#65758b]">
-                          {formatSaPhoneDisplay(patient.phoneNumber) || '-'}
+                        <td className="whitespace-nowrap px-4 py-3 tabular-nums text-[#344256]">
+                          {formatSaPhoneIntlDisplay(patient.phoneE164, patient.phoneNumber) || '—'}
                         </td>
                         <td className="px-4 py-3">
                           <span
@@ -531,16 +531,6 @@ export const ClinicAdminPatientsPage: React.FC = () => {
                             </span>
                           )}
                         </td>
-                        {canManagePatients ? (
-                          <td className="px-4 py-3 text-right">
-                            <Link
-                              to={`/clinic/patients/${patient.id}`}
-                              className="text-sm font-semibold text-anixi-green hover:underline"
-                            >
-                              Manage
-                            </Link>
-                          </td>
-                        ) : null}
                       </tr>
                     ))}
                   </tbody>

@@ -29,6 +29,8 @@ function mapPracticePatient(row: {
   displayName: string;
   profileImageUrl?: string | null;
   phoneNumber?: string;
+  phoneE164?: string | null;
+  whatsappStatus?: 'verified' | 'reachable' | 'not_on_whatsapp' | 'unknown' | 'invalid';
   practiceId?: string | null;
   assignedDoctorId?: string | null;
   status?: string;
@@ -42,6 +44,8 @@ function mapPracticePatient(row: {
     photoURL: row.profileImageUrl?.trim() || undefined,
     unichartChartName: row.unichartChartName?.trim() || undefined,
     phoneNumber: row.phoneNumber || undefined,
+    phoneE164: row.phoneE164 || undefined,
+    whatsappStatus: row.whatsappStatus,
     role: 'patient' as const,
     practiceId: row.practiceId ?? practiceId,
     assignedDoctorId: row.assignedDoctorId ?? undefined,
@@ -113,24 +117,3 @@ export const updatePracticePatientAccount = async (
   invalidateDoctorPatientPanelCache();
   return updated;
 };
-
-export const bulkAssignPracticePatients = async (
-  practiceId: string,
-  payload: {
-    assignedDoctorId: string | null;
-    patientIds?: string[];
-    allMatching?: boolean;
-    q?: string;
-  },
-) => djangoBulkAssignPracticePatients(practiceId, payload);
-
-export const getPracticePatientAccount = async (
-  practiceId: string,
-  patientId: string,
-): Promise<DjangoPracticePatient> => djangoGetPracticePatientAccount(practiceId, patientId);
-
-export const updatePracticePatientAccount = async (
-  practiceId: string,
-  patientId: string,
-  patch: Record<string, unknown>,
-): Promise<DjangoPracticePatient> => djangoPatchPracticePatientAccount(practiceId, patientId, patch);

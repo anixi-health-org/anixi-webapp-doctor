@@ -29,6 +29,7 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
   displayLabel,
 }) => {
   const { user, logout, practiceSession, joinIntent } = useAuth();
+  const { canManageContent } = usePermissions();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -108,29 +109,6 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
         },
       ]
     : isMarketPartner
-      ? [
-          {
-            label: 'Partner overview',
-            icon: UserCircleIcon,
-            onClick: () => handleNavigate('/partner'),
-          },
-          {
-            label: 'Listing profile',
-            icon: Cog6ToothIcon,
-            onClick: () => handleNavigate('/partner/listing'),
-          },
-          {
-            label: 'Account',
-            icon: Cog6ToothIcon,
-            onClick: () => handleNavigate('/partner/account'),
-          },
-          {
-            label: 'Change Password',
-            icon: LockClosedIcon,
-            onClick: () => handleNavigate('/change-password'),
-          },
-        ]
-      : isClinicAdmin
       ? [
           {
             label: 'Partner overview',

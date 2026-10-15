@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
 import { PageShell } from '../../components/page-layout';
+import { ClinicReportsPageSkeleton } from '../../components/ui';
 import { useAuth } from '../../hooks/AuthContext';
 import {
   getPracticeAnalyticsReport,
@@ -147,17 +148,7 @@ export const ClinicAdminReportsPage: React.FC = () => {
 
   return (
     <PageShell maxWidth="wide" className="py-6 sm:py-8">
-      {loading ? (
-        <div className="space-y-4">
-          <div className="h-24 animate-pulse rounded-2xl bg-[#eef2f6]" />
-          <div className="grid gap-3 sm:grid-cols-3">
-            {[1, 2, 3].map((key) => (
-              <div key={key} className="h-28 animate-pulse rounded-2xl bg-[#eef2f6]" />
-            ))}
-          </div>
-          <p className="text-sm text-[#65758b]">Pulling live numbers from your clinic…</p>
-        </div>
-      ) : null}
+      {loading ? <ClinicReportsPageSkeleton /> : null}
 
       {!loading && allFailed ? (
         <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-sm text-red-800">

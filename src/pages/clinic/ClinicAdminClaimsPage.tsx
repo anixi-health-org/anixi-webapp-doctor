@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader, PageShell } from '../../components/page-layout';
+import { ClaimsPageSkeleton } from '../../components/ui';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { COMMON_ICD10_CODES } from '../../lib/southAfrica';
@@ -173,7 +174,7 @@ export const ClinicAdminClaimsPage: React.FC = () => {
           You don&apos;t have billing permission to manage claims.
         </p>
       ) : loading ? (
-        <p className="mt-6 text-sm text-[#65758b]">Loading claims...</p>
+        <ClaimsPageSkeleton />
       ) : (
         <div className="mt-8 space-y-8">
           {error ? (

@@ -16,6 +16,7 @@ import { isManagedOrgType } from '../lib/doctorAccess';
 import { SA_VAT_RATE, computeVatBreakdown } from '../lib/southAfrica';
 import { resolvePracticeLogoUrl } from '../lib/doctorAvatar';
 import { PageShell } from '../components/page-layout';
+import { InvoiceDetailSkeleton } from '../components/ui';
 
 const statusLabel = (status: string) =>
   status === 'paid' ? 'Paid' : status === 'issued' ? 'Issued' : 'Pending payment';
@@ -77,7 +78,7 @@ const InvoiceDetails: React.FC = () => {
   if (loading) {
     return (
       <PageShell>
-        <p className="text-sm text-[#65758b]">Loading invoice…</p>
+        <InvoiceDetailSkeleton />
       </PageShell>
     );
   }
