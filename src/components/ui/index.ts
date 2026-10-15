@@ -28,4 +28,12 @@ export {
   InvoiceDetailSkeleton,
   PostConsultSkeleton,
   SharePageSkeleton,
+  PageLoadingState,
+  DataTablePageSkeleton,
+  ClinicReportsPageSkeleton,
+  QueueTableSkeleton,
+  AccountFormPageSkeleton,
+  ClinicOverviewPageSkeleton,
+  InlinePanelSkeleton,
+  ClaimsPageSkeleton,
 } from './Skeleton';

@@ -76,7 +76,7 @@ npm run build
 
 The dev server runs on **http://localhost:3000** and hot-reloads on save.
 
-## Configuration
+### Seed doctor logins (local)
 
 Copy `.env.example` if present and set:
 

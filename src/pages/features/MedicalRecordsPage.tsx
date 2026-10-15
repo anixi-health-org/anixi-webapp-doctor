@@ -254,9 +254,11 @@ export const MedicalRecordsPage: React.FC = () => {
         </div>
       )}
 
-      {filesLoading && (
-        <p className="mb-3 text-[13px] text-[#65758b]">Loading patient-uploaded documents…</p>
-      )}
+      {filesLoading ? (
+        <div className="mb-6">
+          <ListRowsSkeleton rows={4} />
+        </div>
+      ) : null}
 
       {user?.id && (
         <PendingRecordShares

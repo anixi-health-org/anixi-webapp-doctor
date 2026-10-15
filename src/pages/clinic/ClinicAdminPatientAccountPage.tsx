@@ -16,6 +16,7 @@ import { PatientRecentEncountersPanel } from '../../components/patients/PatientR
 import { PracticePatientHero } from '../../components/patients/PracticePatientHero';
 import { PatientMedicalFilesSection } from '../../components/patients/PatientMedicalFilesSection';
 import type { PracticeMember } from '../../types';
+import { AccountFormPageSkeleton } from '../../components/ui';
 
 const fieldClass =
   'mt-1 w-full rounded-xl border border-[#e1e7ef] bg-white px-3 py-2.5 text-sm text-[#344256] focus:border-anixi-green focus:outline-none focus:ring-2 focus:ring-anixi-green/20';
@@ -413,7 +414,7 @@ export const ClinicAdminPatientAccountPage: React.FC = () => {
       ) : null}
 
       {loading ? (
-        <p className="mt-6 text-sm text-[#65758b]">Loading patient account...</p>
+        <AccountFormPageSkeleton />
       ) : (
         <form onSubmit={(event) => void save(event)} className="mt-6 space-y-6">
           {error ? (

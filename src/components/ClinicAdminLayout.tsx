@@ -38,7 +38,8 @@ type NavItem = {
     | 'managePatients'
     | 'manageAppointments'
     | 'editBookingPolicies'
-    | 'viewBilling';
+    | 'viewBilling'
+    | 'manageContent';
 };
 
 const NAV_SECTION_LABELS: Record<NavSectionId, string> = {
@@ -189,6 +190,7 @@ const ClinicAdminShell: React.FC = () => {
         if (item.requires === 'editBookingPolicies' && can('viewBilling')) return true;
         if (item.requires === 'manageAppointments') return can('manageAppointments');
         if (item.requires === 'viewBilling') return can('viewBilling');
+        if (item.requires === 'manageContent') return can('manageContent');
         return can(item.requires);
       }),
     [can, isOwner, isPracticeManager, role]

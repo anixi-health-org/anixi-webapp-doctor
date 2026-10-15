@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader, PageShell } from '../../components/page-layout';
+import { DashboardPageSkeleton } from '../../components/ui';
 import { useAuth } from '../../hooks/AuthContext';
 import {
   addEmployeeEnrollment,
@@ -73,7 +74,7 @@ export const EmployerDashboardPage: React.FC = () => {
   if (loading) {
     return (
       <PageShell className="py-8">
-        <p className="text-sm text-[#65758b]">Loading employer portal…</p>
+        <DashboardPageSkeleton />
       </PageShell>
     );
   }

@@ -1,6 +1,6 @@
 import type { BookingPolicy, Practice, PracticeMember, PracticePermissions, PracticeSession } from '../types';
 import { normalizePermissions } from '../lib/practiceRoles';
-import { djangoGetPracticeSession } from './djangoApiService';
+import { djangoGetPracticeSession, djangoResolveMediaUrl } from './djangoApiService';
 import { parsePracticeOrgType } from '../lib/doctorAccess';
 
 function parsePractice(raw: Record<string, unknown>): Practice {
@@ -70,7 +70,11 @@ export async function loadDjangoPracticeSession(_uid: string): Promise<PracticeS
   const payload = await djangoGetPracticeSession();
   if (!payload) return null;
 
-  const practice = parsePractice(payload.practice as Record<string, unknown>);
+  let practice = parsePractice(payload.practice as Record<string, unknown>);
+  const resolvedLogo = await djangoResolveMediaUrl(practice.logoUrl);
+  if (resolvedLogo) {
+    practice = { ...practice, logoUrl: resolvedLogo };
+  }
   const member = parseMember(payload.member as Record<string, unknown>);
   const bookingPolicy = parseBookingPolicy(payload.bookingPolicy as Record<string, unknown>);
 

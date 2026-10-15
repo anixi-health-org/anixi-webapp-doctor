@@ -10,12 +10,17 @@ function roomKey(name: string, locationId?: string): string {
   return `${name.trim().toLowerCase()}::${locationId ?? ''}`;
 }
 
+export type PracticeRoomInput = Pick<PracticeRoom, 'name' | 'type'> & {
+  locationId?: string;
+  capacity?: number;
+  floor?: string;
+  equipment?: string;
+  notes?: string;
+};
+
 export async function addPracticeRoom(
   practice: Practice,
-  input: Pick<PracticeRoom, 'name' | 'type'> & {
-    locationId?: string;
-    capacity?: number;
-  },
+  input: PracticeRoomInput,
 ): Promise<PracticeRoom[]> {
   const room: PracticeRoom = {
     id: generateRoomId(),
@@ -23,6 +28,9 @@ export async function addPracticeRoom(
     locationId: input.locationId,
     type: input.type,
     capacity: input.capacity,
+    floor: input.floor?.trim() || undefined,
+    equipment: input.equipment?.trim() || undefined,
+    notes: input.notes?.trim() || undefined,
     active: true,
   };
   const rooms = [...(practice.rooms ?? []), room];
@@ -73,7 +81,12 @@ export async function addPracticeRoomsBulk(
 export async function updatePracticeRoom(
   practice: Practice,
   roomId: string,
-  updates: Partial<Pick<PracticeRoom, 'name' | 'locationId' | 'type' | 'capacity' | 'active'>>,
+  updates: Partial<
+    Pick<
+      PracticeRoom,
+      'name' | 'locationId' | 'type' | 'capacity' | 'active' | 'floor' | 'equipment' | 'notes'
+    >
+  >,
 ): Promise<PracticeRoom[]> {
   const rooms = (practice.rooms ?? []).map((room) =>
     room.id === roomId ? { ...room, ...updates } : room,
@@ -106,4 +119,8 @@ export function roomTypeLabel(type: PracticeRoom['type']): string {
 
 export function activeRooms(practice: Practice | null | undefined): PracticeRoom[] {
   return (practice?.rooms ?? []).filter((room) => room.active !== false);
+}
+
+export function allPracticeRooms(practice: Practice | null | undefined): PracticeRoom[] {
+  return practice?.rooms ?? [];
 }

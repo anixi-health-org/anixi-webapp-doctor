@@ -16,6 +16,7 @@ import {
   getPracticeDashboardStats,
   type PracticeDashboardStats,
 } from '../../services/practiceDashboardService';
+import { PageLoadingState, StatCardsSkeleton, Skeleton } from '../../components/ui';
 
 export const ClinicAdminDashboard: React.FC = () => {
   const { user, practiceSession } = useAuth();
@@ -61,25 +62,25 @@ export const ClinicAdminDashboard: React.FC = () => {
   const statCards = [
     {
       label: 'Team members',
-      value: loading ? '-' : teamCount,
+      value: teamCount,
       hint: 'Active staff',
       icon: UserGroupIcon,
     },
     {
       label: 'Pending invites',
-      value: loading ? '-' : pendingInvites,
+      value: pendingInvites,
       hint: 'Awaiting signup',
       icon: UserPlusIcon,
     },
     {
       label: 'Patients',
-      value: loading ? '-' : patientCount,
+      value: patientCount,
       hint: 'On clinic roster',
       icon: UsersIcon,
     },
     {
       label: 'Today',
-      value: loading ? '-' : stats?.appointmentsToday ?? 0,
+      value: stats?.appointmentsToday ?? 0,
       hint: 'Appointments',
       icon: ClockIcon,
     },
@@ -101,6 +102,27 @@ export const ClinicAdminDashboard: React.FC = () => {
         <ClinicAdminSetupBanner steps={setup.steps} className="mt-6" />
       )}
 
+      {loading ? (
+        <PageLoadingState label="Loading clinic overview">
+          <div className="mt-6">
+            <StatCardsSkeleton count={4} columns={4} />
+          </div>
+          <div className="mt-8 grid gap-4 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={i}
+                className="rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm"
+              >
+                <Skeleton className="h-10 w-10 rounded-xl" />
+                <Skeleton className="mt-4 h-5 w-36" />
+                <Skeleton className="mt-2 h-4 w-full max-w-xs" />
+                <Skeleton className="mt-4 h-4 w-28" />
+              </div>
+            ))}
+          </div>
+        </PageLoadingState>
+      ) : (
+        <>
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {statCards.map(({ label, value, hint, icon: Icon }) => (
           <div
@@ -163,7 +185,7 @@ export const ClinicAdminDashboard: React.FC = () => {
         ))}
       </div>
 
-      {!loading && pendingInvites > 0 && (
+      {pendingInvites > 0 && (
         <div className="mt-6 rounded-2xl border border-[#e1e7ef] bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -184,7 +206,7 @@ export const ClinicAdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {!loading && stats && (
+      {stats && (
         <div className="mt-6 rounded-2xl border border-[#e1e7ef] bg-white px-5 py-4 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-[#94a3b8]">
             This week
@@ -204,6 +226,8 @@ export const ClinicAdminDashboard: React.FC = () => {
             </span>
           </div>
         </div>
+      )}
+        </>
       )}
     </PageShell>
   );

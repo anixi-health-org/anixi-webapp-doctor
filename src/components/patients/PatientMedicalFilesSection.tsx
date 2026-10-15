@@ -6,6 +6,7 @@ import {
   TrashIcon,
 } from '@heroicons/react/24/outline';
 import { djangoOpenMediaDocument } from '../../services/djangoApiService';
+import { InlinePanelSkeleton } from '../ui/Skeleton';
 import {
   getPatientMedicalFiles,
   PATIENT_MEDICAL_FILE_CATEGORIES,
@@ -179,7 +180,7 @@ export const PatientMedicalFilesSection: React.FC<Props> = ({
 
       <div className="mt-5">
         {loading ? (
-          <p className="text-sm text-[#65758b]">Loading attachments…</p>
+          <InlinePanelSkeleton rows={3} />
         ) : files.length === 0 ? (
           <p className="rounded-xl border border-dashed border-[#dfe6e1] bg-[#f8fafc] px-4 py-8 text-center text-sm text-[#65758b]">
             No medical files yet. Upload a PDF or image to attach it to this profile.

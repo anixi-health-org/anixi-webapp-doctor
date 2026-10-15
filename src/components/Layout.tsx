@@ -10,6 +10,7 @@ import {
   HeartIcon,
   HomeIcon,
   QuestionMarkCircleIcon,
+  RectangleStackIcon,
   SparklesIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
@@ -92,7 +93,7 @@ function NavLink({
 
 const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const { user, practiceSession } = useAuth();
-  const { isClinicEmployedClinician } = usePermissions();
+  const { isClinicEmployedClinician, canManageContent } = usePermissions();
   const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const { requests: sharingRequests } = useIncomingSharingRequests(user?.id);
@@ -187,6 +188,9 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
       href: '/practice-settings',
       icon: WrenchScrewdriverIcon,
     },
+    ...(canManageContent
+      ? [{ name: 'Content', href: '/content', icon: RectangleStackIcon } as NavItem]
+      : []),
   ];
 
   const supportNav: NavItem = {

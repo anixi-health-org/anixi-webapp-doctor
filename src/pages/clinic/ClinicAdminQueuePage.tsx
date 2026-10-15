@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageShell } from '../../components/page-layout';
+import { QueueTableSkeleton } from '../../components/ui';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { getPracticeWideAppointments } from '../../services/appointmentService';
@@ -126,8 +127,14 @@ export const ClinicAdminQueuePage: React.FC = () => {
         </p>
       ) : null}
 
+      {error ? (
+        <p className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </p>
+      ) : null}
+
       {loading ? (
-        <p className="text-sm text-[#65758b]">Loading queue…</p>
+        <QueueTableSkeleton />
       ) : queue.length === 0 ? (
         <div className="rounded-2xl border border-[#e1e7ef] bg-white px-6 py-14 text-center">
           <p className="text-base font-semibold text-[#344256]">No one in the queue for today</p>

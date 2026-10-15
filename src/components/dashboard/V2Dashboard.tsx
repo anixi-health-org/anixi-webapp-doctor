@@ -21,7 +21,7 @@ import type { PracticeDashboardStats } from '../../services/practiceDashboardSer
 import { usePracticeDashboardStats } from '../../hooks/usePracticeDashboardStats';
 import { clinicianGivenName } from '../../lib/clinicianName';
 import { patientAccountStatus, patientAccountStatusLabel } from '../../utils/patientRosterStatus';
-import { DashboardPageSkeleton } from '../ui/Skeleton';
+import { DashboardPageSkeleton, ListRowsSkeleton, Skeleton } from '../ui/Skeleton';
 import { PageHeader } from '../page-layout/PageHeader';
 import {
   detectBrowserTimezone,
@@ -606,7 +606,7 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
           value={String(rangedAppointments.length)}
           delta={
             appointmentsLoading
-              ? 'Loading…'
+              ? 'Updating…'
               : `${appointments.length} total scheduled`
           }
           icon={<CalendarDaysIcon className="h-6 w-6 text-[#21c45d]" />}
@@ -674,7 +674,7 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
           </div>
           <div className="space-y-5 px-6 py-5">
             {((appointmentsLoading || patientsLoading) && recentActivity.length === 0) && (
-              <p className="text-sm text-[#65758b]">Loading activity…</p>
+              <ListRowsSkeleton rows={4} />
             )}
             {!((appointmentsLoading || patientsLoading) && recentActivity.length === 0) && recentActivity.length === 0 && (
               <p className="text-sm text-[#65758b]">No activity in the last 24 hours</p>
@@ -824,12 +824,22 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
                       </tr>
                     );
                   })}
-                  {patients.length === 0 && (
+                  {patientsLoading && patients.length === 0
+                    ? Array.from({ length: 5 }).map((_, row) => (
+                        <tr key={row}>
+                          {Array.from({ length: 6 }).map((_, col) => (
+                            <td key={col} className="px-3 py-3">
+                              <Skeleton className="h-4 w-full max-w-[8rem]" />
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    : null}
+                  {!patientsLoading && patients.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-3 py-10 text-center text-[#65758b]">
-                        {patientsLoading
-                          ? 'Loading your patients...'
-                          : 'No patients yet. Patients appear here once they book a visit or share their records.'}
+                        No patients yet. Patients appear here once they book a visit or share their
+                        records.
                       </td>
                     </tr>
                   )}

@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  Activity,
   Building2,
   CalendarClock,
   CalendarOff,
   ClipboardList,
   MapPin,
+  Pill,
   Shield,
   Users,
   Video,
+  Clock,
 } from 'lucide-react';
 import { useAuth } from '../hooks/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
@@ -22,6 +25,8 @@ import { PracticePermissionsPanel } from '../components/practice/PracticePermiss
 import { PracticeMembersPanel } from '../components/practice/PracticeMembersPanel';
 import { PracticeLogoUploader } from '../components/practice/PracticeLogoUploader';
 import { LetterheadSetupBanner } from '../components/invoices/LetterheadSetupBanner';
+import { VitalRulesEditor } from '../components/vitals/VitalRulesEditor';
+import { AdherenceRulesEditor } from '../components/adherence/AdherenceRulesEditor';
 import { Toast, SettingsPageSkeleton, CardSkeleton } from '../components/ui';
 import { PageShell } from '../components/page-layout';
 import { AcceptedMedicalSchemesEditor } from '../components/practice/AcceptedMedicalSchemesEditor';
@@ -38,16 +43,22 @@ type Tab =
   | 'availability'
   | 'soft-blocks'
   | 'policies'
+  | 'vitals'
+  | 'adherence'
   | 'permissions'
-  | 'team';
+  | 'team'
+  | 'event-log';
 
 const TAB_CONFIG: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', icon: Building2 },
   { id: 'availability', label: 'Availability', icon: CalendarClock },
   { id: 'soft-blocks', label: 'Blocked Time', icon: CalendarOff },
   { id: 'policies', label: 'Booking Rules', icon: ClipboardList },
+  { id: 'vitals', label: 'Vital Alerts', icon: Activity },
+  { id: 'adherence', label: 'Adherence', icon: Pill },
   { id: 'team', label: 'Team', icon: Users },
   { id: 'permissions', label: 'Delegates', icon: Shield },
+  { id: 'event-log', label: 'Event Log', icon: Clock },
 ];
 
 const isValidTab = (value: string | null): value is Tab =>
@@ -718,6 +729,24 @@ const PracticeSettingsPage: React.FC = () => {
                 readOnly={isClinicEmployedClinician || !can('editBookingPolicies')}
               />
             </div>
+          )}
+
+          {activeTab === 'vitals' && (
+            <VitalRulesEditor
+              canEdit={
+                !isClinicEmployedClinician &&
+                (isOwner || can('editBookingPolicies') || can('manageMembers'))
+              }
+            />
+          )}
+
+          {activeTab === 'adherence' && (
+            <AdherenceRulesEditor
+              canEdit={
+                !isClinicEmployedClinician &&
+                (isOwner || can('editBookingPolicies') || can('manageMembers'))
+              }
+            />
           )}
 
           {activeTab === 'team' && (

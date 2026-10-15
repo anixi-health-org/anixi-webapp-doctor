@@ -84,6 +84,12 @@ export interface PracticeRoom {
     type: 'consult' | 'procedure' | 'virtual' | 'other';
     capacity?: number;
     active?: boolean;
+    /** Floor or wing label for wayfinding */
+    floor?: string;
+    /** Short equipment note (e.g. ECG, exam bed) */
+    equipment?: string;
+    /** Internal notes for front desk / ops */
+    notes?: string;
 }
 
 export type ConsultType =
@@ -582,6 +588,9 @@ export interface Patient extends User {
     language?: string;
     address?: string;
     phoneNumber?: string;
+    /** E.164 for WhatsApp / agent messaging (+27…) */
+    phoneE164?: string;
+    whatsappStatus?: 'verified' | 'reachable' | 'not_on_whatsapp' | 'unknown' | 'invalid';
     assignedDoctorId?: string;
     /** Practice/clinic this patient belongs to (shared pool) */
     practiceId?: string;

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { PageShell } from '../../components/page-layout';
+import { DataTablePageSkeleton, PageLoadingState } from '../../components/ui';
 import { useAuth } from '../../hooks/AuthContext';
 import {
   auditActionLabel,
@@ -51,7 +52,9 @@ export const ClinicAdminAuditLogPage: React.FC = () => {
       ) : null}
 
       {loading ? (
-        <p className="text-sm text-[#65758b]">Loading audit log…</p>
+        <PageLoadingState label="Loading audit log">
+          <DataTablePageSkeleton columns={4} rows={8} withToolbar={false} />
+        </PageLoadingState>
       ) : entries.length === 0 ? (
         <p className="text-sm text-[#65758b]">
           No audit events yet. Actions on the queue, team, and billing will appear here.

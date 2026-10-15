@@ -1483,6 +1483,8 @@ export type DjangoPracticePatient = {
   profileImageUrl?: string | null;
   email: string;
   phoneNumber?: string;
+  phoneE164?: string | null;
+  whatsappStatus?: 'verified' | 'reachable' | 'not_on_whatsapp' | 'unknown' | 'invalid';
   practiceId?: string | null;
   assignedDoctorId?: string | null;
   activationCode?: string | null;

@@ -5,6 +5,7 @@ import { DashboardWidgetGridItem } from './DashboardWidget';
 import { prepareDashboardWidgets } from '../../../lib/dashboardPresets';
 import { DashboardTabs, type DashboardView } from './DashboardTabs';
 import { DashboardAllView } from './DashboardAllView';
+import { CardSkeleton } from '../../ui/Skeleton';
 
 type Props = {
   boards: DoctorDashboardBoard[];
@@ -31,8 +32,9 @@ export function DashboardCanvas({
 }: Props) {
   if (loading) {
     return (
-      <div className="flex min-h-[240px] items-center justify-center">
-        <p className="text-sm text-[#6b7280]">Loading your workspace…</p>
+      <div className="min-h-[240px]" role="status" aria-live="polite" aria-busy="true">
+        <span className="sr-only">Loading your workspace</span>
+        <CardSkeleton rows={4} />
       </div>
     );
   }

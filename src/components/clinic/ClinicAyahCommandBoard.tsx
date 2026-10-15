@@ -53,7 +53,8 @@ export function ClinicAyahCommandBoard({
   const todayAppts = stats?.appointmentsToday ?? 0;
 
   return (
-    <aside className="flex max-h-[42vh] w-full shrink-0 flex-col overflow-y-auto border-b border-[#e1e7ef] bg-white lg:max-h-none lg:w-[340px] lg:border-b-0 lg:border-r xl:w-[360px]">
+    <aside className="flex max-h-[42vh] w-full shrink-0 flex-col border-b border-[#e1e7ef] bg-white lg:h-full lg:max-h-none lg:min-h-0 lg:w-[340px] lg:border-b-0 lg:border-r xl:w-[360px]">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <header className="px-5 pb-4 pt-5">
         <div className="flex items-center gap-3">
           <AyahAvatar size="md" />
@@ -132,8 +133,9 @@ export function ClinicAyahCommandBoard({
           />
         </div>
       </section>
+      </div>
 
-      <p className="border-t border-[#e1e7ef] px-5 py-3 text-[11px] leading-relaxed text-[#9aa8a2]">
+      <p className="mt-auto shrink-0 border-t border-[#e1e7ef] bg-white px-5 py-3 text-[11px] leading-relaxed text-[#9aa8a2]">
         Ayah proposes admin actions. You confirm chart imports and any clinical writes.
       </p>
     </aside>
