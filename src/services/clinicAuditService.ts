@@ -80,6 +80,8 @@ export function auditActionLabel(action: ClinicAuditAction): string {
       return 'Claim submitted';
     case 'invoice.paid':
       return 'Invoice paid';
+    case 'patient.activity':
+      return 'Patient activity';
     default:
       return action;
   }

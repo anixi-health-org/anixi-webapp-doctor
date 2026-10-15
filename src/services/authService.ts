@@ -15,7 +15,8 @@ export const registerProfessional = async (
   displayName: string,
   role: AuthRole,
   _countryCode?: string,
-  _joinPath?: JoinPath,
+  joinPath?: JoinPath,
+  popiaConsent?: boolean,
 ): Promise<void> => {
   const djangoRole =
     role === 'staff' ? 'staff' : role === 'caregiver' ? 'caregiver' : 'doctor';
@@ -24,6 +25,14 @@ export const registerProfessional = async (
     password,
     displayName,
     role: djangoRole,
+    popiaConsent,
+    joinIntent: joinPath === 'market_partner'
+      ? 'market_partner'
+      : joinPath === 'clinic'
+        ? 'clinic'
+        : joinPath === 'invite'
+          ? 'invite'
+          : undefined,
   });
 };
 
@@ -35,6 +44,13 @@ export const loginProfessional = async (
   const trimmedEmail = email.trim();
   try {
     const result = await djangoLogin(trimmedEmail, password);
+    const role = String(result.user?.role ?? '');
+    if (role !== 'doctor' && role !== 'staff' && role !== 'caregiver') {
+      clearDjangoTokens();
+      throw new Error(
+        'This account cannot sign in to the doctor portal. Use the Anixi Health admin portal.',
+      );
+    }
     const professional = await enrichDoctorMediaUrls(
       mapDjangoMeToProfessionalUser(result.user),
     );
@@ -80,6 +96,11 @@ export const logoutDoctor = async (): Promise<void> => {
 export const getCurrentProfessionalFromSession = async (): Promise<ProfessionalUser | null> => {
   const me = await djangoGetMe();
   if (!me) return null;
+  const role = String(me.role ?? '');
+  if (role !== 'doctor' && role !== 'staff' && role !== 'caregiver') {
+    clearDjangoTokens();
+    return null;
+  }
   return enrichDoctorMediaUrls(mapDjangoMeToProfessionalUser(me));
 };
 

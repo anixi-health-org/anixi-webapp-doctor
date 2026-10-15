@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getPracticeWideAppointments } from '../services/appointmentService';
-import { listPracticeInvites } from '../services/practiceInviteService';
+import { getPracticeDashboardStats } from '../services/practiceDashboardService';
 import {
   getBookableBlocks,
   listPracticeClinicians,
 } from '../services/practiceSettingsService';
-import { listPracticePatients } from '../services/practicePatientService';
 import type { SetupStep } from '../components/clinic/ClinicAdminSetupBanner';
 
 export type ClinicSetupStatus = {
@@ -35,21 +33,19 @@ export function useClinicSetupStatus(practiceId: string | undefined): ClinicSetu
     }
     setLoading(true);
     try {
-      const [clinicians, patients, invites, blocks, appointments] = await Promise.all([
+      const [stats, clinicians, blocks] = await Promise.all([
+        getPracticeDashboardStats(practiceId),
         listPracticeClinicians(practiceId),
-        listPracticePatients(practiceId),
-        listPracticeInvites(practiceId, 'pending'),
         getBookableBlocks(practiceId),
-        getPracticeWideAppointments(practiceId),
       ]);
       setDoctorCount(clinicians.length);
-      setPatientCount(patients.length);
-      setPendingInvites(invites.length);
+      setPatientCount(stats.rosterPatients ?? 0);
+      setPendingInvites(stats.pendingInvites ?? 0);
+      setAppointmentCount(stats.appointmentCount ?? 0);
       const clinicianIds = new Set(clinicians.map((c) => c.uid));
       setHasDoctorHours(
         blocks.some((b) => b.active !== false && clinicianIds.has(b.doctorId))
       );
-      setAppointmentCount(appointments.length);
     } catch (error) {
       console.warn('[useClinicSetupStatus] failed to load clinic setup', error);
     } finally {

@@ -26,6 +26,63 @@ const YEARS_NUMBER_TO_RANGE: [number, string][] = [
   [Infinity, '26+'],
 ];
 
+export function yearsOfExperienceToNumber(
+  value: string | number | null | undefined,
+): number | null {
+  if (value == null || value === '') return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const text = String(value).trim();
+  if (text in YEARS_RANGE_TO_NUMBER) return YEARS_RANGE_TO_NUMBER[text];
+  const parsed = Number.parseInt(text, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function djangoMeToFormRecord(me: Record<string, unknown>): Record<string, unknown> {
+  const profile = (
+    me.doctor_profile && typeof me.doctor_profile === 'object'
+      ? me.doctor_profile
+      : me.doctorProfile && typeof me.doctorProfile === 'object'
+        ? me.doctorProfile
+        : {}
+  ) as Record<string, unknown>;
+
+  return {
+    ...profile,
+    title: profile.title,
+    displayName: me.display_name ?? profile.display_name,
+    fullName: me.display_name ?? profile.fullName,
+    gender: profile.gender,
+    idOrPassport: profile.id_or_passport ?? profile.idOrPassport,
+    idOrPassportNumber: profile.id_or_passport ?? profile.idOrPassportNumber,
+    nationality: profile.nationality,
+    phoneNumber: me.phone_number ?? profile.phoneNumber,
+    email: me.email,
+    emailAddress: me.email,
+    hpcsaRegistrationNumber:
+      profile.hpcsa_registration_number ?? profile.hpcsaRegistrationNumber,
+    licenseNumber: profile.license_number ?? profile.licenseNumber,
+    medicalSpecialty: profile.medical_specialty ?? profile.medicalSpecialty,
+    specialty: profile.specialty ?? profile.medical_specialty,
+    yearsInPractice:
+      profile.years_of_experience ??
+      profile.yearsInPractice ??
+      profile.yearsOfExperience,
+    city: profile.city ?? profile.practiceCity,
+    practiceCity: profile.city ?? profile.practiceCity,
+    province: profile.province ?? profile.practiceProvince,
+    practiceProvince: profile.province ?? profile.practiceProvince,
+    officeAddress: profile.office_address ?? profile.officeAddress,
+    practiceAddress: profile.office_address ?? profile.practiceAddress,
+    practiceName: profile.practice_name ?? profile.practiceName,
+    practiceType: profile.practice_type ?? profile.practiceType,
+    practiceFacility: profile.practice_facility ?? profile.practiceFacility,
+    practiceNumberBhf: profile.practice_number_bhf ?? profile.practiceNumberBhf,
+    vatNumber: profile.vat_number ?? profile.vatNumber,
+    logoUrl: profile.logo_url ?? profile.logoUrl,
+    profileImageUrl: profile.profile_image_url ?? profile.profileImageUrl,
+  };
+}
+
 function yearsNumberToRange(years: number): string {
   for (const [max, range] of YEARS_NUMBER_TO_RANGE) {
     if (years <= max) return range;
@@ -153,13 +210,16 @@ function contactMethodToFirestore(value: string): string[] {
 }
 
 export function firestoreToFormData(data: FirestoreDoctor): ProfessionalProfileFormData {
-  const yearsRaw = data.yearsInPractice;
+  const yearsRaw =
+    data.yearsInPractice ?? data.years_of_experience ?? data.yearsOfExperience;
   const years =
     typeof yearsRaw === 'number'
       ? yearsNumberToRange(yearsRaw)
       : typeof yearsRaw === 'string' && yearsRaw in YEARS_RANGE_TO_NUMBER
         ? yearsRaw
-        : '';
+        : typeof yearsRaw === 'string' && yearsRaw.trim() && !Number.isNaN(Number(yearsRaw))
+          ? yearsNumberToRange(Number(yearsRaw))
+          : '';
 
   const logo =
     resolvePracticeLogoUrl(

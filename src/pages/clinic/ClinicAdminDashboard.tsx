@@ -12,9 +12,6 @@ import { PageShell } from '../../components/page-layout';
 import { ClinicAdminSetupBanner } from '../../components/clinic/ClinicAdminSetupBanner';
 import { useAuth } from '../../hooks/AuthContext';
 import { useClinicSetupStatus } from '../../hooks/useClinicSetupStatus';
-import { listPracticeInvites } from '../../services/practiceInviteService';
-import { listPracticeMembers } from '../../services/practiceSettingsService';
-import { listPracticePatients } from '../../services/practicePatientService';
 import {
   getPracticeDashboardStats,
   type PracticeDashboardStats,
@@ -41,17 +38,12 @@ export const ClinicAdminDashboard: React.FC = () => {
     let cancelled = false;
     void (async () => {
       try {
-        const [apptStats, members, invites, patients] = await Promise.all([
-          getPracticeDashboardStats(practiceId),
-          listPracticeMembers(practiceId),
-          listPracticeInvites(practiceId, 'pending'),
-          listPracticePatients(practiceId),
-        ]);
+        const apptStats = await getPracticeDashboardStats(practiceId);
         if (cancelled) return;
         setStats(apptStats);
-        setTeamCount(members.filter((m: { status: string }) => m.status === 'active').length);
-        setPendingInvites(invites.length);
-        setPatientCount(patients.length);
+        setTeamCount(apptStats.activeMembers ?? 0);
+        setPendingInvites(apptStats.pendingInvites ?? 0);
+        setPatientCount(apptStats.rosterPatients ?? 0);
       } catch (error) {
         console.warn('[ClinicAdminDashboard] failed to load clinic stats', error);
       } finally {

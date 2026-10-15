@@ -1,4 +1,9 @@
 import type { Invoice, InvoiceLineItem, Patient } from '../types';
+import {
+  djangoCreateClaim,
+  djangoListClaims,
+  djangoPatchClaim,
+} from './djangoApiService';
 
 export type MedicalAidClaimStatus =
   | 'draft'
@@ -67,41 +72,64 @@ function mapClaim(id: string, data: Record<string, unknown>): MedicalAidClaim {
 export async function listPracticeClaims(
   practiceId: string,
 ): Promise<MedicalAidClaim[]> {
-  // TODO: replace with a Django claims endpoint once available.
-  return [];
+  if (!practiceId) return [];
+  const rows = await djangoListClaims(practiceId);
+  return rows.map((row) => mapClaim(String(row.id ?? ''), row));
 }
 
 export async function createClaimFromInvoice(
   invoice: Invoice,
-  _patient: Patient | null,
+  details: {
+    medicalSchemeName: string;
+    memberNumber: string;
+    planOption?: string;
+    diagnosisCodes?: string[];
+    notes?: string;
+  },
+  _patient?: Patient | null,
 ): Promise<MedicalAidClaim> {
-  // TODO: persist via Django claims endpoint once available.
-  const payload: Record<string, unknown> = {
-    practiceId: invoice.practiceId ?? null,
-    doctorId: invoice.doctorId,
-    patientId: invoice.patientId,
+  const scheme = details.medicalSchemeName.trim();
+  const memberNumber = details.memberNumber.trim();
+  if (!scheme || !memberNumber) {
+    throw new Error('Scheme name and member number are required');
+  }
+  const row = await djangoCreateClaim({
+    practiceId: invoice.practiceId,
     invoiceId: invoice.id,
     invoiceNumber: invoice.invoiceNumber,
-    status: 'draft',
-    medicalSchemeName: '',
-    memberNumber: '',
-    planOption: '',
-    diagnosisCodes: invoice.diagnosisCodes || [],
+    medicalSchemeName: scheme,
+    memberNumber,
+    planOption: details.planOption?.trim() || '',
+    diagnosisCodes: details.diagnosisCodes?.length
+      ? details.diagnosisCodes
+      : invoice.diagnosisCodes || [],
     lineItems: invoice.lineItems,
     totalAmount: invoice.totalAmount,
-    currency: invoice.currency || 'ZAR',
-    notes: '',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-  return mapClaim(`claim-${Date.now()}`, payload);
+    notes: details.notes?.trim() || '',
+  });
+  return mapClaim(String(row.id ?? ''), row);
+}
+
+export async function updateClaimDetails(
+  claimId: string,
+  patch: {
+    status?: MedicalAidClaimStatus;
+    medicalSchemeName?: string;
+    memberNumber?: string;
+    planOption?: string;
+    diagnosisCodes?: string[];
+    notes?: string;
+  },
+): Promise<MedicalAidClaim> {
+  const row = await djangoPatchClaim(claimId, patch);
+  return mapClaim(String(row.id ?? claimId), row);
 }
 
 export async function updateClaimStatus(
-  _claimId: string,
-  _status: MedicalAidClaimStatus,
+  claimId: string,
+  status: MedicalAidClaimStatus,
 ): Promise<void> {
-  // TODO: persist via Django claims endpoint once available.
+  await djangoPatchClaim(claimId, { status });
 }
 
 export function buildClaimExportCsv(claim: MedicalAidClaim): string {

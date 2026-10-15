@@ -121,6 +121,10 @@ export interface Practice {
     tradingName?: string;
     /** BHF practice number at organisation level */
     bhfPracticeNumber?: string;
+    /** Shared code patients use to activate via "Activate clinic account" */
+    clinicCode?: string;
+    /** Practice letterhead / invoice logo */
+    logoUrl?: string;
     locations: PracticeLocation[];
     /** Consult / procedure rooms for front-desk scheduling */
     rooms?: PracticeRoom[];
@@ -130,10 +134,29 @@ export interface Practice {
     consultTypeSettings?: ConsultTypeSetting[];
     /** Patient-facing clinic listing (marketplace / browse) */
     publicListing?: PublicClinicListingSettings;
+    acceptedSchemes?: MedicalSchemeCatalogItem[];
+    acceptedPlans?: MedicalSchemePlanCatalogItem[];
+    configureAcceptedSchemes?: boolean;
     /** Optional vital alert rules (client may also store overrides locally). */
     vitalMetricRules?: import('../lib/vitalMetricRules').VitalMetricRulesConfig;
     createdAt: Date;
     updatedAt: Date;
+}
+
+export interface MedicalSchemeCatalogItem {
+    id: string;
+    slug: string;
+    name: string;
+    shortName: string;
+    category: string;
+}
+
+export interface MedicalSchemePlanCatalogItem {
+    id: string;
+    slug: string;
+    name: string;
+    schemeSlug: string;
+    schemeName: string;
 }
 
 export interface PublicClinicListingSettings {
@@ -158,7 +181,9 @@ export interface PublicClinicListing {
     province?: string;
     services?: string[];
     acceptsMedicalAid?: boolean;
+    acceptedSchemes?: MedicalSchemeCatalogItem[];
     heroImageUrl?: string;
+    logoUrl?: string;
     bhfPracticeNumber?: string;
 }
 
@@ -170,7 +195,8 @@ export type ClinicAuditAction =
     | 'queue.room_assigned'
     | 'settings.updated'
     | 'claim.submitted'
-    | 'invoice.paid';
+    | 'invoice.paid'
+    | 'patient.activity';
 
 export interface ClinicAuditLogEntry {
     id: string;
@@ -550,6 +576,8 @@ export interface Patient extends User {
     rosterStatus?: string;
     /** Code for patient to activate a pre-created clinic account in the app */
     activationCode?: string;
+    /** Name as printed on UniCharts PDF (surname first) */
+    unichartChartName?: string;
     /** From patient medical profile (mobile app), read-only for doctors */
     bloodGroup?: string;
     /** From patient medical profile (mobile app), read-only for doctors */
@@ -609,7 +637,7 @@ export interface DailyLog {
     adherence?: AdherenceLog[];
     vitals?: VitalsLog;
 }
-export type PatientStatus = 'stable' | 'warning' | 'inactive';
+export type PatientStatus = 'stable' | 'warning' | 'inactive' | 'unknown';
 
 export interface AppointmentDocument {
     id: string;
@@ -626,6 +654,7 @@ export interface AppointmentDocument {
 export type PostConsultActionType =
     | 'prescription_draft'
     | 'doctor_letter_draft'
+    | 'clinical_report_draft'
     | 'medical_document'
     | 'session_recording'
     | 'post_consult_note';
@@ -663,6 +692,7 @@ export interface TeleconsultConsent {
 export interface Appointment {
     id: string;
     doctorId: string;
+    doctorName?: string;
     patientId: string;
     patientName: string;
     patientEmail: string;
@@ -777,7 +807,9 @@ export interface InvoiceLineItem {
 export interface Invoice {
     id: string;
     doctorId: string;
+    doctorName?: string;
     patientId: string;
+    patientName?: string;
     practiceId?: string;
     appointmentId: string;
     invoiceNumber: string;

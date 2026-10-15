@@ -71,7 +71,7 @@ export const PatientCard: React.FC<PatientCardProps> = ({
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1">
             <h3 className="font-semibold text-gray-900 text-lg">
-              {patient.displayName ? patient.displayName.toUpperCase() : 'Patient'}
+              {patient.displayName ? patient.displayName.toUpperCase() : 'Unnamed patient'}
             </h3>
           </div>
           <span

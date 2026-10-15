@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { djangoListMood, isDjangoApiEnabled } from '../../services/djangoApiService';
 
 interface MoodEntry {
   date: string;
@@ -11,11 +12,14 @@ interface MoodCheckerWidgetProps {
   onViewDetails?: () => void;
 }
 
-/**
- * Mood checker widget for the doctor dashboard.
- * The Firestore read has been removed; once the Django patient-vitals endpoint
- * is wired, replace the empty fetch below with a call to that endpoint.
- */
+function scoreToMood(score: number): MoodEntry['mood'] {
+  if (score >= 5) return 'excellent';
+  if (score >= 4) return 'good';
+  if (score >= 3) return 'okay';
+  if (score >= 2) return 'bad';
+  return 'terrible';
+}
+
 export const MoodCheckerWidget: React.FC<MoodCheckerWidgetProps> = ({ patientId, onViewDetails }) => {
   const [latestMood, setLatestMood] = useState<MoodEntry | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,16 +30,32 @@ export const MoodCheckerWidget: React.FC<MoodCheckerWidgetProps> = ({ patientId,
       try {
         setLoading(true);
         setError(null);
-        // TODO: replace with Django patient mood endpoint once available.
-        setLatestMood(null);
-      } catch (err) {
+        if (!isDjangoApiEnabled()) {
+          setLatestMood(null);
+          return;
+        }
+        const rows = await djangoListMood(patientId, { limit: 1 });
+        const latest = rows[0];
+        if (!latest) {
+          setLatestMood(null);
+          return;
+        }
+        const score = Number(latest.score ?? latest.mood ?? 0);
+        setLatestMood({
+          date: latest.recordedAt
+            ? new Date(String(latest.recordedAt)).toLocaleDateString()
+            : 'Recent',
+          mood: scoreToMood(score),
+          notes: String(latest.note ?? latest.notes ?? ''),
+        });
+      } catch {
         setError('Failed to load mood data');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchLatestMood();
+    void fetchLatestMood();
   }, [patientId]);
 
   const getMoodEmoji = (mood: string) => {
@@ -102,12 +122,12 @@ export const MoodCheckerWidget: React.FC<MoodCheckerWidgetProps> = ({ patientId,
               </div>
             </div>
           </div>
-          {latestMood.notes && (
+          {latestMood.notes ? (
             <div className="bg-gray-50 p-3 rounded-lg">
               <p className="text-sm text-gray-600">Notes</p>
               <p className="text-gray-900">{latestMood.notes}</p>
             </div>
-          )}
+          ) : null}
         </div>
       ) : (
         <div className="text-gray-500 text-center py-8">

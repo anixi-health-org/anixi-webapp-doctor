@@ -1,4 +1,4 @@
-import { Doctor, Invoice, InvoiceLineItem, InvoiceStatus } from '../types';
+import { Doctor, Invoice, InvoiceLineItem, InvoiceStatus, Practice } from '../types';
 import { SA_VAT_RATE, computeVatBreakdown } from '../lib/southAfrica';
 import { sendPatientNotification } from './notificationService';
 import { createDoctorNotification } from './doctorNotificationService';
@@ -41,6 +41,24 @@ export const invoiceOptionsFromDoctor = (
   };
 };
 
+export const invoiceOptionsFromPracticeContext = (
+  doctor: Doctor | null | undefined,
+  practice: Practice | null | undefined,
+  appointmentId?: string,
+  practiceId?: string,
+): CreateInvoiceOptions => {
+  const base = invoiceOptionsFromDoctor(
+    doctor,
+    appointmentId,
+    practiceId || practice?.id,
+  );
+  if (practice?.orgType !== 'clinic') return base;
+  return {
+    ...base,
+    bhfPracticeNumber: practice.bhfPracticeNumber || base.bhfPracticeNumber,
+  };
+};
+
 function toNumber(value: unknown, fallback = 0): number {
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -60,7 +78,24 @@ function normalizeLineItems(raw: unknown): InvoiceLineItem[] {
 }
 
 function mapDjangoInvoice(row: Record<string, unknown>, doctorId: string): Invoice {
-  return mapInvoiceDoc(String(row.id ?? ''), { ...row, doctorId });
+  const amountCents = Number(row.amountCents);
+  const fallbackTotal = Number.isFinite(amountCents) ? amountCents / 100 : 0;
+  return mapInvoiceDoc(String(row.id ?? ''), {
+    ...row,
+    doctorId: String(row.doctorId ?? doctorId),
+    doctorName: row.doctorName,
+    patientName: row.patientName,
+    practiceId: row.practiceId ? String(row.practiceId) : undefined,
+    totalAmount: row.totalAmount ?? fallbackTotal,
+  });
+}
+
+function mapInvoiceStatus(raw: unknown): InvoiceStatus {
+  const status = String(raw || 'issued');
+  if (status === 'paid') return 'paid';
+  if (status === 'outstanding' || status === 'overdue') return 'outstanding';
+  if (status === 'sent' || status === 'draft' || status === 'issued') return 'issued';
+  return 'issued';
 }
 
 function mapInvoiceDoc(id: string, data: Record<string, unknown>): Invoice {
@@ -80,6 +115,7 @@ function mapInvoiceDoc(id: string, data: Record<string, unknown>): Invoice {
     vatRate,
     subtotalExVat: toNumber(data.subtotalExVat, lineItemTotal),
     vatAmount: toNumber(data.vatAmount, 0),
+    status: mapInvoiceStatus(data.status),
     issuedAt: toDate(data.issuedAt) || new Date(),
     dueDate: toDate(data.dueDate) ?? undefined,
     paidAt: toDate(data.paidAt) ?? undefined,
@@ -127,6 +163,7 @@ export const createInvoiceRecord = async (
   if (isDjangoApiEnabled()) {
     const dueDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     const row = await djangoCreateInvoice({
+      doctorId,
       patientId,
       appointmentId,
       practiceId: opts?.practiceId,
@@ -188,20 +225,25 @@ export const getInvoicesByDoctor = async (
   if (!doctorId) throw new Error('Doctor ID is required');
 
   if (isDjangoApiEnabled()) {
-    const rows = await djangoListInvoices();
-    let invoices = rows.map((row) => mapDjangoInvoice(row, doctorId));
-    if (options?.patientId) {
-      invoices = invoices.filter((inv) => inv.patientId === options.patientId);
+    try {
+      const rows = await djangoListInvoices();
+      let invoices = rows.map((row) => mapDjangoInvoice(row, doctorId));
+      if (options?.patientId) {
+        invoices = invoices.filter((inv) => inv.patientId === options.patientId);
+      }
+      if (options?.status) {
+        invoices = invoices.filter((inv) => inv.status === options.status);
+      }
+      if (options?.appointmentId) {
+        invoices = invoices.filter((inv) => inv.appointmentId === options.appointmentId);
+      }
+      return invoices.sort(
+        (a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime(),
+      );
+    } catch (error) {
+      console.warn('getInvoicesByDoctor failed:', error);
+      return [];
     }
-    if (options?.status) {
-      invoices = invoices.filter((inv) => inv.status === options.status);
-    }
-    if (options?.appointmentId) {
-      invoices = invoices.filter((inv) => inv.appointmentId === options.appointmentId);
-    }
-    return invoices.sort(
-      (a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime(),
-    );
   }
 
   return [];
@@ -209,28 +251,48 @@ export const getInvoicesByDoctor = async (
 
 export const getInvoicesForPractice = async (
   practiceId: string,
-  doctorIds: string[],
+  _doctorIds: string[] = [],
 ): Promise<Invoice[]> => {
   if (!practiceId) throw new Error('Practice ID is required');
 
-  const seen = new Set<string>();
-  const invoices: Invoice[] = [];
-
-  for (const doctorId of doctorIds) {
-    if (!doctorId) continue;
-    try {
-      const doctorInvoices = await getInvoicesByDoctor(doctorId);
-      for (const invoice of doctorInvoices) {
-        if (seen.has(invoice.id)) continue;
-        seen.add(invoice.id);
-        invoices.push(invoice);
-      }
-    } catch (error) {
-      console.warn('[invoiceService] doctor invoice merge skipped', doctorId, error);
-    }
+  if (isDjangoApiEnabled()) {
+    const rows = await djangoListInvoices(practiceId);
+    return rows
+      .map((row) => mapDjangoInvoice(row, String(row.doctorId ?? _doctorIds[0] ?? '')))
+      .sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime());
   }
 
-  return invoices.sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime());
+  return [];
+};
+
+export const createPracticeInvoice = async (input: {
+  practiceId: string;
+  patientId: string;
+  doctorId: string;
+  description: string;
+  amount: number;
+  bhfPracticeNumber?: string;
+}): Promise<Invoice> => {
+  if (!input.practiceId || !input.patientId || !input.doctorId) {
+    throw new Error('Practice, patient, and doctor are required');
+  }
+  const amount = Number(input.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('Enter an amount greater than zero');
+  }
+  const description = input.description.trim() || 'Consultation';
+  const row = await djangoCreateInvoice({
+    practiceId: input.practiceId,
+    patientId: input.patientId,
+    doctorId: input.doctorId,
+    amountCents: Math.round(amount * 100),
+    currency: 'ZAR',
+    lineItems: [{ description, quantity: 1, amount }],
+    status: 'sent',
+    invoiceNumber: `INV-${Date.now().toString().slice(-8)}`,
+    bhfPracticeNumber: input.bhfPracticeNumber,
+  });
+  return mapDjangoInvoice(row, input.doctorId);
 };
 
 export const getInvoiceById = async (invoiceId: string): Promise<Invoice | null> => {

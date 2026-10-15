@@ -35,7 +35,7 @@ const readUserFlags = async (): Promise<{
     return {
       joinIntent: parseJoinPath(typeof me.joinIntent === 'string' ? me.joinIntent : null),
       clinicOnboardingComplete:
-        Boolean(me.clinicOnboardingComplete) ||
+        Boolean(me.clinicOnboardingComplete ?? me.clinic_onboarding_complete) ||
         (userId ? readClinicOnboardingComplete(userId) : false),
     };
   } catch {
@@ -68,8 +68,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setClinicOnboardingComplete(flags.clinicOnboardingComplete);
 
     if (shouldLoadPracticeSession(professional)) {
-      const session = await loadDjangoPracticeSession(professional.id);
-      setPracticeSession(session);
+      try {
+        const session = await loadDjangoPracticeSession(professional.id);
+        setPracticeSession(session);
+      } catch {
+        setPracticeSession(null);
+      }
     } else {
       setPracticeSession(null);
     }
@@ -122,8 +126,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const refreshPracticeSession = async (): Promise<void> => {
     if (!user || !shouldLoadPracticeSession(user)) return;
-    const session = await loadDjangoPracticeSession(user.id);
-    setPracticeSession(session);
+    try {
+      const session = await loadDjangoPracticeSession(user.id);
+      setPracticeSession(session);
+    } catch {
+      setPracticeSession(null);
+    }
     const flags = await readUserFlags();
     setJoinIntent(flags.joinIntent);
     setClinicOnboardingComplete(flags.clinicOnboardingComplete);

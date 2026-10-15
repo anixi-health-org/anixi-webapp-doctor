@@ -10,11 +10,12 @@ import {
 import { useAuth } from '../hooks/AuthContext';
 import { useDoctorCurrency } from '../hooks/useDoctorCurrency';
 import { getInvoicesByDoctor, updateInvoiceStatus, resendInvoice } from '../services/invoiceService';
-import { generateInvoicePDF, buildDoctorLetterheadFromUser, fetchPracticeLogoDataUrl } from '../services/invoicePdfService';
+import { generateInvoicePDF, buildInvoiceLetterhead, fetchPracticeLogoDataUrl } from '../services/invoicePdfService';
 import { Invoice, InvoiceStatus } from '../types';
 import { Toast, InvoicePageSkeleton } from '../components/ui';
 import { PageShell } from '../components/page-layout';
 import { LetterheadSetupBanner } from '../components/invoices/LetterheadSetupBanner';
+import { userFacingLoadError } from '../services/djangoApiService';
 
 interface Summary {
   issued: number;
@@ -75,9 +76,10 @@ const SUMMARY_CARDS = [
 ];
 
 export const InvoicesPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, practiceSession } = useAuth();
   const { formatAmount } = useDoctorCurrency();
   const doctor = user?.role === 'doctor' ? user : null;
+  const practice = practiceSession?.practice;
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [summary, setSummary] = useState<Summary>({
     issued: 0,
@@ -125,7 +127,7 @@ export const InvoicesPage: React.FC = () => {
       setInvoices(allInvoices);
       setSummary(recalculateSummary(allInvoices));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load invoices';
+      const message = userFacingLoadError(err, 'Could not load invoices');
       setError(message);
     } finally {
       setIsLoading(false);
@@ -194,10 +196,15 @@ export const InvoicesPage: React.FC = () => {
   const handleDownloadPDF = async (invoice: Invoice) => {
     setUpdatingId(invoice.id);
     try {
-      const letterhead = buildDoctorLetterheadFromUser(doctor);
+      const letterhead = buildInvoiceLetterhead({
+        doctor,
+        practice,
+        treatingClinicianName: invoice.doctorName,
+      });
       const logoDataUrl = await fetchPracticeLogoDataUrl(
-        doctor?.id,
-        doctor?.logoUrl
+        practice?.orgType === 'clinic' ? undefined : doctor?.id,
+        practice?.orgType === 'clinic' ? practice.logoUrl : doctor?.logoUrl,
+        { skipDoctorLogoStore: practice?.orgType === 'clinic' }
       );
       await generateInvoicePDF(invoice, { ...letterhead, logoDataUrl });
     } catch {
@@ -233,7 +240,9 @@ export const InvoicesPage: React.FC = () => {
         <div>
           <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">Invoices</h1>
           <p className="mt-1 text-[13px] text-[#65758b]">
-            Manage invoices and track payment status.
+            {practice?.orgType === 'clinic'
+              ? 'Clinic invoices use organisation letterhead. Hospital and clinic billing is managed by the practice, not by individual employed doctors.'
+              : 'Private practice invoices use your own letterhead, BHF number, and banking details.'}
           </p>
         </div>
         <button
@@ -252,7 +261,7 @@ export const InvoicesPage: React.FC = () => {
         </div>
       )}
 
-      <LetterheadSetupBanner doctor={doctor} className="mb-5" />
+      <LetterheadSetupBanner doctor={doctor} practice={practice} className="mb-5" />
 
       {/* Summary cards */}
       <div className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">

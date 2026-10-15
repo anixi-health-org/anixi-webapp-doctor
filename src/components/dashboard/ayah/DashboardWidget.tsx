@@ -162,16 +162,26 @@ export function DashboardWidget({ widget, resolved }: Props) {
 
   const items = resolveWidgetList(widget.dataBinding, config, resolved);
   const isSchedule = widget.type === 'schedule';
+  const emptyLabel =
+    typeof config.emptyLabel === 'string'
+      ? config.emptyLabel
+      : isSchedule
+        ? widget.dataBinding === 'today_appointments'
+          ? 'No visits today'
+          : widget.dataBinding === 'upcoming_appointments'
+            ? 'No upcoming visits'
+            : 'Nothing scheduled yet'
+        : 'Nothing here right now';
+  const limit = Number(config.limit);
+  const visible = items.slice(0, Number.isFinite(limit) && limit > 0 ? limit : isSchedule ? 12 : 6);
 
   return (
     <PanelShell title={widget.title} subtitle={widget.subtitle}>
       <div className="divide-y divide-[#eef2f6]">
-        {items.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-[#94a3b8]">
-            {isSchedule ? 'Nothing scheduled yet' : 'Nothing here right now'}
-          </p>
+        {visible.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-[#94a3b8]">{emptyLabel}</p>
         ) : (
-          items.slice(0, isSchedule ? 8 : 6).map((item: DashboardListItem) => (
+          visible.map((item: DashboardListItem) => (
             <div key={item.id} className="flex items-start gap-3 px-4 py-3">
               {isSchedule ? (
                 <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-[#427160]" />

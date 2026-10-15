@@ -9,13 +9,17 @@ import { PageHeader, PageShell } from '../../components/page-layout';
 import { ListRowsSkeleton, PageHeaderSkeleton, Skeleton } from '../../components/ui/Skeleton';
 import { useAuth } from '../../hooks/useAuth';
 import { getDoctorAppointments } from '../../services/appointmentService';
-import { getDoctorPatients } from '../../services/doctorService';
+import { getDoctorPatients } from '../../services/patientManagementService';
 import {
   getPatientUploadedFiles,
   patientFileCategoryLabel,
   type PatientUploadedFile,
 } from '../../services/patientDocumentService';
 import { getPatientsSharingRecords } from '../../services/medicalRecordShareService';
+import {
+  djangoOpenMediaDocument,
+  userFacingLoadError,
+} from '../../services/djangoApiService';
 import { PendingRecordShares } from '../../components/records/PendingRecordShares';
 import { useIncomingRecordShares } from '../../hooks/useIncomingRecordShares';
 import { Appointment, AppointmentDocument, PostConsultAction } from '../../types';
@@ -28,8 +32,9 @@ type RecordItem =
       subtitle: string;
       patientId: string;
       patientName: string;
-      date: Date;
+      date: Date | null;
       href?: string;
+      storageKey?: string;
       appointmentId: string;
     }
   | {
@@ -39,7 +44,7 @@ type RecordItem =
       subtitle: string;
       patientId: string;
       patientName: string;
-      date: Date;
+      date: Date | null;
       content: string;
       appointmentId: string;
       type: string;
@@ -51,6 +56,8 @@ const actionLabel = (type: string) => {
       return 'Prescription';
     case 'doctor_letter_draft':
       return 'Doctor letter';
+    case 'clinical_report_draft':
+      return 'Consultation report (H&P)';
     case 'medical_document':
       return 'Medical document';
     case 'session_recording':
@@ -90,35 +97,47 @@ export const MedicalRecordsPage: React.FC = () => {
   const { requests: pendingShares } = useIncomingRecordShares(user?.id);
 
   const load = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
       const [data, patients, sharedGrants] = await Promise.all([
         getDoctorAppointments(user.id),
         getDoctorPatients(user.id),
-        getPatientsSharingRecords(user.id),
+        getPatientsSharingRecords(user.id).catch(() => []),
       ]);
       setAppointments(data);
 
       const names = new Map(
-        patients.map((p) => [p.id, p.displayName || p.email || p.id])
+        patients.map((patient) => [patient.id, patient.displayName || patient.email || patient.id]),
       );
-      // A patient can share records without being on the roster, so their name
-      // comes from the share itself.
       sharedGrants.forEach((grant) => {
         if (!names.has(grant.patientId)) {
           names.set(grant.patientId, grant.patientName || 'Shared patient');
         }
       });
+      data.forEach((appointment) => {
+        if (appointment.patientId && !names.has(appointment.patientId)) {
+          names.set(appointment.patientId, appointment.patientName || 'Patient');
+        }
+      });
       setPatientNames(names);
 
-      // Documents the patients uploaded themselves, read from the same
-      // collection the mobile app writes to.
-      const files = await getPatientUploadedFiles(Array.from(names.keys()));
+      const filePatientIds = Array.from(
+        new Set(
+          [
+            ...data.map((appointment) => appointment.patientId),
+            ...sharedGrants.map((grant) => grant.patientId),
+          ].filter(Boolean),
+        ),
+      );
+      const files = await getPatientUploadedFiles(filePatientIds);
       setPatientFiles(files);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load medical records');
+      setError(userFacingLoadError(err, 'Could not load medical records'));
       setAppointments([]);
       setPatientFiles([]);
     } finally {
@@ -138,7 +157,7 @@ export const MedicalRecordsPage: React.FC = () => {
           kind: 'document',
           id: `doc-${apt.id}-${doc.id}`,
           title: doc.title || doc.fileName,
-          subtitle: `${doc.fileType || 'File'} · ${(doc.fileSize / 1024).toFixed(0)} KB`,
+          subtitle: `${doc.fileType || 'File'} · ${((Number(doc.fileSize) || 0) / 1024).toFixed(0)} KB`,
           patientId: apt.patientId,
           patientName: apt.patientName,
           date: doc.createdAt instanceof Date ? doc.createdAt : apt.date,
@@ -166,15 +185,22 @@ export const MedicalRecordsPage: React.FC = () => {
         kind: 'document',
         id: `patient-file-${file.id}`,
         title: file.name,
-        subtitle: `${patientFileCategoryLabel(file.category)} · uploaded by patient`,
+        subtitle: file.subtitle || `${patientFileCategoryLabel(file.category)} · uploaded by patient`,
         patientId: file.patientId,
         patientName: patientNames.get(file.patientId) ?? 'Patient',
-        date: file.uploadedAt ?? new Date(0),
+        date: file.uploadedAt,
         href: file.url,
+        storageKey: file.storageKey,
         appointmentId: '',
       });
     });
-    items.sort((a, b) => b.date.getTime() - a.date.getTime());
+    items.sort((a, b) => {
+      const left =
+        a.date instanceof Date && !Number.isNaN(a.date.getTime()) ? a.date.getTime() : -1;
+      const right =
+        b.date instanceof Date && !Number.isNaN(b.date.getTime()) ? b.date.getTime() : -1;
+      return right - left;
+    });
     return items;
   }, [appointments, patientFiles, patientNames]);
 
@@ -302,28 +328,31 @@ export const MedicalRecordsPage: React.FC = () => {
                     <p className="mt-0.5 text-sm text-[#65758b]">
                       {item.patientName} · {item.subtitle}
                     </p>
-                    <p className="mt-0.5 text-xs text-[#94a3b8]">
-                      {item.date.toLocaleDateString('en-GB', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
-                    </p>
+                    {item.date && !Number.isNaN(item.date.getTime()) && (
+                      <p className="mt-0.5 text-xs text-[#94a3b8]">
+                        {item.date.toLocaleDateString('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </p>
+                    )}
                     {item.kind === 'note' && (
                       <p className="mt-2 line-clamp-2 text-sm text-[#65758b]">{item.content}</p>
                     )}
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  {item.kind === 'document' && item.href && (
-                    <a
-                      href={item.href}
-                      target="_blank"
-                      rel="noreferrer"
+                  {item.kind === 'document' && (item.href || item.storageKey) && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void djangoOpenMediaDocument(item.storageKey || item.href)
+                      }
                       className="inline-flex h-9 items-center rounded-[10px] border border-[#e1e7ef] bg-white px-3 text-sm font-medium text-[#344256] hover:border-[#427160]/40 hover:text-[#427160]"
                     >
                       Open
-                    </a>
+                    </button>
                   )}
                   <button
                     type="button"

@@ -14,7 +14,7 @@ export const fetchPatientInfo = async (patientId: string): Promise<PatientInfo |
     if (chart) {
       return {
         id: patientId,
-        displayName: String(chart.displayName ?? chart.name ?? 'Patient'),
+        displayName: String(chart.displayName ?? chart.name ?? ''),
         email: chart.email ? String(chart.email) : undefined,
         role: 'patient',
       };
@@ -26,7 +26,7 @@ export const fetchPatientInfo = async (patientId: string): Promise<PatientInfo |
 
     return {
       id: patientId,
-      displayName: row.displayName || 'Patient',
+      displayName: row.displayName || '',
       email: row.email,
       role: 'patient',
     };
@@ -37,7 +37,7 @@ export const fetchPatientInfo = async (patientId: string): Promise<PatientInfo |
 
 export const getPatientDisplayName = async (patientId: string): Promise<string> => {
   const patient = await fetchPatientInfo(patientId);
-  return patient?.displayName || `Patient ${patientId.substring(0, 8)}`;
+  return patient?.displayName || 'Unnamed patient';
 };
 
 export const fetchMultiplePatients = async (

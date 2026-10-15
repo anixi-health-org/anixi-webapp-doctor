@@ -62,11 +62,11 @@ export const CaregiverSupportPage: React.FC = () => {
 
       <div className="mb-8">
         <a
-          href="mailto:support@anixi.health"
+          href="mailto:support@anixihealth.com"
           className="block rounded-xl border border-anixi-green/20 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
         >
           <p className="font-semibold text-gray-900">Email support</p>
-          <p className="text-sm text-anixi-green">support@anixi.health</p>
+          <p className="text-sm text-anixi-green">support@anixihealth.com</p>
         </a>
       </div>
 

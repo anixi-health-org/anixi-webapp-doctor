@@ -167,10 +167,10 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
   return (
     <div className="h-dvh max-h-dvh w-full overflow-hidden bg-anixi-beige lg:grid lg:grid-cols-2">
       <div
-        className={`relative flex h-full min-h-0 flex-col items-center justify-center overflow-x-hidden px-4 sm:px-6 lg:px-8 ${
+        className={`relative flex h-full min-h-0 flex-col items-center overflow-x-hidden px-4 sm:px-6 lg:px-8 ${
           compact
-            ? 'overflow-hidden py-4 sm:py-5'
-            : 'overflow-y-auto py-6 sm:py-8 lg:overflow-y-auto'
+            ? 'justify-center overflow-hidden py-4 sm:py-5'
+            : 'overflow-y-auto overscroll-y-contain py-6 sm:py-8'
         }`}
       >
         <div aria-hidden className="pointer-events-none absolute inset-0">
@@ -180,8 +180,9 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
           <div className="absolute inset-0 opacity-50 [background-image:radial-gradient(rgba(66,89,80,0.12)_1px,transparent_1px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_72%)] [-webkit-mask-image:radial-gradient(ellipse_at_center,black,transparent_72%)]" />
         </div>
 
+        {/* my-auto centers short forms; tall forms scroll from the top (avoids justify-center clipping) */}
         <div
-          className={`relative ${widthClass} w-full ${compact ? 'space-y-3' : 'space-y-5'}`}
+          className={`relative ${widthClass} w-full ${compact ? 'space-y-3' : 'my-auto space-y-5'}`}
         >
           <div className="flex flex-col items-center text-center">
             <AnixiLogo variant="auth" linkTo={null} showWordmark={false} />

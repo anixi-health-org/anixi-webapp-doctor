@@ -3,7 +3,7 @@ import React from 'react';
 import { CheckIcon } from '@heroicons/react/24/solid';
 import { ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
 
-export type OnboardingFlow = 'clinic' | 'solo';
+export type OnboardingFlow = 'clinic' | 'solo' | 'market_partner';
 
 export type OnboardingStep = {
   id: string;
@@ -18,6 +18,12 @@ const CLINIC_STEPS: OnboardingStep[] = [
     label: 'Clinic details',
     shortLabel: 'Clinic',
     description: 'Name, timezone, and location',
+  },
+  {
+    id: 'medical-aid',
+    label: 'Medical aid schemes',
+    shortLabel: 'Medical aid',
+    description: 'Schemes your clinic accepts',
   },
   {
     id: 'team',
@@ -54,8 +60,37 @@ const SOLO_STEPS: OnboardingStep[] = [
   },
 ];
 
+const MARKET_PARTNER_STEPS: OnboardingStep[] = [
+  {
+    id: 'business',
+    label: 'Business profile',
+    shortLabel: 'Business',
+    description: 'Type, name, and how patients see you',
+  },
+  {
+    id: 'location',
+    label: 'Location & contact',
+    shortLabel: 'Location',
+    description: 'Where you operate and how to reach you',
+  },
+  {
+    id: 'offerings',
+    label: 'Products & services',
+    shortLabel: 'Offerings',
+    description: 'What appears on the patient Market',
+  },
+  {
+    id: 'submit',
+    label: 'Review & submit',
+    shortLabel: 'Submit',
+    description: 'Confirm details for admin approval',
+  },
+];
+
 export function getOnboardingSteps(flow: OnboardingFlow): OnboardingStep[] {
-  return flow === 'clinic' ? CLINIC_STEPS : SOLO_STEPS;
+  if (flow === 'clinic') return CLINIC_STEPS;
+  if (flow === 'market_partner') return MARKET_PARTNER_STEPS;
+  return SOLO_STEPS;
 }
 
 export function useOnboardingProgress(flow: OnboardingFlow, currentStep: number) {
@@ -136,7 +171,11 @@ export const OnboardingStepSidebar: React.FC<OnboardingStepSidebarProps> = ({
       className={clsx('flex flex-col', className)}
     >
       <p className="mb-4 text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">
-        {flow === 'clinic' ? 'Clinic setup' : 'Getting started'}
+        {flow === 'clinic'
+          ? 'Clinic setup'
+          : flow === 'market_partner'
+            ? 'Market Partner setup'
+            : 'Getting started'}
       </p>
 
       <ol className="space-y-0">
@@ -265,17 +304,23 @@ export function getOnboardingStepMeta(
         };
       case 2:
         return {
+          title: 'Medical aid schemes',
+          subtitle:
+            'Choose which medical schemes your clinic accepts. Every doctor on your team inherits this list.',
+        };
+      case 3:
+        return {
           title: 'Invite your doctors',
           subtitle:
             'Upload or paste your doctor list. Each person receives an email to create their own login under your clinic.',
         };
-      case 3:
+      case 4:
         return {
           title: 'Import your patients',
           subtitle:
             'Add existing patients in bulk. They can download the Anixi app to view records and manage adherence.',
         };
-      case 4:
+      case 5:
         return {
           title: 'Your clinic is ready',
           subtitle:
@@ -283,6 +328,37 @@ export function getOnboardingStepMeta(
         };
       default:
         return { title: 'Getting started', subtitle: '' };
+    }
+  }
+
+  if (flow === 'market_partner') {
+    switch (currentStep) {
+      case 1:
+        return {
+          title: 'Tell us about your business',
+          subtitle:
+            'Choose wellness or pharmacy, then describe how patients should discover you on the Anixi Market.',
+        };
+      case 2:
+        return {
+          title: 'Where do you operate?',
+          subtitle:
+            'Add your address and contact details so patients and Anixi admin can reach you.',
+        };
+      case 3:
+        return {
+          title: 'List your products & services',
+          subtitle:
+            'These offerings appear on the patient Market tab after Anixi admin approves your listing.',
+        };
+      case 4:
+        return {
+          title: 'Review and submit',
+          subtitle:
+            'Confirm everything looks right. Admin will verify before your listing goes live.',
+        };
+      default:
+        return { title: 'Market Partner onboarding', subtitle: '' };
     }
   }
 

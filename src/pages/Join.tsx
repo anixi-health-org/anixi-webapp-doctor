@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Heart, Stethoscope, UserRound } from 'lucide-react';
+import { Building2, Heart, Store, Stethoscope } from 'lucide-react';
 import clsx from 'clsx';
 import { AuthLayout } from '../components/auth/AuthLayout';
 import { SignInPrompt } from '../components/auth/AuthLinks';
@@ -27,10 +27,10 @@ const PATHS: {
     Icon: Stethoscope,
   },
   {
-    path: 'invite',
-    label: 'I have an invite',
-    description: 'A clinic invited me to join as a doctor or staff member',
-    Icon: UserRound,
+    path: 'market_partner',
+    label: 'Market Partner',
+    description: 'Wellness provider or pharmacy — list products & services for patients',
+    Icon: Store,
   },
   {
     path: 'caregiver',
@@ -54,8 +54,8 @@ export const Join: React.FC = () => {
       navigate('/register?role=doctor&path=clinic');
       return;
     }
-    if (selected === 'invite') {
-      navigate('/join/invite');
+    if (selected === 'market_partner') {
+      navigate('/register?role=staff&path=market_partner');
       return;
     }
     navigate('/register?role=caregiver&path=caregiver');

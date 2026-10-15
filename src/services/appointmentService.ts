@@ -2,16 +2,18 @@ import { Appointment, AppointmentDocument, PostConsultAction, PostConsultActionT
 import { convertTimestamp } from '../utils/dateFormatter';
 import {
   djangoBookAppointment,
+  djangoAttachAppointmentDocument,
   djangoListAppointments,
   djangoPatchAppointment,
+  djangoResolveMediaUrl,
   djangoUploadDocument,
 } from './djangoApiService';
 import {
   assertAppointmentStatus,
   effectiveAppointmentStatus,
   formatAppointmentClock,
-  hasConsultBeenStarted,
   parseAppointmentStatus,
+  resolveElapsedAppointmentStatus,
   resolveScheduledAt,
 } from './appointmentCanonical';
 import { calendarDateKeyInTimeZone } from '../lib/timezones';
@@ -103,6 +105,7 @@ const normalizePostConsultActions = (value: any): PostConsultAction[] => {
   const validTypes: PostConsultActionType[] = [
     'prescription_draft',
     'doctor_letter_draft',
+    'clinical_report_draft',
     'medical_document',
     'session_recording',
     'post_consult_note',
@@ -190,6 +193,14 @@ const mapAppointmentFields = (
   const postConsultActions = normalizePostConsultActions(
     data.postConsultActions ?? data.post_consult_actions
   );
+  const startAt = convertTimestamp(data.startAt) || undefined;
+  const endAt = convertTimestamp(data.endAt) || undefined;
+  const durationMinutes =
+    typeof data.durationMinutes === 'number' &&
+    Number.isFinite(data.durationMinutes) &&
+    data.durationMinutes > 0
+      ? data.durationMinutes
+      : undefined;
   const teleconsultConsent = data.teleconsultConsent ?? data.teleconsult_consent
     ? {
         obtained: Boolean((data.teleconsultConsent ?? data.teleconsult_consent).obtained),
@@ -203,17 +214,16 @@ const mapAppointmentFields = (
       }
     : undefined;
 
-  let status = displayStatus;
-  if (
-    status === 'no_show' &&
-    hasConsultBeenStarted({
-      status,
+  const status =
+    resolveElapsedAppointmentStatus({
+      status: displayStatus,
+      scheduledAt: instant,
+      startAt,
+      endAt,
+      durationMinutes,
       teleconsult,
       postConsultActions,
-    })
-  ) {
-    status = 'completed';
-  }
+    }) ?? displayStatus;
 
   return {
     id,
@@ -237,15 +247,15 @@ const mapAppointmentFields = (
     teleconsult,
     teleconsultConsent,
     virtualMeetingLink: typeof data.virtualMeetingLink === 'string' ? data.virtualMeetingLink : undefined,
-    startAt: convertTimestamp(data.startAt) || undefined,
-    endAt: convertTimestamp(data.endAt) || undefined,
-    durationMinutes:
-      typeof data.durationMinutes === 'number' &&
-      Number.isFinite(data.durationMinutes) &&
-      data.durationMinutes > 0
-        ? data.durationMinutes
-        : undefined,
+    startAt,
+    endAt,
+    durationMinutes,
     requestedByRole: data.requestedByRole || undefined,
+    arrivalStatus: data.arrivalStatus || 'expected',
+    checkedInAt: convertTimestamp(data.checkedInAt) || undefined,
+    checkedInBy: typeof data.checkedInBy === 'string' ? data.checkedInBy : undefined,
+    roomId: data.roomId || undefined,
+    doctorName: typeof data.doctorName === 'string' && data.doctorName ? data.doctorName : undefined,
     overrideApplied: data.overrideApplied ?? undefined,
     conflictMeta: data.conflictMeta || undefined,
     editScope,
@@ -310,7 +320,7 @@ export const getDoctorAppointments = async (doctorId: string): Promise<Appointme
     return mapDjangoAppointments(rows as Array<Record<string, unknown>>, doctorId);
   } catch (error) {
     console.error('Django getDoctorAppointments failed:', error);
-    throw error;
+    return [];
   }
 };
 
@@ -335,13 +345,18 @@ export const listenToDoctorAppointments = (
 };
 
 /** All appointments for a clinic/practice (clinic admin schedule view). */
-export const getPracticeWideAppointments = async (practiceId: string): Promise<Appointment[]> => {
+export const getPracticeWideAppointments = async (
+  practiceId: string,
+  opts?: { fromDate?: string; toDate?: string; doctorId?: string },
+): Promise<Appointment[]> => {
   try {
-    const rows = await djangoListAppointments('doctor');
-    const filtered = (rows as Array<Record<string, unknown>>).filter(
-      (row) => String(row.practiceId ?? '') === practiceId
-    );
-    return mapDjangoAppointments(filtered, 'unknown');
+    const rows = await djangoListAppointments({
+      practiceId,
+      fromDate: opts?.fromDate,
+      toDate: opts?.toDate,
+      doctorId: opts?.doctorId,
+    });
+    return mapDjangoAppointments(rows as Array<Record<string, unknown>>, 'unknown');
   } catch (error) {
     console.error('Error in getPracticeWideAppointments:', error);
     return [];
@@ -461,7 +476,14 @@ export const updateAppointment = async (
     patch.consultType = updates.consultType;
     patch.consultationType = updates.consultType;
   }
-  
+  if (updates.startAt) {
+    patch.startAt =
+      updates.startAt instanceof Date ? updates.startAt.toISOString() : updates.startAt;
+  }
+  if (updates.endAt) {
+    patch.endAt = updates.endAt instanceof Date ? updates.endAt.toISOString() : updates.endAt;
+  }
+
   // Get current appointment for old value tracking
   let currentAppointment: Appointment | null = null;
   if (Object.keys(patch).length > 0) {
@@ -614,25 +636,26 @@ export const addAppointmentDocument = async (
     }
 
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const documentId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const uploaded = await djangoUploadDocument(file, 'appointment-document', safeName);
+    const saved = await djangoAttachAppointmentDocument(appointmentId, {
+      storageKey: uploaded.storageKey,
+      title: title?.trim() || file.name,
+      fileName: file.name,
+      mimeType: uploaded.mimeType || file.type,
+      fileSize: uploaded.sizeBytes || file.size,
+    });
 
     const document: AppointmentDocument = {
-      id: documentId,
+      id: String(saved.id),
       title: title?.trim() || undefined,
       fileName: file.name,
       fileType: uploaded.mimeType || file.type,
       fileSize: uploaded.sizeBytes || file.size,
-      downloadURL: uploaded.url,
+      downloadURL: (await djangoResolveMediaUrl(uploaded.url)) ?? uploaded.url,
       storagePath: uploaded.storageKey,
       createdAt: new Date(),
       createdBy,
     };
-
-    console.warn(
-      '[appointmentService] Uploaded appointment document; persisting document lists on appointments is not yet supported by Django API',
-      { doctorId, appointmentId, storageKey: uploaded.storageKey }
-    );
 
     return document;
   } catch (error) {

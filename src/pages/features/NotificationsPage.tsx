@@ -16,6 +16,7 @@ import {
   useRejectIncomingRequest,
 } from '../../hooks/useIncomingSharingRequests';
 import { getDoctorAppointments } from '../../services/appointmentService';
+import { userFacingLoadError } from '../../services/djangoApiService';
 import {
   listDoctorNotifications,
   DoctorNotification,
@@ -97,7 +98,7 @@ export const NotificationsPage: React.FC = () => {
       setAppointments(data);
       setDurable(stored);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load notifications');
+      setError(userFacingLoadError(err, 'Failed to load notifications'));
     } finally {
       setIsLoading(false);
     }
@@ -287,9 +288,13 @@ export const NotificationsPage: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-[#344256]">
-                      {req.patientName || 'Patient'}
+                      {req.patientName || req.patientEmail || 'Patient'}
                     </p>
-                    <p className="text-xs text-[#65758b]">Wants to share health data with you</p>
+                    <p className="text-xs text-[#65758b]">
+                      {req.patientEmail
+                        ? req.patientEmail
+                        : 'Wants to share health data with you'}
+                    </p>
                   </div>
                 </div>
                 <div className="flex gap-2">

@@ -14,13 +14,14 @@ import { useAuth } from '../../hooks/useAuth';
 import { listenToDoctorAppointments } from '../../services/appointmentService';
 import {
   getDoctorPatientGrowth,
-  derivePatientRosterStatus,
   type DoctorPatientGrowth,
 } from '../../services/patientManagementService';
 import {
   getPracticeDashboardStats,
   type PracticeDashboardStats,
 } from '../../services/practiceDashboardService';
+import { clinicianGivenName } from '../../lib/clinicianName';
+import { patientAccountStatus, patientAccountStatusLabel } from '../../utils/patientRosterStatus';
 import { DashboardPageSkeleton } from '../ui/Skeleton';
 import { PageHeader } from '../page-layout/PageHeader';
 import {
@@ -158,7 +159,7 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
 }) => {
   const navigate = useNavigate();
   const { user, practiceSession } = useAuth();
-  const firstName = user?.displayName?.split(' ')[0] || 'Doctor';
+  const firstName = clinicianGivenName(user?.displayName);
   const isClinic = practiceSession?.practice?.orgType === 'clinic';
   const scheduleTimeZone =
     practiceSession?.practice?.timezone?.trim() || detectBrowserTimezone();
@@ -795,9 +796,9 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
                 <tbody>
                   {visiblePatients.map((patient) => {
                     const age = ageFromDob(patient.dateOfBirth);
-                    const status = derivePatientRosterStatus(patient);
-                    const condition = patient.chronicDiseases?.[0] || '-';
-                    const initials = (patient.displayName || patient.email || '?')
+                    const status = patientAccountStatus(patient);
+                    const condition = patient.chronicDiseases?.[0] || '—';
+                    const initials = (patient.displayName || '?')
                       .split(' ')
                       .map((p) => p[0])
                       .join('')
@@ -815,7 +816,7 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
                             </span>
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-[#65758b]">{patient.id.slice(0, 8).toUpperCase()}</td>
+                        <td className="px-3 py-3 text-[#65758b]">—</td>
                         <td className="px-3 py-3 text-[#65758b]">
                           {age != null ? `${age}` : '-'}
                           {patient.gender ? ` / ${patient.gender}` : ''}
@@ -823,13 +824,7 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
                         <td className="px-3 py-3 text-[#344256]">{condition}</td>
                         <td className="px-3 py-3">
                           <span className={clsx('rounded-full px-2.5 py-0.5 text-xs font-semibold', statusBadge(status))}>
-                            {status === 'stable'
-                              ? 'Stable'
-                              : status === 'recovering'
-                                ? 'Recovering'
-                                : status === 'critical'
-                                  ? 'Critical'
-                                  : 'Inactive'}
+                            {patientAccountStatusLabel(status)}
                           </span>
                         </td>
                         <td className="px-3 py-3 text-right">

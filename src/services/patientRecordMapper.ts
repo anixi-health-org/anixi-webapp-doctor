@@ -15,8 +15,23 @@ function formatPhysicalAddress(addr: unknown): string | undefined {
 }
 
 function asStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => {
+      if (typeof item === 'string' && item.trim()) return [item.trim()];
+      if (item && typeof item === 'object' && 'value' in item) {
+        const raw = (item as { value?: unknown }).value;
+        return typeof raw === 'string' && raw.trim() ? [raw.trim()] : [];
+      }
+      return [];
+    });
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+  return [];
 }
 
 /**
@@ -107,7 +122,14 @@ export function mapPatientRecord(
     displayName,
     photoURL,
     role: 'patient',
-    gender: (p.gender || u.gender || undefined) as Patient['gender'],
+    gender: (() => {
+      const raw =
+        (typeof p.gender === 'string' && p.gender) ||
+        (typeof u.gender === 'string' && u.gender) ||
+        '';
+      const normalized = raw.toLowerCase().trim();
+      return (normalized || undefined) as Patient['gender'];
+    })(),
     phoneNumber: phone,
     address:
       addressFromPatient ||
@@ -127,11 +149,26 @@ export function mapPatientRecord(
       (typeof p.assignedDoctorId === 'string' && p.assignedDoctorId) ||
       (typeof u.assignedDoctorId === 'string' && u.assignedDoctorId) ||
       doctorId,
-    practiceId: typeof p.practiceId === 'string' ? p.practiceId : undefined,
+    rosterStatus:
+      (typeof p.rosterStatus === 'string' && p.rosterStatus) ||
+      (typeof u.rosterStatus === 'string' && u.rosterStatus) ||
+      undefined,
+    practiceId:
+      (typeof p.practiceId === 'string' && p.practiceId) ||
+      (typeof u.practiceId === 'string' && u.practiceId) ||
+      undefined,
     emergencyContact:
       (p.emergencyContact as Patient['emergencyContact']) ||
       (u.emergencyContact as Patient['emergencyContact']) ||
-      undefined,
+      (typeof p.emergencyContactName === 'string' && p.emergencyContactName.trim()
+        ? {
+            name: p.emergencyContactName,
+            phone:
+              (typeof p.emergencyContactPhone === 'string' && p.emergencyContactPhone) ||
+              '',
+            relationship: '',
+          }
+        : undefined),
     medicalAid:
       (p.medicalAid as Patient['medicalAid']) ||
       medicalAidFromScheme ||

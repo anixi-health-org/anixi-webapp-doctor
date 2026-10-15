@@ -14,20 +14,24 @@ import { getPatientForDoctorView } from '../services/patientManagementService';
 import { Appointment, Patient } from '../types';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
 import { convertTimestamp } from '../utils/dateFormatter';
-import { formatName } from '../utils/dataFormatter';
+import { formatGender, formatName } from '../utils/dataFormatter';
+import { patientContactLabel } from '../utils/patientContact';
+import { patientAccountStatus, patientAccountStatusLabel } from '../utils/patientRosterStatus';
 import { PatientProfileSkeleton } from '../components/ui';
 import {
   getPatientWearableSummary,
   type PatientWearableSummary,
 } from '../services/wearableService';
-import { getPatientClinicalMetrics, type PatientClinicalMetrics } from '../services/clinicalMetricsService';
 import { PatientClinicalMetricsPanel } from '../components/metrics/ClinicalMetricsPanels';
+import { usePatientMedicalVaultAccess } from '../hooks/usePatientMedicalVaultAccess';
+import { getPatientClinicalMetrics, type PatientClinicalMetrics } from '../services/clinicalMetricsService';
 
 export const PatientProfile: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { patientId } = useParams<{ patientId: string }>();
   const { user, practiceSession } = useAuth();
+  const practiceId = practiceSession?.practice?.id;
 
   const contextState = (location.state ?? {}) as {
     appointmentId?: string;
@@ -63,6 +67,7 @@ export const PatientProfile: React.FC = () => {
     void logPatientActivity({
       doctorId: user.id,
       patientId: patient.id,
+      practiceId,
       appointmentId: appointmentContextId,
       actionType,
       description,
@@ -91,7 +96,7 @@ export const PatientProfile: React.FC = () => {
           patientEmail: contextState.patientEmail,
         });
         if (!foundPatient) {
-          setError('Patient not found');
+          setError('Patient not found or you do not have access to this record.');
           return;
         }
         setPatient(foundPatient);
@@ -181,6 +186,30 @@ export const PatientProfile: React.FC = () => {
     patient?.id,
     user?.id
   );
+  const { canAccess: canViewMedicalVault } = usePatientMedicalVaultAccess(patient);
+
+  useEffect(() => {
+    if (!patient) {
+      setClinicalMetrics(null);
+      return;
+    }
+    let cancelled = false;
+    void getPatientClinicalMetrics(patient, {
+      daysBack: 30,
+      appointments: patientAppointments,
+      practiceId: practiceSession?.practice?.id,
+      includeLabsAndSymptoms: true,
+    })
+      .then((m) => {
+        if (!cancelled) setClinicalMetrics(m);
+      })
+      .catch(() => {
+        if (!cancelled) setClinicalMetrics(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [patient, patientAppointments, practiceSession?.practice?.id]);
 
   useEffect(() => {
     if (!patient) {
@@ -310,25 +339,12 @@ export const PatientProfile: React.FC = () => {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-lg font-bold text-[#0E2340]">{formattedName || 'Unnamed Patient'}</h2>
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                      patient.chronicDiseases?.length
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-emerald-50 text-emerald-700'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-1.5 w-1.5 rounded-full ${
-                        patient.chronicDiseases?.length ? 'bg-amber-500' : 'bg-emerald-500'
-                      }`}
-                    />
-                    {patient.chronicDiseases?.length ? 'Follow-up' : 'Stable'}
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">
+                    {patientAccountStatusLabel(patientAccountStatus(patient))}
                   </span>
                 </div>
                 <p className="mt-1 text-[13px] text-[#65758b]">
-                  {patient.id.slice(0, 8).toUpperCase()}
-                  {patient.gender ? ` · ${patient.gender}` : ''}
-                  {patient.email ? ` · ${patient.email}` : ''}
+                  {[formatGender(patient.gender), patientContactLabel(patient.email)].filter(Boolean).join(' · ') || ' '}
                 </p>
               </div>
             </div>
@@ -339,7 +355,9 @@ export const PatientProfile: React.FC = () => {
               </div>
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-wider text-[#8FA0B6]">Email</p>
-                <p className="mt-0.5 truncate font-medium text-[#0E2340]">{patient.email || '-'}</p>
+                <p className="mt-0.5 truncate font-medium text-[#0E2340]">
+                  {patientContactLabel(patient.email) || '—'}
+                </p>
               </div>
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-wider text-[#8FA0B6]">Address</p>
@@ -539,6 +557,17 @@ export const PatientProfile: React.FC = () => {
                 logActivity('open_vitals_history', 'Opened vitals history from patient profile.');
                 navigate(`/patient-profile/${patient.id}/vitals-history`);
               }}
+              onMedicalVault={
+                canViewMedicalVault
+                  ? () => {
+                      logActivity(
+                        'open_medical_vault',
+                        'Opened patient medical record vault from profile.',
+                      );
+                      navigate(`/patient-profile/${patient.id}/medical-records`);
+                    }
+                  : undefined
+              }
               onWearableData={() => {
                 logActivity('open_wearable_data', 'Opened wearable data from patient profile.');
                 navigate(`/patient-profile/${patient.id}/wearable`);

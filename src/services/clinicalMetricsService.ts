@@ -20,7 +20,9 @@ import {
   djangoListAdherence,
   djangoListMedicalFiles,
   djangoListMood,
+  djangoListRosterMetrics,
   type DjangoAdherenceRecord,
+  type DjangoRosterMetricRow,
 } from './djangoApiService';
 import { getDoctorAppointments } from './appointmentService';
 import { getDoctorPatients, getPatientStatus } from './patientManagementService';
@@ -348,18 +350,67 @@ function rollupPatients(
   };
 }
 
+function metricsFromRosterRow(
+  patient: Patient,
+  row: DjangoRosterMetricRow | undefined,
+  appointments: Appointment[],
+  daysBack: number,
+): PatientClinicalMetrics {
+  const rules = getActiveAdherenceRules();
+  const taken = row?.adherence?.taken ?? 0;
+  const missed = row?.adherence?.missed ?? 0;
+  const pending = row?.adherence?.pending ?? 0;
+  const decided = taken + missed;
+  const rate = row?.adherence?.rate ?? (decided ? Math.round((taken / decided) * 100) : 0);
+  const band = labelFromAdherenceRate(rate, decided > 0, rules);
+  const readings = row?.vitalsReadings ?? 0;
+  const base: Omit<PatientClinicalMetrics, 'needsAttention' | 'attentionReasons'> = {
+    patientId: patient.id,
+    displayName: patient.displayName || row?.displayName || patient.email || 'Patient',
+    daysBack,
+    adherence: { rate, band, taken, missed, pending },
+    vitals: {
+      readings,
+      urgent: 0,
+      warning: 0,
+      normal: readings,
+      worst: readings > 0 ? 'normal' : 'unknown',
+    },
+    appointments: appointmentBuckets(
+      appointments.filter((appointment) => appointment.patientId === patient.id),
+    ),
+    labs: { documentCount: row?.documentCount ?? 0 },
+    symptoms: { checkIns: row?.moodCheckIns ?? 0 },
+    treatment: {
+      activeTreatments: patient.currentTreatments?.length ?? 0,
+      chronicConditions: patient.chronicDiseases?.length ?? 0,
+    },
+  };
+  const attentionReasons = buildAttentionReasons(base, patient);
+  return { ...base, needsAttention: attentionReasons.length > 0, attentionReasons };
+}
+
 /** Doctor-scoped clinical metrics across the roster. */
 export async function getDoctorClinicalMetrics(
   doctorId: string,
   options?: { daysBack?: number; practiceId?: string | null }
 ): Promise<RosterClinicalMetrics> {
   const daysBack = options?.daysBack ?? 30;
-  const [patients, appointments] = await Promise.all([
+  const [patients, appointments, rollup] = await Promise.all([
     getDoctorPatients(doctorId),
     getDoctorAppointments(doctorId),
+    djangoListRosterMetrics(daysBack),
   ]);
 
-  const metrics = await mapPool(patients, 4, (patient) =>
+  if (rollup?.patients) {
+    const byId = new Map(rollup.patients.map((row) => [row.patientId, row]));
+    const metrics = patients.map((patient) =>
+      metricsFromRosterRow(patient, byId.get(patient.id), appointments, daysBack),
+    );
+    return rollupPatients('doctor', doctorId, daysBack, metrics, appointments);
+  }
+
+  const metrics = await mapPool(patients, 2, (patient) =>
     getPatientClinicalMetrics(patient, {
       daysBack,
       appointments,
@@ -377,9 +428,10 @@ export async function getPracticeClinicalMetrics(
   options?: { daysBack?: number }
 ): Promise<RosterClinicalMetrics> {
   const daysBack = options?.daysBack ?? 30;
-  const [patients, clinicians] = await Promise.all([
+  const [patients, clinicians, rollup] = await Promise.all([
     listPracticePatients(practiceId),
     listPracticeClinicians(practiceId).catch(() => []),
+    djangoListRosterMetrics(daysBack),
   ]);
 
   const doctorIds = clinicians.map((c) => c.uid);
@@ -387,8 +439,15 @@ export async function getPracticeClinicalMetrics(
     doctorIds.map((id) => getDoctorAppointments(id).catch(() => [] as Appointment[]))
   );
   const appointments = appointmentLists.flat();
+  if (rollup?.patients) {
+    const byId = new Map(rollup.patients.map((row) => [row.patientId, row]));
+    const metrics = patients.map((patient) =>
+      metricsFromRosterRow(patient, byId.get(patient.id), appointments, daysBack),
+    );
+    return rollupPatients('practice', practiceId, daysBack, metrics, appointments);
+  }
 
-  const metrics = await mapPool(patients, 4, (patient) =>
+  const metrics = await mapPool(patients, 2, (patient) =>
     getPatientClinicalMetrics(patient, {
       daysBack,
       appointments,

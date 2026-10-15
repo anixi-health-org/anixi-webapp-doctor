@@ -1,18 +1,6 @@
 import type { BookingPolicy, Practice, PracticeMember, PracticePermissions, PracticeSession } from '../types';
 import { normalizePermissions } from '../lib/practiceRoles';
-import { djangoGetPracticeSession } from './djangoApiService';
-
-const EMPTY_PERMISSIONS: PracticePermissions = {
-  manageAppointments: false,
-  manageSoftBlocks: false,
-  overrideConflicts: false,
-  editBookingPolicies: false,
-  managePatients: false,
-  manageMembers: false,
-  viewAllDoctors: false,
-  viewBilling: false,
-  manageContent: false,
-};
+import { djangoGetPracticeSession, djangoResolveMediaUrl } from './djangoApiService';
 
 function parsePractice(raw: Record<string, unknown>): Practice {
   return {
@@ -30,6 +18,15 @@ function parsePractice(raw: Record<string, unknown>): Practice {
       ? (raw.consultTypeSettings as Practice['consultTypeSettings'])
       : undefined,
     publicListing: (raw.publicListing as Practice['publicListing']) ?? undefined,
+    acceptedSchemes: Array.isArray(raw.acceptedSchemes)
+      ? (raw.acceptedSchemes as Practice['acceptedSchemes'])
+      : undefined,
+    acceptedPlans: Array.isArray(raw.acceptedPlans)
+      ? (raw.acceptedPlans as Practice['acceptedPlans'])
+      : undefined,
+    configureAcceptedSchemes: raw.configureAcceptedSchemes === true,
+    clinicCode: raw.clinicCode ? String(raw.clinicCode) : undefined,
+    logoUrl: raw.logoUrl ? String(raw.logoUrl) : undefined,
     createdAt: raw.createdAt ? new Date(String(raw.createdAt)) : new Date(),
     updatedAt: raw.updatedAt ? new Date(String(raw.updatedAt)) : new Date(),
   };
@@ -73,8 +70,13 @@ export async function loadDjangoPracticeSession(_uid: string): Promise<PracticeS
   if (!payload) return null;
 
   const practice = parsePractice(payload.practice as Record<string, unknown>);
+  const resolvedLogo = await djangoResolveMediaUrl(practice.logoUrl);
   const member = parseMember(payload.member as Record<string, unknown>);
   const bookingPolicy = parseBookingPolicy(payload.bookingPolicy as Record<string, unknown>);
 
-  return { practice, member, bookingPolicy };
+  return {
+    practice: resolvedLogo ? { ...practice, logoUrl: resolvedLogo } : practice,
+    member,
+    bookingPolicy,
+  };
 }

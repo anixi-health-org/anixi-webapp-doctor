@@ -37,7 +37,8 @@ const clinicAdminRoles: PracticeRole[] = [
 export const InviteAcceptPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, login, refreshPracticeSession, refreshUser, isAuthenticated } = useAuth();
+  const { user, login, logout, refreshPracticeSession, refreshUser, isAuthenticated, isLoading } =
+    useAuth();
 
   const practiceId = searchParams.get('practiceId') || '';
   const inviteId = searchParams.get('inviteId') || '';
@@ -49,18 +50,20 @@ export const InviteAcceptPage: React.FC = () => {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const inviteConfig = getJoinPathConfig('invite');
-  const hasInviteParams = Boolean(practiceId && inviteId);
+  const hasInviteParams = Boolean(practiceId && inviteId && token);
 
   useEffect(() => {
     if (!hasInviteParams) return;
     let cancelled = false;
     (async () => {
       try {
-        const data = await getPracticeInvite(practiceId, inviteId);
+        const data = await getPracticeInvite(practiceId, inviteId, token);
         if (cancelled) return;
         if (!data) {
           setLoadError('Invitation not found.');
@@ -96,7 +99,7 @@ export const InviteAcceptPage: React.FC = () => {
     uid: string,
     userEmail: string,
     name?: string,
-    role?: PracticeRole
+    role?: PracticeRole,
   ) => {
     await acceptPracticeInvite({
       practiceId,
@@ -135,24 +138,46 @@ export const InviteAcceptPage: React.FC = () => {
       const authRole: AuthRole = doctorAuthRoles.includes(invite.role) ? 'doctor' : 'staff';
 
       if (isAuthenticated && user) {
+        if (user.email.trim().toLowerCase() !== invite.email.trim().toLowerCase()) {
+          setError('Sign out and continue with the invited email address.');
+          return;
+        }
         await finishAccept(user.id, user.email, user.displayName, invite.role);
         return;
       }
 
       if (mode === 'register') {
-        if (password.length < 6) {
-          setError('Password must be at least 6 characters');
+        if (password.length < 10) {
+          setError('Password must be at least 10 characters');
           setSubmitting(false);
           return;
         }
-        await registerProfessional(email, password, displayName || invite.displayName || email, authRole);
+        if (password !== confirmPassword) {
+          setError('Passwords do not match');
+          setSubmitting(false);
+          return;
+        }
+        if (!acceptPrivacy) {
+          setError('You must accept the Privacy Policy to continue');
+          setSubmitting(false);
+          return;
+        }
+        await registerProfessional(
+          email,
+          password,
+          displayName || invite.displayName || email,
+          authRole,
+          undefined,
+          'invite',
+          acceptPrivacy,
+        );
         const professional = await login(email, password, authRole);
         if (!professional) throw new Error('Could not sign in after registration');
         await finishAccept(
           professional.id,
           professional.email,
           professional.displayName,
-          invite.role
+          invite.role,
         );
       } else {
         const professional = await login(email, password);
@@ -161,7 +186,7 @@ export const InviteAcceptPage: React.FC = () => {
           professional.id,
           professional.email,
           professional.displayName,
-          invite.role
+          invite.role,
         );
       }
     } catch (err: unknown) {
@@ -188,13 +213,14 @@ export const InviteAcceptPage: React.FC = () => {
           </div>
           <p className="text-base font-medium text-red-700">{loadError}</p>
           <p className="mt-3 text-sm text-gray-500">
-            Open the full link from your clinic email, or ask them to send a new invitation.
+            Open the Accept invite link from your email (sent from info@anixihealth.com), or ask your
+            clinic to resend the invitation.
           </p>
           <Link
-            to="/join"
+            to="/login"
             className="mt-8 inline-flex rounded-full bg-anixi-green px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90"
           >
-            Back to join
+            Back to sign in
           </Link>
         </div>
       </AuthLayout>
@@ -217,10 +243,22 @@ export const InviteAcceptPage: React.FC = () => {
     );
   }
 
+  const invitedEmail = invite.email.trim().toLowerCase();
+  const signedInEmail = (user?.email || '').trim().toLowerCase();
+  const signedInAsInvitedUser = Boolean(signedInEmail) && signedInEmail === invitedEmail;
+  const signedInAsWrongUser =
+    !isLoading && isAuthenticated && Boolean(user) && !signedInAsInvitedUser;
+  const showAuthForm = !isLoading && !isAuthenticated;
+
+  const handleSwitchAccount = async () => {
+    setError('');
+    await logout();
+  };
+
   return (
     <AuthLayout
-      title="You're invited"
-      subtitle={`Join ${invite.practiceName} as ${ROLE_LABELS[invite.role]}`}
+      title="Accept your invitation"
+      subtitle={`Create your password to join ${invite.practiceName}`}
       maxWidth="xl"
       heroSlides={inviteConfig.heroSlides}
     >
@@ -233,7 +271,24 @@ export const InviteAcceptPage: React.FC = () => {
           </p>
         </div>
 
-        {!isAuthenticated && (
+        {signedInAsWrongUser && (
+          <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <p className="font-medium">This invitation is for {invite.email}</p>
+            <p className="mt-1 text-amber-800">
+              You&apos;re signed in as {user?.email}. Sign out to create a password or sign in with
+              the invited email.
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleSwitchAccount()}
+              className="mt-3 inline-flex rounded-full bg-anixi-green px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+            >
+              Sign out and continue
+            </button>
+          </div>
+        )}
+
+        {showAuthForm && (
           <div className="mb-5 flex rounded-full bg-gray-100 p-1 text-sm">
             <button
               type="button"
@@ -242,7 +297,7 @@ export const InviteAcceptPage: React.FC = () => {
                 mode === 'register' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
               }`}
             >
-              Create account
+              Create password
             </button>
             <button
               type="button"
@@ -256,69 +311,123 @@ export const InviteAcceptPage: React.FC = () => {
           </div>
         )}
 
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          {mode === 'register' && !isAuthenticated && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Full name</label>
-              <input
-                required
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-anixi-green focus:outline-none focus:ring-1 focus:ring-anixi-green"
-              />
-            </div>
-          )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Email</label>
-            <input
-              type="email"
-              required
-              value={email}
-              readOnly
-              className="mt-1.5 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-600"
-            />
-            <p className="mt-1 text-xs text-gray-400">Must match the invited email address</p>
-          </div>
-          {!isAuthenticated && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Password</label>
-              <div className="relative mt-1.5">
+        {!signedInAsWrongUser && (
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            {mode === 'register' && showAuthForm && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Full name</label>
                 <input
-                  type={showPassword ? 'text' : 'password'}
                   required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 pr-10 text-sm focus:border-anixi-green focus:outline-none focus:ring-1 focus:ring-anixi-green"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-anixi-green focus:outline-none focus:ring-1 focus:ring-anixi-green"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                >
-                  {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
-                </button>
               </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Email</label>
+              <input
+                type="email"
+                required
+                value={email}
+                readOnly
+                className="mt-1.5 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-600"
+              />
+              <p className="mt-1 text-xs text-gray-400">Must match the invited email address</p>
             </div>
-          )}
+            {showAuthForm && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    {mode === 'register' ? 'Create password' : 'Password'}
+                  </label>
+                  <div className="relative mt-1.5">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2.5 pr-10 text-sm focus:border-anixi-green focus:outline-none focus:ring-1 focus:ring-anixi-green"
+                      placeholder={mode === 'register' ? 'At least 10 characters' : undefined}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? (
+                        <EyeSlashIcon className="h-5 w-5" />
+                      ) : (
+                        <EyeIcon className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+                {mode === 'register' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Confirm password
+                    </label>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      autoComplete="new-password"
+                      className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-anixi-green focus:outline-none focus:ring-1 focus:ring-anixi-green"
+                      placeholder="Re-enter your password"
+                    />
+                  </div>
+                )}
+                {mode === 'register' && (
+                  <label className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={acceptPrivacy}
+                      onChange={(e) => setAcceptPrivacy(e.target.checked)}
+                      required
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-anixi-green focus:ring-anixi-green"
+                    />
+                    <span className="text-sm text-gray-600">
+                      I accept the{' '}
+                      <Link
+                        to="/privacy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-anixi-green underline hover:text-anixi-green/80"
+                      >
+                        Privacy Policy
+                      </Link>{' '}
+                      and acknowledge POPIA compliance requirements
+                    </span>
+                  </label>
+                )}
+              </>
+            )}
 
-          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+            {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-full bg-anixi-green py-3.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-          >
-            {submitting
-              ? 'Joining…'
-              : isAuthenticated
-                ? 'Accept invitation'
-                : mode === 'register'
-                  ? 'Create account & join'
-                  : 'Sign in & join'}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={submitting || isLoading}
+              className="w-full rounded-full bg-anixi-green py-3.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+            >
+              {submitting
+                ? 'Joining…'
+                : isLoading
+                  ? 'Checking session…'
+                  : signedInAsInvitedUser
+                    ? 'Accept invitation'
+                    : mode === 'register'
+                      ? 'Create password & join'
+                      : 'Sign in & join'}
+            </button>
+          </form>
+        )}
 
-        {!isAuthenticated && (
+        {showAuthForm && (
           <div className="mt-6">
             <SignInPrompt />
           </div>

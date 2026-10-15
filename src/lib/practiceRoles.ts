@@ -234,7 +234,7 @@ export type CoreAccountRole = (typeof CORE_ACCOUNT_ROLES)[number];
 export const PATIENT_ACCOUNT_ROLE_NOTE =
   'Patient is an account-level role on the patient app. Patients are not invited into a practice as staff; clinicians share records with them instead.';
 
-/** Bookable clinicians, appear in doctor lists and can hold diaries */
+/** Bookable clinicians; appear in doctor lists and can hold diaries. Ops staff are never in this set. */
 export function isClinicianRole(role: PracticeRole): boolean {
   return (
     role === 'doctor' ||
@@ -255,6 +255,17 @@ export function isAdminStaffRole(role: PracticeRole): boolean {
     role === 'billing_clerk' ||
     role === 'content_creator'
   );
+}
+
+/** People who appear in schedule/booking doctor pickers. */
+export function isBookableClinician(member: {
+  role: PracticeRole;
+  status?: 'active' | 'inactive' | 'invited';
+  isClinician?: boolean;
+}): boolean {
+  if (member.status && member.status !== 'active') return false;
+  if (!isClinicianRole(member.role)) return false;
+  return member.isClinician !== false;
 }
 
 export function permissionsForRole(role: PracticeRole): PracticePermissions {

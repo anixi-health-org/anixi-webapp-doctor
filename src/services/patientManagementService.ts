@@ -1,5 +1,10 @@
 import { buildPatientSignupLink } from '../lib/referralLinks';
 import { Patient, SharingRequest } from '../types';
+import { isPlaceholderPatientEmail } from '../utils/patientContact';
+import {
+  patientAccountStatus,
+  type PatientAccountStatus,
+} from '../utils/patientRosterStatus';
 import { mapPatientRecord } from './patientRecordMapper';
 import {
   djangoCreateSharingRequest,
@@ -7,29 +12,59 @@ import {
   djangoImportRoster,
   djangoListPatientPanel,
   djangoListSharingRequests,
+  djangoPatchPracticePatientAccount,
+  djangoRemoveFromPanel,
   djangoResolveSharing,
+  djangoSendTransactionalEmail,
   isDjangoApiEnabled,
+  type DjangoPanelPatient,
 } from './djangoApiService';
 import { logPatientEvent } from './centralEventLogService';
+
+const patientAppUrl = () =>
+  process.env.REACT_APP_PATIENT_APP_URL || 'https://anixihealth.com/activate';
 
 export const sendPatientDownloadInvite = async (opts: {
   doctorId: string;
   to: string;
   patientDisplayName?: string;
+  clinicName?: string;
+  clinicCode?: string;
+  invitedByName?: string;
 }): Promise<void> => {
-  // TODO: route invite email via Django transactional-email endpoint once available.
-  const signupLink = buildPatientSignupLink();
-  console.log(
-    `[patientManagementService] sendPatientDownloadInvite stub — to=${opts.to} signupLink=${signupLink}`,
-  );
+  if (!isDjangoApiEnabled()) {
+    const signupLink = buildPatientSignupLink();
+    console.log(
+      `[patientManagementService] sendPatientDownloadInvite skipped, to=${opts.to} signupLink=${signupLink}`,
+    );
+    throw new Error('Email is not configured.');
+  }
+
+  const sent = await djangoSendTransactionalEmail('patient_download_invite', opts.to.trim(), {
+    doctorName: opts.invitedByName || 'Your clinic',
+    patientName: opts.patientDisplayName || '',
+    clinicName: opts.clinicName || 'your clinic',
+    clinicCode: opts.clinicCode || '',
+    signupUrl: patientAppUrl(),
+  });
+  if (!sent) {
+    throw new Error('The invitation email could not be sent.');
+  }
 };
 
 /** Keeps doctor portal + mobile permission models in sync for health data reads. */
 export const linkDoctorPatientAccess = async (
-  _doctorId: string,
-  _patientId: string,
+  doctorId: string,
+  patientId: string,
 ): Promise<void> => {
-  // TODO: persist patient-doctor link via Django sharing endpoint once available.
+  if (!isDjangoApiEnabled()) {
+    throw new Error('Patient linking requires the Anixi API.');
+  }
+  await djangoCreateSharingRequest({
+    clinicianId: doctorId,
+    patientId,
+    message: 'Clinician requested access to this patient record.',
+  });
 };
 
 export type Unsubscribe = () => void;
@@ -40,37 +75,37 @@ async function loadPatientRecordForDoctor(
 ): Promise<Patient | null> {
   if (!isDjangoApiEnabled()) return null;
 
-  try {
-    const panel = await djangoListPatientPanel();
-    const row = panel.find((entry) => entry.patientId === patientId);
-    if (row) {
-      return mapPatientRecord(
-        patientId,
-        undefined,
-        { displayName: row.displayName || 'Patient', email: row.email || '' },
-        doctorId,
-      );
-    }
-  } catch {
-    return null;
-  }
+  const [panel, chart] = await Promise.all([
+    djangoListPatientPanel().catch(() => [] as DjangoPanelPatient[]),
+    djangoGetPatientChart(patientId).catch(() => null),
+  ]);
+  const row = panel.find((entry) => entry.patientId === patientId);
+  return patientFromPanelAndChart(patientId, row, chart, doctorId);
+}
 
-  try {
-    const chart = await djangoGetPatientChart(patientId);
-    if (!chart) return null;
-    const profile = (chart.profile as Record<string, unknown> | undefined) ?? {};
-    return mapPatientRecord(
-      patientId,
-      undefined,
-      {
-        displayName: String(profile.fullName ?? profile.displayName ?? 'Patient'),
-        email: String(profile.email ?? ''),
-      },
-      doctorId,
-    );
-  } catch {
-    return null;
-  }
+export function patientFromPanelAndChart(
+  patientId: string,
+  panel: DjangoPanelPatient | undefined,
+  chart: Record<string, unknown> | null | undefined,
+  doctorId?: string,
+): Patient | null {
+  const profile = (chart?.profile as Record<string, unknown> | undefined) ?? {};
+  if (!panel && !chart) return null;
+
+  return mapPatientRecord(
+    patientId,
+    {
+      ...profile,
+      rosterStatus: panel?.status,
+      practiceId: panel?.practiceId ?? profile.practiceId,
+    },
+    {
+      displayName: panel?.displayName || '',
+      email: panel?.email || '',
+      phoneNumber: panel?.phoneNumber || '',
+    },
+    doctorId,
+  );
 }
 
 /**
@@ -116,24 +151,35 @@ export const getPatientForDoctorView = async (
   return null;
 };
 
+function parseOptionalDate(value?: string | null): Date | undefined {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+export function mapPanelPatient(row: DjangoPanelPatient): Patient {
+  const createdAt = parseOptionalDate(row.createdAt);
+  const updatedAt = parseOptionalDate(row.updatedAt) ?? createdAt;
+  return {
+    id: row.patientId,
+    email: isPlaceholderPatientEmail(row.email) ? '' : row.email || '',
+    displayName: (row.displayName || '').trim(),
+    phoneNumber: row.phoneNumber || undefined,
+    rosterStatus: row.status,
+    practiceId: row.practiceId ?? undefined,
+    role: 'patient' as const,
+    createdAt: createdAt as Date,
+    updatedAt: updatedAt as Date,
+  };
+}
+
 export const getDoctorPatients = async (doctorId: string): Promise<Patient[]> => {
+  void doctorId;
   if (isDjangoApiEnabled()) {
-    try {
-      const panel = await djangoListPatientPanel();
-      return panel.map((row) => ({
-        id: row.patientId,
-        email: row.email,
-        displayName: row.displayName || 'Patient',
-        role: 'patient' as const,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }));
-    } catch {
-      return [];
-    }
+    const panel = await djangoListPatientPanel();
+    return panel.map(mapPanelPatient);
   }
 
-  // Firestore roster path removed.
   return [];
 };
 export interface PatientRequest {
@@ -146,10 +192,18 @@ export interface PatientRequest {
   patientInfo?: Patient;
 }
 export const getDoctorPatientRequests = async (
-  _doctorId: string,
+  doctorId: string,
 ): Promise<PatientRequest[]> => {
-  // TODO: replace with a Django patient-request endpoint once available.
-  return [];
+  const sharing = await getDoctorSharingRequests(doctorId);
+  return sharing
+    .filter((row) => row.status === 'pending')
+    .map((row) => ({
+      id: row.id,
+      patientId: row.patientId,
+      doctorId,
+      status: row.status as PatientRequest['status'],
+      requestedAt: row.createdAt ?? new Date(),
+    }));
 };
 export const debugListAllPatientRequests = async (
   _doctorId: string,
@@ -161,14 +215,13 @@ export const acceptPatientRequest = async (
   requestId: string,
   patientId: string,
 ): Promise<void> => {
-  await linkDoctorPatientAccess(doctorId, patientId);
-  // TODO: persist acceptance via Django patient-request endpoint once available.
+  await acceptSharingRequest(patientId, doctorId, requestId);
 };
 export const rejectPatientRequest = async (
-  _doctorId: string,
+  doctorId: string,
   requestId: string,
 ): Promise<void> => {
-  // TODO: persist rejection via Django patient-request endpoint once available.
+  await rejectSharingRequest('', doctorId, requestId);
 };
 export const sendPatientRequest = async (
   patientId: string,
@@ -180,7 +233,13 @@ export const sendPatientRequest = async (
   if (!doctorId || doctorId.trim() === '') {
     throw new Error('Doctor ID is required');
   }
-  // TODO: persist via Django patient-request endpoint once available.
+  if (isDjangoApiEnabled()) {
+    const result = await djangoCreateSharingRequest({
+      clinicianId: doctorId,
+      patientId,
+    });
+    return String(result.id);
+  }
   return `patient-request-${Date.now()}`;
 };export const calculateAge = (dateOfBirth: Date | undefined | null): number | null => {
   if (!dateOfBirth) return null;
@@ -202,28 +261,16 @@ export const sendPatientRequest = async (
   }
 };
 
-export type PatientRosterStatus = 'stable' | 'critical' | 'recovering' | 'inactive';
+export type PatientRosterStatus = PatientAccountStatus;
 
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-
-/** Same roster status as the Patients page, not adherence or 5-day recency. */
+/** Account activation only. Never infers clinical stability. */
 export function derivePatientRosterStatus(patient: Patient): PatientRosterStatus {
-  const chronicCount = patient.chronicDiseases?.length ?? 0;
-  if (chronicCount > 2) return 'critical';
-  if (chronicCount > 0) return 'recovering';
-  const lastRaw = patient.updatedAt ?? patient.createdAt;
-  const last = lastRaw ? new Date(lastRaw) : null;
-  if (last && !Number.isNaN(last.getTime()) && last.getTime() < Date.now() - THIRTY_DAYS_MS) {
-    return 'inactive';
-  }
-  return 'stable';
+  return patientAccountStatus(patient);
 }
 
-export const getPatientStatus = (patient: Patient): 'stable' | 'warning' | 'inactive' => {
-  const status = derivePatientRosterStatus(patient);
-  if (status === 'inactive') return 'inactive';
-  if (status === 'critical' || status === 'recovering') return 'warning';
-  return 'stable';
+export const getPatientStatus = (patient: Patient): 'stable' | 'warning' | 'inactive' | 'unknown' => {
+  void patient;
+  return 'unknown';
 };
 
 export const addPatientManually = async (
@@ -232,37 +279,51 @@ export const addPatientManually = async (
     displayName: string;
     email?: string;
     phoneNumber?: string;
-    dateOfBirth?: Date;
+    dateOfBirth?: Date | string;
     notes?: string;
     /** When set, patient joins the practice-shared pool */
     practiceId?: string;
+    clinicName?: string;
+    clinicCode?: string;
+    invitedByName?: string;
   },
   inviteOptions?: { sendInvite?: boolean; inviteEmail?: string },
-): Promise<{ patientId: string; inviteQueued?: boolean; inviteMailId?: string; inviteError?: string }> => {
+): Promise<{
+  patientId: string;
+  activationCode?: string;
+  inviteQueued?: boolean;
+  inviteMailId?: string;
+  inviteError?: string;
+}> => {
   if (!doctorId) throw new Error('Doctor ID is required');
   const targetEmail = (inviteOptions?.inviteEmail || payload.email || '').trim().toLowerCase();
 
   if (isDjangoApiEnabled()) {
-    await djangoImportRoster(
+    const imported = await djangoImportRoster(
       [
         {
           name: payload.displayName,
           email: payload.email,
           phone: payload.phoneNumber,
+          dateOfBirth:
+            payload.dateOfBirth instanceof Date
+              ? payload.dateOfBirth.toISOString().slice(0, 10)
+              : payload.dateOfBirth,
           notes: payload.notes,
           practiceId: payload.practiceId,
         },
       ],
       payload.practiceId,
     );
+    const created = imported.rows[0];
+    if (!created?.patientId) {
+      throw new Error(
+        imported.skipped
+          ? 'This patient could not be added. Provide an email, phone, or date of birth, or they may already belong to another clinic.'
+          : 'Patient was not added to the roster.',
+      );
+    }
 
-    const panel = await djangoListPatientPanel();
-    const match = panel.find(
-      (row) => targetEmail && row.email.trim().toLowerCase() === targetEmail,
-    );
-    const patientId = match?.patientId ?? `pending-${Date.now()}`;
-
-    // Log patient creation event
     if (payload.practiceId) {
       try {
         await logPatientEvent({
@@ -270,17 +331,20 @@ export const addPatientManually = async (
           action: 'patient.created',
           actorUid: doctorId,
           actorName: 'Doctor',
-          patientId,
+          patientId: created.patientId,
           patientName: payload.displayName,
           newValue: {
             displayName: payload.displayName,
             email: payload.email,
             phoneNumber: payload.phoneNumber,
-            dateOfBirth: payload.dateOfBirth?.toISOString(),
+            dateOfBirth:
+              payload.dateOfBirth instanceof Date
+                ? payload.dateOfBirth.toISOString()
+                : payload.dateOfBirth,
             notes: payload.notes,
           },
           outcome: 'success',
-          confirmation: patientId,
+          confirmation: created.patientId,
           metadata: { inviteQueued: Boolean(inviteOptions?.sendInvite && targetEmail) },
         });
       } catch (error) {
@@ -288,13 +352,33 @@ export const addPatientManually = async (
       }
     }
 
+    let inviteQueued = false;
+    let inviteError: string | undefined;
     if (inviteOptions?.sendInvite && targetEmail) {
-      console.log(
-        `[patientManagementService] Roster import complete — invite email for ${targetEmail} not yet automated`,
-      );
+      try {
+        await sendPatientDownloadInvite({
+          doctorId,
+          to: targetEmail,
+          patientDisplayName: payload.displayName,
+          clinicName: payload.clinicName,
+          clinicCode: payload.clinicCode,
+          invitedByName: payload.invitedByName,
+        });
+        inviteQueued = true;
+      } catch (err) {
+        inviteError =
+          err instanceof Error
+            ? err.message
+            : 'Patient was added, but the invitation email could not be sent.';
+      }
     }
 
-    return { patientId, inviteQueued: Boolean(inviteOptions?.sendInvite && targetEmail) };
+    return {
+      patientId: created.patientId,
+      activationCode: created.activationCode || payload.clinicCode,
+      inviteQueued,
+      inviteError,
+    };
   }
 
   const patientId = `patient-${Date.now()}`;
@@ -306,16 +390,24 @@ export type PatientUpdatePayload = Partial<
 >;
 
 export const updatePatient = async (
-  _patientId: string,
-  _updates: PatientUpdatePayload,
+  patientId: string,
+  updates: PatientUpdatePayload & { practiceId?: string },
 ): Promise<void> => {
-  if (!_patientId || _patientId.trim() === '') {
+  if (!patientId || patientId.trim() === '') {
     throw new Error('Patient ID is required to update patient');
   }
-  if (!_updates || Object.keys(_updates).length === 0) {
+  if (!updates || Object.keys(updates).length === 0) {
     throw new Error('No update values provided');
   }
-  // TODO: persist via Django patient endpoint once available.
+  const practiceId = updates.practiceId;
+  if (!isDjangoApiEnabled() || !practiceId) {
+    throw new Error('A practice is required to update this patient record.');
+  }
+  await djangoPatchPracticePatientAccount(practiceId, patientId, {
+    displayName: updates.displayName,
+    phoneNumber: updates.phoneNumber,
+    email: updates.email,
+  });
 };
 
 export const removePatientFromDoctor = async (
@@ -328,8 +420,11 @@ export const removePatientFromDoctor = async (
   if (!patientId || patientId.trim() === '') {
     throw new Error('Patient ID is required');
   }
+  if (isDjangoApiEnabled()) {
+    await djangoRemoveFromPanel(patientId);
+    return;
+  }
   await linkDoctorPatientAccess(doctorId, patientId);
-  // TODO: persist removal via Django patient endpoint once available.
 };
 
 export const getDoctorSharingRequests = async (doctorId: string): Promise<SharingRequest[]> => {
@@ -379,9 +474,7 @@ export const acceptSharingRequest = async (
     await djangoResolveSharing(requestId, 'approved');
     return;
   }
-
-  await linkDoctorPatientAccess(doctorId, patientId);
-  // TODO: persist approval via Django sharing endpoint once available.
+  throw new Error('Sharing approval requires the Anixi API.');
 };
 
 export const rejectSharingRequest = async (
@@ -393,7 +486,7 @@ export const rejectSharingRequest = async (
     await djangoResolveSharing(requestId, 'rejected');
     return;
   }
-  // TODO: persist rejection via Django sharing endpoint once available.
+  throw new Error('Sharing rejection requires the Anixi API.');
 };
 
 export const sendSharingRequest = async (
@@ -420,7 +513,7 @@ export const sendSharingRequest = async (
 };
 
 export const createTestSharingRequests = async (_doctorId: string): Promise<void> => {
-  // TODO: replace with a Django test-data helper once available.
+  throw new Error('Test sharing requests are not available.');
 };
 
 
@@ -452,13 +545,30 @@ export const getDoctorPatientGrowth = async (
 
   try {
     const panel = await djangoListPatientPanel();
-    // Panel API does not yet expose link dates; growth stats need a dated roster endpoint.
-    return {
-      addedThisMonth: 0,
-      addedLastMonth: 0,
-      changePct: null,
-      undatedLinks: panel.length,
-    };
+    const now = new Date();
+    const startThis = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startLast = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    let addedThisMonth = 0;
+    let addedLastMonth = 0;
+    let undatedLinks = 0;
+    panel.forEach((row) => {
+      if (!row.createdAt) {
+        undatedLinks += 1;
+        return;
+      }
+      const created = new Date(row.createdAt);
+      if (Number.isNaN(created.getTime())) {
+        undatedLinks += 1;
+        return;
+      }
+      if (created >= startThis) addedThisMonth += 1;
+      else if (created >= startLast) addedLastMonth += 1;
+    });
+    const changePct =
+      addedLastMonth === 0
+        ? null
+        : Math.round(((addedThisMonth - addedLastMonth) / addedLastMonth) * 100);
+    return { addedThisMonth, addedLastMonth, changePct, undatedLinks };
   } catch {
     return { addedThisMonth: 0, addedLastMonth: 0, changePct: null, undatedLinks: 0 };
   }
@@ -477,6 +587,7 @@ export const listenToDoctorPatients = (
   if (isDjangoApiEnabled()) {
     let cancelled = false;
     const poll = async () => {
+      if (cancelled || document.visibilityState === 'hidden') return;
       try {
         const patients = await getDoctorPatients(doctorId);
         if (!cancelled) onPatientsUpdate(patients);
@@ -487,10 +598,17 @@ export const listenToDoctorPatients = (
       }
     };
     void poll();
-    const timer = setInterval(poll, 30_000);
+    const timer = setInterval(poll, 60_000);
+    const onVisible = () => {
+      if (!cancelled && document.visibilityState === 'visible') {
+        void poll();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       cancelled = true;
       clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircleIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
+import { useAskAnixi } from '../../context/AskAnixiContext';
 
 export type SetupStep = {
   id: string;
@@ -17,12 +18,16 @@ type Props = {
 };
 
 export const ClinicAdminSetupBanner: React.FC<Props> = ({ steps, className }) => {
+  const { openAskAnixi } = useAskAnixi();
   const pending = steps.filter((s) => !s.done);
   if (pending.length === 0) return null;
 
   const doneCount = steps.length - pending.length;
   const progress = Math.round((doneCount / steps.length) * 100);
   const nextStep = pending[0];
+  const ayahPrompt = nextStep
+    ? `Help me finish clinic setup. Next step: ${nextStep.label}. ${nextStep.description}`
+    : 'What is left to set up in this clinic?';
 
   return (
     <div
@@ -65,6 +70,16 @@ export const ClinicAdminSetupBanner: React.FC<Props> = ({ steps, className }) =>
           </div>
           <ChevronRightIcon className="h-5 w-5 shrink-0 text-[#94a3b8]" />
         </Link>
+      )}
+
+      {nextStep && (
+        <button
+          type="button"
+          onClick={() => openAskAnixi({ prompt: ayahPrompt, autoSend: true })}
+          className="flex w-full items-center gap-3 border-b border-[#eef2f6] px-5 py-3 text-left text-sm text-[#427160] hover:bg-[#f4f7f5] sm:px-6"
+        >
+          Ask Ayah how to {nextStep.label.toLowerCase()}
+        </button>
       )}
 
       <ul className="divide-y divide-[#eef2f6] px-1 pb-1">

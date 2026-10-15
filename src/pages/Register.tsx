@@ -90,6 +90,7 @@ export const Register: React.FC = () => {
         role,
         pathConfig.showCountryField ? country : undefined,
         joinPath,
+        acceptPrivacy,
       );
 
       await refreshUser();

@@ -1,9 +1,14 @@
-import { PATIENT_COMMANDS, PRACTICE_COMMANDS } from './ayahCommands';
+import { CLINIC_ADMIN_COMMANDS, PATIENT_COMMANDS, PRACTICE_COMMANDS } from './ayahCommands';
 import { DASHBOARD_STARTERS } from './dashboardStarterPrompts';
 
 export const PRACTICE_COMPOSER_PHRASES = [
   'Ask a question…',
   ...PRACTICE_COMMANDS.map((command) => command.label),
+];
+
+export const CLINIC_COMPOSER_PHRASES = [
+  'Ask about the clinic…',
+  ...CLINIC_ADMIN_COMMANDS.map((command) => command.label),
 ];
 
 export function patientComposerPhrases(firstName: string): string[] {

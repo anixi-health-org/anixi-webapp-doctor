@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { usesClinicAdminPortal } from '../lib/doctorAccess';
 import { isDjangoAuthOnly } from '../lib/runtimeConfig';
 import { djangoDeleteAccount } from '../services/djangoApiService';
 import { logoutDoctor } from '../services/authService';
@@ -10,10 +11,15 @@ import { logoutDoctor } from '../services/authService';
 const DeleteAccount: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, practiceSession } = useAuth();
+  const isClinicAdmin = usesClinicAdminPortal(practiceSession);
   const { navigateBack } = useNavigateWithFallback();
   const navigate = useNavigate();
-  const homePath = user?.role === 'caregiver' ? '/caregiver' : '/dashboard';
+  const homePath = isClinicAdmin
+    ? '/clinic'
+    : user?.role === 'caregiver'
+      ? '/caregiver'
+      : '/dashboard';
 
   const handleDelete = async () => {
     const confirmed = window.confirm(

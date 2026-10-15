@@ -1,61 +1,28 @@
 import type { DoctorDashboardLayout, DoctorDashboardWidget } from '../types/doctorDashboard';
+import { classifyDashboardIntent, type DashboardIntentKind } from './dashboardIntent';
 import { normalizeDashboardLayout } from './dashboardLayout';
 
 type Preset = Pick<DoctorDashboardLayout, 'title' | 'subtitle' | 'widgets'>;
 
-export function matchDashboardPreset(prompt: string): Preset | null {
-  const q = prompt.trim().toLowerCase();
+const PRESET_BY_INTENT: Record<Exclude<DashboardIntentKind, 'custom'>, keyof typeof PRESETS> = {
+  reset: 'reset',
+  morning: 'morning',
+  minimal: 'minimal',
+  appointments: 'appointments',
+  caseload: 'caseload',
+  preClinic: 'preClinic',
+  followUps: 'followUps',
+};
 
-  if (q.includes('reset') || q.includes('start fresh') || q.includes('clear')) {
-    return PRESETS.reset;
-  }
-  if (q.includes('minimal') || (q.includes('schedule') && q.includes('attention'))) {
-    return PRESETS.minimal;
-  }
-  if (q.includes('caseload') || (q.includes('stable') && q.includes('critical'))) {
-    return PRESETS.caseload;
-  }
-  if (q.includes('pre-clinic') || q.includes('next 5') || q.includes('briefing board')) {
-    return PRESETS.preClinic;
-  }
-  if (q.includes('follow-up') || q.includes('follow up')) {
-    return PRESETS.followUps;
-  }
-  if (q.includes('morning') || q.includes('command center')) {
-    return PRESETS.morning;
-  }
-  if (q.includes('appointment') || q.includes('appointments')) {
-    return PRESETS.appointments;
-  }
-  return null;
+export function matchDashboardPreset(prompt: string): Preset | null {
+  const intent = classifyDashboardIntent(prompt);
+  if (!intent.applyPreset || intent.kind === 'custom') return null;
+  return PRESETS[PRESET_BY_INTENT[intent.kind]];
 }
 
 /** Match starter prompts and infer layouts from natural-language dashboard requests. */
 export function inferDashboardLayout(prompt: string): Preset | null {
-  const exact = matchDashboardPreset(prompt);
-  if (exact) return exact;
-
-  const q = prompt.trim().toLowerCase();
-
-  if (
-    /appointment|appointments|schedule|calendar|booking|booked|clinic day/.test(q)
-  ) {
-    return PRESETS.appointments;
-  }
-  if (/patient|caseload|panel|roster|stable|critical/.test(q)) {
-    return PRESETS.caseload;
-  }
-  if (/follow.?up|pending|needs attention|needs me|action item/.test(q)) {
-    return PRESETS.followUps;
-  }
-  if (/brief|prepare|pre-clinic|before clinic|next patient/.test(q)) {
-    return PRESETS.preClinic;
-  }
-  if (/dashboard|layout|build|create|design|show me|make me|set up/.test(q)) {
-    return PRESETS.minimal;
-  }
-
-  return null;
+  return matchDashboardPreset(prompt);
 }
 
 const PRESETS: Record<string, Preset> = {
@@ -221,7 +188,7 @@ const PRESETS: Record<string, Preset> = {
   },
   appointments: {
     title: 'Appointments',
-    subtitle: 'Today and upcoming across your practice',
+    subtitle: 'Today, upcoming, and waiting confirmation',
     widgets: [
       {
         id: 'appt-kpis',
@@ -241,19 +208,22 @@ const PRESETS: Record<string, Preset> = {
         type: 'schedule',
         title: "Today's appointments",
         subtitle: 'Everyone booked for today',
-        span: 8,
+        span: 6,
         order: 1,
         accent: 'green',
         dataBinding: 'today_appointments',
+        config: { emptyLabel: 'No visits today', limit: 12 },
       },
       {
-        id: 'next-patient-appt',
-        type: 'list',
-        title: 'Up next',
-        span: 4,
+        id: 'upcoming-appointments',
+        type: 'schedule',
+        title: 'Upcoming',
+        subtitle: 'Later today and the days ahead',
+        span: 6,
         order: 2,
-        accent: 'blue',
-        dataBinding: 'next_patient',
+        accent: 'teal',
+        dataBinding: 'upcoming_appointments',
+        config: { emptyLabel: 'No upcoming visits', limit: 12 },
       },
     ],
   },

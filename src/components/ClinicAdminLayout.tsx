@@ -10,6 +10,7 @@ import {
   LifebuoyIcon,
   QueueListIcon,
   RectangleStackIcon,
+  SparklesIcon,
   UserGroupIcon,
   UsersIcon,
   XMarkIcon,
@@ -18,10 +19,12 @@ import {
 import clsx from 'clsx';
 import React from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
+import { AskAnixiProvider } from '../context/AskAnixiContext';
 import { useAuth } from '../hooks/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { setAdherenceRulesPracticeContext } from '../services/adherenceRulesService';
 import { AnixiLogo } from './brand/AnixiLogo';
+import { ClinicErrorBoundary } from './clinic/ClinicErrorBoundary';
 import { UserProfileMenu } from './page-layout/UserProfileMenu';
 
 type NavItem = {
@@ -39,6 +42,7 @@ type NavItem = {
 
 const mainNav: NavItem[] = [
   { name: 'Overview', href: '/clinic', icon: HomeIcon },
+  { name: 'Ayah', href: '/clinic/ayah', icon: SparklesIcon },
   {
     name: 'Team & doctors',
     href: '/clinic/team',
@@ -145,7 +149,13 @@ function NavLink({
   );
 }
 
-export const ClinicAdminLayout: React.FC = () => {
+export const ClinicAdminLayout: React.FC = () => (
+  <AskAnixiProvider>
+    <ClinicAdminShell />
+  </AskAnixiProvider>
+);
+
+const ClinicAdminShell: React.FC = () => {
   const { user, practiceSession } = useAuth();
   const { can, isOwner, isPracticeManager, role } = usePermissions();
   const location = useLocation();
@@ -154,9 +164,13 @@ export const ClinicAdminLayout: React.FC = () => {
   const visibleNav = React.useMemo(
     () =>
       mainNav.filter((item) => {
-        // Content creators only need Overview + Content (plus Support in footer).
+        // Content creators — overview, Ayah and Content only (plus Support in footer).
         if (role === 'content_creator') {
-          return item.href === '/clinic' || item.href === '/clinic/content';
+          return (
+            item.href === '/clinic' ||
+            item.href === '/clinic/ayah' ||
+            item.href === '/clinic/content'
+          );
         }
         if (!item.requires) return true;
         if (isOwner || isPracticeManager) return true;
@@ -183,6 +197,7 @@ export const ClinicAdminLayout: React.FC = () => {
   const closeMobile = () => setMobileNavOpen(false);
   const firstName = user?.displayName?.split(' ')[0] || 'Admin';
   const clinicName = practiceSession?.practice?.name || 'Your clinic';
+  const isAyahRoute = location.pathname === '/clinic/ayah';
 
   React.useEffect(() => {
     setAdherenceRulesPracticeContext(practiceSession?.practice?.id);
@@ -210,7 +225,7 @@ export const ClinicAdminLayout: React.FC = () => {
         {sidebarNav()}
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col md:pl-64">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:pl-64">
         <header className="sticky top-0 z-30 border-b border-[#dfe6e1] bg-white shadow-sm shadow-[#1a4d4d]/5">
           <div className="flex h-[4.25rem] items-center gap-4 px-4 sm:px-6 lg:px-8">
             <button
@@ -265,8 +280,15 @@ export const ClinicAdminLayout: React.FC = () => {
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto">
-          <Outlet />
+        <main
+          className={clsx(
+            'flex-1',
+            isAyahRoute ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-y-auto',
+          )}
+        >
+          <ClinicErrorBoundary key={location.pathname}>
+            <Outlet />
+          </ClinicErrorBoundary>
         </main>
       </div>
     </div>

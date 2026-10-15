@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent } from '../components/ui/Card';
 import { Toast } from '../components/ui';
 import { useAuth } from '../hooks/AuthContext';
@@ -161,6 +161,14 @@ export const Login: React.FC = () => {
                 {error}
               </div>
             ) : null}
+            <div className="flex justify-end">
+              <Link
+                to="/forgot-password"
+                className="text-sm font-semibold text-anixi-green hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
             <button
               type="submit"
               disabled={isLoading}

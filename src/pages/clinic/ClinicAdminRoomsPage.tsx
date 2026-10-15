@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { BulkRoomImportPanel } from '../../components/clinic/BulkRoomImportPanel';
+import { ClinicSecondaryAction } from '../../components/clinic/ClinicSecondaryAction';
 import { PageHeader, PageShell } from '../../components/page-layout';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -21,8 +22,11 @@ export const ClinicAdminRoomsPage: React.FC = () => {
   const [type, setType] = useState<PracticeRoom['type']>('consult');
   const [locationId, setLocationId] = useState('');
   const [saving, setSaving] = useState(false);
+  const [csvOpen, setCsvOpen] = useState(false);
 
   const rooms = activeRooms(practice);
+  const hasRooms = rooms.length > 0;
+  const showCsv = Boolean(canManage && practice && (!hasRooms || csvOpen));
 
   const onAdd = async () => {
     if (!practice || !name.trim()) return;
@@ -55,11 +59,25 @@ export const ClinicAdminRoomsPage: React.FC = () => {
     <PageShell maxWidth="wide" className="py-6 sm:py-8">
       <PageHeader
         title="Rooms"
-        description="Bulk import your room list from CSV, or add rooms one at a time for front-desk scheduling."
+        description={
+          hasRooms
+            ? 'Rooms used for front-desk scheduling across this clinic.'
+            : 'Bulk import your room list from CSV, or add rooms one at a time for front-desk scheduling.'
+        }
+        actions={
+          canManage && hasRooms ? (
+            <ClinicSecondaryAction
+              open={csvOpen}
+              onToggle={() => setCsvOpen((open) => !open)}
+              revealLabel="Import rooms from CSV"
+              hideLabel="Hide CSV import"
+            />
+          ) : null
+        }
       />
 
-      {canManage && practice ? (
-        <div className="mt-6 max-w-4xl">
+      {showCsv && !hasRooms && practice ? (
+        <div className="mt-2">
           <BulkRoomImportPanel
             practice={practice}
             onComplete={() => void refreshPracticeSession()}
@@ -123,7 +141,7 @@ export const ClinicAdminRoomsPage: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-[#eef2f6]">
             {rooms.map((room) => {
-              const location = practice?.locations.find((l) => l.id === room.locationId);
+              const location = (practice?.locations ?? []).find((l) => l.id === room.locationId);
               return (
                 <tr key={room.id}>
                   <td className="px-4 py-3 font-medium">{room.name}</td>
@@ -154,6 +172,15 @@ export const ClinicAdminRoomsPage: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {showCsv && hasRooms && practice ? (
+        <div className="mt-8">
+          <BulkRoomImportPanel
+            practice={practice}
+            onComplete={() => void refreshPracticeSession()}
+          />
+        </div>
+      ) : null}
     </PageShell>
   );
 };

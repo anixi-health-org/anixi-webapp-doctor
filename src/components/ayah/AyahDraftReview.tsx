@@ -8,11 +8,16 @@ type Props = {
 };
 
 function draftLabel(type: string): string {
+  if (type === 'clinical_report') return 'Consultation report (H&P)';
+  if (type === 'clinical_note') return 'Clinical note (SOAP)';
+  if (type === 'message_reply') return 'Message reply';
   return type.replace(/_/g, ' ');
 }
 
 function approveLabel(type: string): string {
   if (type === 'message_reply') return 'Approve & send';
+  if (type === 'clinical_report') return 'Apply to report';
+  if (type === 'clinical_note') return 'Apply to note';
   return 'Approve';
 }
 

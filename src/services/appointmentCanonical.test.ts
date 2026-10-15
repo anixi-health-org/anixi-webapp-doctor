@@ -13,6 +13,7 @@ import {
   resolveAppointmentEndAt,
   resolveScheduledAt,
   shouldAutoMarkNoShow,
+  resolveElapsedAppointmentStatus,
 } from './appointmentCanonical';
 
 describe('appointment canonical status', () => {
@@ -161,6 +162,46 @@ describe('auto missed (no-show) rules', () => {
     expect(hasConsultBeenStarted({ teleconsult: { roomName: 'room-1', provider: 'livekit' } })).toBe(
       true
     );
+  });
+
+  it('resolves a past confirmed visit to missed when nobody started', () => {
+    expect(
+      resolveElapsedAppointmentStatus(
+        {
+          status: 'confirmed',
+          scheduledAt: start,
+          durationMinutes: 30,
+        },
+        afterEnd
+      )
+    ).toBe('no_show');
+  });
+
+  it('resolves a past confirmed visit to completed when the consult started', () => {
+    expect(
+      resolveElapsedAppointmentStatus(
+        {
+          status: 'confirmed',
+          scheduledAt: start,
+          durationMinutes: 30,
+          teleconsult: { status: 'ended' },
+        },
+        afterEnd
+      )
+    ).toBe('completed');
+  });
+
+  it('keeps a future confirmed visit confirmed', () => {
+    expect(
+      resolveElapsedAppointmentStatus(
+        {
+          status: 'confirmed',
+          scheduledAt: start,
+          durationMinutes: 30,
+        },
+        duringSlot
+      )
+    ).toBe('confirmed');
   });
 });
 

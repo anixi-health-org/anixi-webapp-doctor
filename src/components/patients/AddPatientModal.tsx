@@ -44,6 +44,9 @@ export const AddPatientModal: React.FC<Props> = ({ isOpen, onClose, onAdded }) =
           email: email.trim() || undefined,
           phoneNumber: phone.trim() || undefined,
           practiceId: practiceSession?.practice?.id,
+          clinicName: practiceSession?.practice?.name,
+          clinicCode: practiceSession?.practice?.clinicCode,
+          invitedByName: user.displayName || practiceSession?.practice?.name,
         },
         {
           sendInvite: sendInvite,
@@ -63,7 +66,12 @@ export const AddPatientModal: React.FC<Props> = ({ isOpen, onClose, onAdded }) =
         return;
       }
 
-      onAdded?.({ patientId });
+      onAdded?.({
+        patientId,
+        inviteWarning: practiceSession?.practice?.clinicCode
+          ? `They activate with clinic code ${practiceSession.practice.clinicCode}.`
+          : undefined,
+      });
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to create patient');

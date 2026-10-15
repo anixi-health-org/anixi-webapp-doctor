@@ -9,6 +9,8 @@ import AyahPage from './pages/AyahPage';
 import AppointmentSummary from './pages/AppointmentSummary';
 import TeleconsultPage from './pages/TeleconsultPage';
 import { Login } from './pages/Login';
+import { ForgotPassword } from './pages/ForgotPassword';
+import { ResetPassword } from './pages/ResetPassword';
 import { Join } from './pages/Join';
 import { Register } from './pages/Register';
 import { CaregiverDashboard } from './components/caregiver/CaregiverDashboard';
@@ -35,12 +37,26 @@ import { DoctorOnboardingPage } from './pages/DoctorOnboardingPage';
 import { AccountUnderReviewPage } from './pages/AccountUnderReviewPage';
 import ClinicSetupPage from './pages/ClinicSetupPage';
 import InviteAcceptPage from './pages/InviteAcceptPage';
+import PendingInvitesPage from './pages/PendingInvitesPage';
 import CaregiverOnboardingPage from './pages/CaregiverOnboardingPage';
+import { MarketPartnerOnboardingPage } from './pages/MarketPartnerOnboardingPage';
+import { MarketPartnerReviewPage } from './pages/MarketPartnerReviewPage';
+import { PartnerLayout } from './components/PartnerLayout';
+import { PartnerRoute } from './components/PartnerRoute';
+import { PartnerOverviewPage } from './pages/partner/PartnerOverviewPage';
+import { PartnerListingPage } from './pages/partner/PartnerListingPage';
+import { PartnerOfferingsPage } from './pages/partner/PartnerOfferingsPage';
+import { PartnerOrdersPage } from './pages/partner/PartnerOrdersPage';
+import { PartnerAccountPage } from './pages/partner/PartnerAccountPage';
 import { ClinicAdminLayout } from './components/ClinicAdminLayout';
 import { ClinicAdminRoute } from './components/ClinicAdminRoute';
+import { ClinicPermissionGate } from './components/ClinicPermissionGate';
+import ClinicAyahPage from './pages/clinic/ClinicAyahPage';
 import ClinicAdminDashboard from './pages/clinic/ClinicAdminDashboard';
 import ClinicAdminTeamPage from './pages/clinic/ClinicAdminTeamPage';
 import ClinicAdminPatientsPage from './pages/clinic/ClinicAdminPatientsPage';
+import ClinicAdminPatientAccountPage from './pages/clinic/ClinicAdminPatientAccountPage';
+import ClinicAdminMemberAccountPage from './pages/clinic/ClinicAdminMemberAccountPage';
 import ClinicAdminSettingsPage from './pages/clinic/ClinicAdminSettingsPage';
 import ClinicAdminSchedulePage from './pages/clinic/ClinicAdminSchedulePage';
 import ClinicAdminInvoicesPage from './pages/clinic/ClinicAdminInvoicesPage';
@@ -65,6 +81,7 @@ import AdherenceCalendarPage from './pages/AdherenceCalendarPage';
 import AdherenceLogsPage from './pages/AdherenceLogsPage';
 import AdherenceDailyPage from './pages/AdherenceDailyPage';
 import VitalsHistoryPage from './pages/VitalsHistoryPage';
+import { PatientMedicalVaultPage } from './pages/PatientMedicalVaultPage';
 import WearableDataPage from './pages/WearableDataPage';
 import PostConsultPage from './pages/PostConsultPage';
 import InvoicesPage from './pages/InvoicesPage';
@@ -89,7 +106,12 @@ function App() {
         <Routes>
           <Route path="/join" element={<Join />} />
           <Route path="/join/invite" element={<InviteAcceptPage />} />
+          <Route path="/invites/pending" element={<PendingInvitesPage />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset/:code" element={<ResetPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/set-password" element={<ResetPassword />} />
           <Route path="/register" element={<Register />} />
           <Route
             path="/register/caregiver"
@@ -99,6 +121,38 @@ function App() {
           <Route path="/delegate/accept" element={<DelegateAccept />} />
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route
+            path="/market-partner/onboarding"
+            element={
+              <ProtectedRoute>
+                <MarketPartnerOnboardingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/market-partner/review"
+            element={
+              <ProtectedRoute>
+                <MarketPartnerReviewPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/partner"
+            element={
+              <ProtectedRoute>
+                <PartnerRoute>
+                  <PartnerLayout />
+                </PartnerRoute>
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<PartnerOverviewPage />} />
+            <Route path="listing" element={<PartnerListingPage />} />
+            <Route path="offerings" element={<PartnerOfferingsPage />} />
+            <Route path="orders" element={<PartnerOrdersPage />} />
+            <Route path="account" element={<PartnerAccountPage />} />
+          </Route>
           <Route
             path="/clinic-setup"
             element={
@@ -134,13 +188,79 @@ function App() {
             }
           >
             <Route index element={<ClinicAdminDashboard />} />
-            <Route path="team" element={<ClinicAdminTeamPage />} />
-            <Route path="patients" element={<ClinicAdminPatientsPage />} />
-            <Route path="schedule" element={<ClinicAdminSchedulePage />} />
-            <Route path="invoices" element={<ClinicAdminInvoicesPage />} />
-            <Route path="claims" element={<ClinicAdminClaimsPage />} />
-            <Route path="queue" element={<ClinicAdminQueuePage />} />
-            <Route path="rooms" element={<ClinicAdminRoomsPage />} />
+            <Route path="ayah" element={<ClinicAyahPage />} />
+            <Route
+              path="team"
+              element={
+                <ClinicPermissionGate requires="manageMembers">
+                  <ClinicAdminTeamPage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="team/:memberId"
+              element={
+                <ClinicPermissionGate requires="manageMembers">
+                  <ClinicAdminMemberAccountPage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="patients"
+              element={
+                <ClinicPermissionGate requires="managePatients">
+                  <ClinicAdminPatientsPage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="patients/:patientId"
+              element={
+                <ClinicPermissionGate requires="managePatients" allowClinician>
+                  <ClinicAdminPatientAccountPage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="schedule"
+              element={
+                <ClinicPermissionGate requires="manageAppointments">
+                  <ClinicAdminSchedulePage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="invoices"
+              element={
+                <ClinicPermissionGate requires="viewBilling">
+                  <ClinicAdminInvoicesPage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="claims"
+              element={
+                <ClinicPermissionGate requires="viewBilling">
+                  <ClinicAdminClaimsPage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="queue"
+              element={
+                <ClinicPermissionGate requires="manageAppointments">
+                  <ClinicAdminQueuePage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route
+              path="rooms"
+              element={
+                <ClinicPermissionGate requires="manageAppointments">
+                  <ClinicAdminRoomsPage />
+                </ClinicPermissionGate>
+              }
+            />
             <Route path="reports" element={<ClinicAdminReportsPage />} />
             <Route path="audit" element={<ClinicAdminAuditLogPage />} />
             <Route
@@ -159,6 +279,16 @@ function App() {
                 </ContentPermissionRoute>
               }
             />
+            <Route
+              path="audit"
+              element={
+                <ClinicPermissionGate requires="manageMembers">
+                  <ClinicAdminAuditLogPage />
+                </ClinicPermissionGate>
+              }
+            />
+            <Route path="content" element={<Navigate to="/clinic" replace />} />
+            <Route path="share" element={<Navigate to="/clinic" replace />} />
             <Route path="appointments" element={<Navigate to="/clinic/schedule" replace />} />
             <Route path="calendar" element={<Navigate to="/clinic/schedule" replace />} />
             <Route path="settings" element={<ClinicAdminSettingsPage />} />
@@ -217,6 +347,7 @@ function App() {
                     <Route path="/patient-profile/:patientId/adherence-logs" element={<AdherenceLogsPage />} />
                     <Route path="/patient-profile/:patientId/adherence-daily/:date" element={<AdherenceDailyPage />} />
                     <Route path="/patient-profile/:patientId/vitals-history" element={<VitalsHistoryPage />} />
+                    <Route path="/patient-profile/:patientId/medical-records" element={<PatientMedicalVaultPage />} />
                     <Route path="/patient-profile/:patientId/wearable" element={<WearableDataPage />} />
                     <Route path="/patients" element={<Patients />} />
                     <Route path="/appointments" element={<AppointmentsPage />} />
@@ -243,6 +374,7 @@ function App() {
                         </ContentPermissionRoute>
                       }
                     />
+                    <Route path="/content" element={<Navigate to="/ayah" replace />} />
                     <Route path="/share-anixi" element={<ShareAnixi />} />
                     <Route path="/change-password" element={<ChangePassword />} />
                     <Route path="/support" element={<Support />} />

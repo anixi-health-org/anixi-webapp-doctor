@@ -1,8 +1,9 @@
-import { isClinicianRole, normalizePermissions, permissionsForRole } from '../lib/practiceRoles';
+import { normalizePermissions, permissionsForRole } from '../lib/practiceRoles';
 import {
   djangoAcceptPracticeInvite,
   djangoCreatePracticeInvite,
   djangoGetPracticeInvite,
+  djangoPreviewPracticeInvite,
   djangoListPracticeInvites,
   djangoNotifyClinicLiveInvites,
   djangoResendPracticeInvite,
@@ -18,13 +19,6 @@ const toDate = (v: unknown): Date => {
     return new Date((v as { seconds: number }).seconds * 1000);
   }
   return new Date();
-};
-
-const generateToken = (): string => {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID().replace(/-/g, '');
-  }
-  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
 };
 
 const mapInvite = (id: string, practiceId: string, d: Record<string, any>): PracticeInvite => ({
@@ -81,7 +75,7 @@ export type CreatePracticeInviteInput = {
   hpcsaRegistrationNumber?: string;
 };
 
-/** Create a practice invite via Django API (or stub when Django is not configured). */
+/** Create a practice invite. Requires the Anixi API. */
 export const createPracticeInvite = async (
   input: CreatePracticeInviteInput,
 ): Promise<PracticeInvite> => {
@@ -100,28 +94,7 @@ export const createPracticeInvite = async (
     return mapDjangoInvite(row);
   }
 
-  const token = generateToken();
-  const invite: PracticeInvite = {
-    id: `invite-${Date.now()}`,
-    practiceId: input.practiceId,
-    practiceName: input.practiceName,
-    email,
-    displayName: input.displayName ?? undefined,
-    role: input.role,
-    permissions: input.permissions ?? permissionsForRole(input.role),
-    invitedBy: input.invitedBy,
-    invitedByName: input.invitedByName ?? undefined,
-    status: 'pending',
-    token,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-
-  // TODO: persist invite + send email via Django endpoints once available.
-  console.log(
-    '[practiceInviteService] createPracticeInvite stub — email=' + email,
-  );
-  return invite;
+  throw new Error('Clinic invites require the Anixi API. Set REACT_APP_ANIXI_API_URL.');
 };
 
 export const listPracticeInvites = async (
@@ -133,40 +106,33 @@ export const listPracticeInvites = async (
     return rows.map(mapDjangoInvite);
   }
 
-  // Firestore path removed.
-  return [];
+  throw new Error('Clinic invites require the Anixi API. Set REACT_APP_ANIXI_API_URL.');
 };
 
 export const notifyPendingInvitesClinicLive = async (
   practiceId: string,
-  practiceName: string,
+  _practiceName?: string,
 ): Promise<number> => {
   if (isDjangoApiEnabled()) {
     return djangoNotifyClinicLiveInvites(practiceId);
   }
 
-  // Firestore path removed.
-  const pending = await listPracticeInvites(practiceId, 'pending');
-  for (const invite of pending) {
-    console.log(
-      '[practiceInviteService] notifyPendingInvitesClinicLive stub — ' +
-        invite.email,
-    );
-  }
-  return pending.length;
+  throw new Error('Clinic invites require the Anixi API. Set REACT_APP_ANIXI_API_URL.');
 };
 
 export const getPracticeInvite = async (
   practiceId: string,
   inviteId: string,
+  token?: string,
 ): Promise<PracticeInvite | null> => {
   if (isDjangoApiEnabled()) {
-    const row = await djangoGetPracticeInvite(practiceId, inviteId);
-    return row ? mapDjangoInvite(row) : null;
+    const row = token
+      ? await djangoPreviewPracticeInvite(practiceId, inviteId, token)
+      : await djangoGetPracticeInvite(practiceId, inviteId);
+    return row ? mapDjangoInvite({ ...row, token: row.token || token || '' }) : null;
   }
 
-  // Firestore path removed.
-  return null;
+  throw new Error('Clinic invites require the Anixi API. Set REACT_APP_ANIXI_API_URL.');
 };
 
 export const revokePracticeInvite = async (
@@ -178,10 +144,7 @@ export const revokePracticeInvite = async (
     return;
   }
 
-  // Firestore path removed.
-  console.log(
-    '[practiceInviteService] revokePracticeInvite stub — inviteId=' + inviteId,
-  );
+  throw new Error('Clinic invites require the Anixi API. Set REACT_APP_ANIXI_API_URL.');
 };
 
 export const resendPracticeInvite = async (
@@ -193,14 +156,7 @@ export const resendPracticeInvite = async (
     return;
   }
 
-  const invite = await getPracticeInvite(practiceId, inviteId);
-  if (!invite) throw new Error('Invitation not found');
-  if (invite.status !== 'pending') throw new Error('Only pending invitations can be resent');
-
-  // Firestore path removed.
-  console.log(
-    '[practiceInviteService] resendPracticeInvite stub — inviteId=' + inviteId,
-  );
+  throw new Error('Clinic invites require the Anixi API. Set REACT_APP_ANIXI_API_URL.');
 };
 
 export const acceptPracticeInvite = async (params: {
@@ -236,19 +192,5 @@ export const acceptPracticeInvite = async (params: {
     };
   }
 
-  const fallbackRole: PracticeRole = 'receptionist';
-  return {
-    uid: params.uid,
-    practiceId: params.practiceId,
-    role: fallbackRole,
-    permissions: permissionsForRole(fallbackRole),
-    status: 'active',
-    displayName: params.displayName || undefined,
-    email: params.email.toLowerCase(),
-    isClinician: isClinicianRole(fallbackRole),
-    invitedBy: '',
-    invitedAt: new Date(),
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
+  throw new Error('Clinic invites require the Anixi API. Set REACT_APP_ANIXI_API_URL.');
 };

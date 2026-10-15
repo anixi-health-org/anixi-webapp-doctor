@@ -1,4 +1,4 @@
-import { ArrowRightIcon, PaperClipIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowRightIcon, MicrophoneIcon, PaperClipIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 import React, { useState } from 'react';
 import { AyahTypewriterPlaceholder } from './AyahTypewriterPlaceholder';
@@ -24,6 +24,7 @@ type Props = {
   pendingFile?: AyahComposerFile | null;
   onClearFile?: () => void;
   onPickFile?: () => void;
+  onVoiceMode?: () => void;
   className?: string;
 };
 
@@ -104,6 +105,7 @@ export function AyahComposer({
   pendingFile,
   onClearFile,
   onPickFile,
+  onVoiceMode,
   className,
 }: Props) {
   const [focused, setFocused] = useState(false);
@@ -229,18 +231,34 @@ export function AyahComposer({
         <div
           className={clsx(
             'flex items-center px-4 pb-3.5',
-            onPickFile ? 'justify-between' : 'justify-end',
+            onPickFile || onVoiceMode ? 'justify-between' : 'justify-end',
           )}
         >
-          {onPickFile ? (
-            <button
-              type="button"
-              className="text-[#9aa3ad] transition-all duration-200 hover:scale-110 hover:text-[#427160]"
-              tabIndex={-1}
-              onClick={onPickFile}
-            >
-              <PaperClipIcon className="h-5 w-5" />
-            </button>
+          {onPickFile || onVoiceMode ? (
+            <div className="flex items-center gap-3">
+              {onPickFile ? (
+                <button
+                  type="button"
+                  className="text-[#9aa3ad] transition-all duration-200 hover:scale-110 hover:text-[#427160]"
+                  tabIndex={-1}
+                  onClick={onPickFile}
+                  aria-label="Attach file"
+                >
+                  <PaperClipIcon className="h-5 w-5" />
+                </button>
+              ) : null}
+              {onVoiceMode ? (
+                <button
+                  type="button"
+                  className="text-[#9aa3ad] transition-all duration-200 hover:scale-110 hover:text-[#427160]"
+                  tabIndex={-1}
+                  onClick={onVoiceMode}
+                  aria-label="Voice with Ayah"
+                >
+                  <MicrophoneIcon className="h-5 w-5" />
+                </button>
+              ) : null}
+            </div>
           ) : null}
           <button
             type="submit"

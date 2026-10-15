@@ -101,9 +101,10 @@ function findHeaderIndex(headers: string[], synonyms: string[]): number {
     const idx = headers.indexOf(syn);
     if (idx !== -1) return idx;
   }
-  // Partial match fallback for headers like "patient_first_name" matching "first_name"
   for (const syn of synonyms) {
-    const idx = headers.findIndex((h) => h.includes(syn));
+    // "name" matches last_name/first_name; require an exact synonym instead.
+    if (syn === 'name' || syn === 'id') continue;
+    const idx = headers.findIndex((h) => h === syn || h.endsWith(`_${syn}`));
     if (idx !== -1) return idx;
   }
   return -1;
@@ -156,10 +157,10 @@ export function parsePatientBulkCsv(text: string): {
   const dataLines = hasHeader ? lines.slice(1) : lines;
 
   // Resolve column indices with synonym mappings
-  const fullNameIdx = findHeaderIndex(headerCells, ['full_name', 'name', 'display_name', 'patient_name']);
-  const firstNameIdx = findHeaderIndex(headerCells, ['first_name', 'patient_first_name']);
-  const lastNameIdx = findHeaderIndex(headerCells, ['last_name', 'patient_last_name']);
-  const middleNameIdx = findHeaderIndex(headerCells, ['middle_name', 'patient_middle_name']);
+  const fullNameIdx = findHeaderIndex(headerCells, ['full_name', 'display_name', 'patient_name', 'name']);
+  const firstNameIdx = findHeaderIndex(headerCells, ['patient_first_name', 'first_name', 'firstname']);
+  const lastNameIdx = findHeaderIndex(headerCells, ['patient_last_name', 'last_name', 'lastname', 'surname']);
+  const middleNameIdx = findHeaderIndex(headerCells, ['patient_middle_name', 'middle_name', 'middle_initial']);
   const generalNameIdx = findHeaderIndex(headerCells, ['patient_general']);
   const emailIdx = findHeaderIndex(headerCells, ['email', 'patient_email', 'e_mail']);
   const phoneIdx = findHeaderIndex(headerCells, ['phone', 'phone_number', 'telephone', 'cell', 'mobile']);
@@ -201,12 +202,13 @@ export function parsePatientBulkCsv(text: string): {
     const chartId = chartIdIdx >= 0 ? (cells[chartIdIdx] || '').trim() : '';
     const patientExtId = patientIdIdx >= 0 ? (cells[patientIdIdx] || '').trim() : '';
     const mrn = mrnIdx >= 0 ? (cells[mrnIdx] || '').trim() : '';
+    const dobRaw = pDobIdx >= 0 ? (cells[pDobIdx] || '').trim() : '';
 
-    // Must have email, phone, or a clinic identifier (MRN / chart ID)
-    if (!email && !phone && !chartId && !mrn && !patientExtId) {
+    // Must have email, phone, clinic identifier, or DOB (name + DOB is enough)
+    if (!email && !phone && !chartId && !mrn && !patientExtId && !dobRaw) {
       issues.push({
         line: lineNumber,
-        message: `${displayName}: needs email, phone, or MRN/chart ID.`,
+        message: `${displayName}: needs email, phone, MRN/chart ID, or date of birth.`,
       });
       return;
     }
@@ -220,7 +222,6 @@ export function parsePatientBulkCsv(text: string): {
       return;
     }
 
-    const dobRaw = pDobIdx >= 0 ? (cells[pDobIdx] || '').trim() : '';
     const genderRaw = genderIdx >= 0 ? (cells[genderIdx] || '').trim() : '';
 
     rows.push({

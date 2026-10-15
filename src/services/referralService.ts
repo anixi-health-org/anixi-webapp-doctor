@@ -21,53 +21,85 @@ export interface Invitation {
   acceptedAt?: Date;
 }
 
-export const getDoctorReferral = async (doctorId: string): Promise<Referral | null> => {
-  try {
-    // TODO: replace with a Django referral endpoint once available.
-    const referralCode = generateReferralCode(doctorId);
-    const referralLink = generateReferralLink(referralCode);
-    return {
-      id: doctorId,
-      doctorId,
-      referralCode,
-      referralLink,
-      createdAt: new Date(),
-      invitationsSent: 0,
-      invitationsAccepted: 0,
-    };
-  } catch (error) {
-    const referralCode = generateReferralCode(doctorId);
-    const referralLink = generateReferralLink(referralCode);
-    return {
-      id: doctorId,
-      doctorId,
-      referralCode,
-      referralLink,
-      createdAt: new Date(),
-      invitationsSent: 0,
-      invitationsAccepted: 0,
-    };
-  }
+const INVITE_STATS_KEY = 'anixi.referralStats';
+
+type StoredReferralStats = {
+  sent: number;
+  accepted: number;
+  lastInvitedAt?: string;
 };
-function generateReferralCode(doctorId: string): string {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
-  return `${timestamp}${random}`.substring(0, 12);
+
+function readStoredStats(doctorId: string): StoredReferralStats {
+  try {
+    const raw = localStorage.getItem(`${INVITE_STATS_KEY}.${doctorId}`);
+    if (!raw) return { sent: 0, accepted: 0 };
+    const parsed = JSON.parse(raw) as StoredReferralStats;
+    return {
+      sent: Number(parsed.sent) || 0,
+      accepted: Number(parsed.accepted) || 0,
+      lastInvitedAt: parsed.lastInvitedAt,
+    };
+  } catch {
+    return { sent: 0, accepted: 0 };
+  }
 }
+
+function writeStoredStats(doctorId: string, stats: StoredReferralStats): void {
+  try {
+    localStorage.setItem(`${INVITE_STATS_KEY}.${doctorId}`, JSON.stringify(stats));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+/** Stable referral code derived from doctor id (no server persistence yet). */
+function generateReferralCode(doctorId: string): string {
+  let hash = 0;
+  for (let i = 0; i < doctorId.length; i += 1) {
+    hash = (hash << 5) - hash + doctorId.charCodeAt(i);
+    hash |= 0;
+  }
+  return `AX${Math.abs(hash).toString(36).toUpperCase().slice(0, 8)}`;
+}
+
 function generateReferralLink(referralCode: string): string {
   return buildPatientSignupLink(referralCode);
 }
+
+export const getDoctorReferral = async (doctorId: string): Promise<Referral | null> => {
+  const referralCode = generateReferralCode(doctorId);
+  const referralLink = generateReferralLink(referralCode);
+  const stats = readStoredStats(doctorId);
+  return {
+    id: doctorId,
+    doctorId,
+    referralCode,
+    referralLink,
+    createdAt: new Date(),
+    invitationsSent: stats.sent,
+    invitationsAccepted: stats.accepted,
+    lastInvitedAt: stats.lastInvitedAt ? new Date(stats.lastInvitedAt) : undefined,
+  };
+};
+
 export const logInvitation = async (
-  _doctorId: string,
+  doctorId: string,
   _targetEmail?: string,
   _method: 'link' | 'email' = 'link',
 ): Promise<string> => {
-  // TODO: persist via Django referral endpoint once available.
+  const stats = readStoredStats(doctorId);
+  const next = {
+    ...stats,
+    sent: stats.sent + 1,
+    lastInvitedAt: new Date().toISOString(),
+  };
+  writeStoredStats(doctorId, next);
   return `invitation-${Date.now()}`;
 };
+
 export const getReferralStats = async (
-  _doctorId: string,
+  doctorId: string,
 ): Promise<{ sent: number; accepted: number }> => {
-  // TODO: replace with a Django referral-stats endpoint once available.
-  return { sent: 0, accepted: 0 };
+  const stats = readStoredStats(doctorId);
+  return { sent: stats.sent, accepted: stats.accepted };
 };

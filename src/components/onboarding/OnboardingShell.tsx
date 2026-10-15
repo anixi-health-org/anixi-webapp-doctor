@@ -4,9 +4,11 @@ import { AnixiLogo } from '../brand/AnixiLogo';
 import {
   OnboardingNavProgress,
   OnboardingStepSidebar,
+  getOnboardingSteps,
   type OnboardingFlow,
   type OnboardingStepSidebarProps,
 } from './OnboardingProgress';
+import { OnboardingAyahCoach } from './OnboardingAyahCoach';
 
 type OnboardingShellProps = {
   children: React.ReactNode;
@@ -73,6 +75,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
             subProgress={subProgress}
             onStepClick={onStepClick}
           />
+          <OnboardingAyahCoach flow={flow} currentStep={currentStep} />
         </div>
       </aside>
 
@@ -87,7 +90,11 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
           <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-anixi-green">
-                {flow === 'clinic' ? 'Clinic onboarding' : 'Doctor onboarding'}
+                {flow === 'clinic'
+                  ? 'Clinic onboarding'
+                  : flow === 'market_partner'
+                    ? 'Market Partner onboarding'
+                    : 'Doctor onboarding'}
               </p>
               <h1 className="mt-1.5 font-heading text-2xl font-bold tracking-tight text-[#344256] sm:text-[1.75rem]">
                 {title}
@@ -111,6 +118,11 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
           </div>
 
           {children}
+          <div className="mt-6 lg:hidden">
+            <div className="rounded-2xl border border-[#e1e7ef] bg-white p-4 shadow-sm">
+              <OnboardingAyahCoach flow={flow} currentStep={currentStep} />
+            </div>
+          </div>
         </div>
       </main>
     </div>
@@ -121,10 +133,9 @@ const MobileStepPills: React.FC<{ flow: OnboardingFlow; currentStep: number }> =
   flow,
   currentStep,
 }) => {
-  const steps =
-    flow === 'clinic'
-      ? ['Clinic', 'Doctors', 'Patients', 'Launch']
-      : ['Profile', 'Review'];
+  const steps = getOnboardingSteps(flow).map(
+    (step) => step.shortLabel || step.label,
+  );
 
   return (
     <div className="flex gap-2">
