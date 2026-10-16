@@ -35,13 +35,11 @@ function sanitizeMessages(messages: StoredAyahMessage[]): StoredAyahMessage[] {
 
 export function AyahChatProvider({ children }: { children: ReactNode }) {
   const { user, practiceSession } = useAuth();
+  const practiceMember = practiceSession?.member;
   const practiceRoles = useMemo((): PracticeRole[] => {
-    if (!practiceSession?.member) return [];
-    return normalizeMemberRoles(
-      practiceSession.member.role,
-      practiceSession.member.roles,
-    );
-  }, [practiceSession?.member?.role, practiceSession?.member?.roles]);
+    if (!practiceMember) return [];
+    return normalizeMemberRoles(practiceMember.role, practiceMember.roles);
+  }, [practiceMember]);
   const [messages, setMessages] = useState<StoredAyahMessage[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
