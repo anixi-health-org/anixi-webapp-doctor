@@ -51,7 +51,10 @@ export interface PracticePermissions {
 export interface PracticeMember {
     uid: string;
     practiceId: string;
+    /** Primary role for display; use `roles` for effective access. */
     role: PracticeRole;
+    /** All assigned roles — permissions are the union of these presets. */
+    roles?: PracticeRole[];
     permissions: PracticePermissions;
     status: 'active' | 'inactive' | 'invited';
     displayName?: string;
@@ -416,6 +419,7 @@ export interface PracticeInvite {
     email: string;
     displayName?: string;
     role: PracticeRole;
+    roles?: PracticeRole[];
     permissions: PracticePermissions;
     invitedBy: string;
     invitedByName?: string;

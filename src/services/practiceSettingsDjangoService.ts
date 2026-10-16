@@ -1,6 +1,7 @@
 /**
  * Django-backed practice settings — used when Firebase is disabled.
  */
+import { normalizeMemberRoles, normalizePermissions } from '../lib/practiceRoles';
 import type {
   BookableBlock,
   BookingPolicy,
@@ -46,11 +47,20 @@ function mapPractice(row: Record<string, unknown>): Practice {
 }
 
 function mapMember(row: Record<string, unknown>): PracticeMember {
+  const role = row.role as PracticeMember['role'];
+  const roles = normalizeMemberRoles(
+    role,
+    Array.isArray(row.roles) ? (row.roles as PracticeMember['role'][]) : undefined,
+  );
   return {
     uid: String(row.uid),
     practiceId: String(row.practiceId),
-    role: row.role as PracticeMember['role'],
-    permissions: (row.permissions as PracticeMember['permissions']) ?? {},
+    role,
+    roles,
+    permissions: normalizePermissions(
+      (row.permissions as PracticeMember['permissions']) ?? {},
+      roles,
+    ),
     status: (row.status as PracticeMember['status']) ?? 'active',
     isClinician: Boolean(row.isClinician),
     displayName: row.displayName as string | undefined,

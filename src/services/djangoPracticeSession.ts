@@ -1,5 +1,6 @@
 import type { BookingPolicy, Practice, PracticeMember, PracticePermissions, PracticeSession } from '../types';
-import { normalizePermissions } from '../lib/practiceRoles';
+import { normalizeMemberRoles, normalizePermissions } from '../lib/practiceRoles';
+import type { PracticeRole } from '../types';
 import { djangoGetPracticeSession, djangoResolveMediaUrl } from './djangoApiService';
 import { parsePracticeOrgType } from '../lib/doctorAccess';
 
@@ -36,12 +37,17 @@ function parsePractice(raw: Record<string, unknown>): Practice {
 
 function parseMember(raw: Record<string, unknown>): PracticeMember {
   const role = (raw.role as PracticeMember['role']) ?? 'delegate';
+  const roles = normalizeMemberRoles(
+    role,
+    Array.isArray(raw.roles) ? (raw.roles as PracticeRole[]) : undefined,
+  );
   const rawPermissions = (raw.permissions as Partial<PracticePermissions> | undefined) ?? {};
   return {
     uid: String(raw.uid),
     practiceId: String(raw.practiceId),
     role,
-    permissions: normalizePermissions(rawPermissions),
+    roles,
+    permissions: normalizePermissions(rawPermissions, roles),
     status: (raw.status as PracticeMember['status']) ?? 'active',
     isClinician: Boolean(raw.isClinician),
     displayName: raw.displayName ? String(raw.displayName) : undefined,

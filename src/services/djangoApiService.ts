@@ -731,6 +731,7 @@ export async function djangoCreatePracticeInvite(
     email: string;
     displayName?: string;
     role: string;
+    roles?: string[];
     permissions?: PracticePermissions;
     invitedByName?: string;
   },

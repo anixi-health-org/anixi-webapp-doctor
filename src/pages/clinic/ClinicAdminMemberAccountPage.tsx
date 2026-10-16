@@ -3,7 +3,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { PageHeader, PageShell } from '../../components/page-layout';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
-import { INVITABLE_ROLES, ROLE_LABELS, permissionsForRole } from '../../lib/practiceRoles';
+import {
+  formatRoleList,
+  normalizeMemberRoles,
+  permissionsForRoles,
+  primaryPracticeRole,
+} from '../../lib/practiceRoles';
+import { PracticeRoleMultiSelect } from '../../components/practice/PracticeRoleMultiSelect';
 import {
   djangoDeactivatePracticeMember,
   djangoGetPracticeMemberAccount,
@@ -21,6 +27,7 @@ type MemberAccount = {
   email: string;
   phoneNumber: string;
   role: PracticeRole;
+  roles: PracticeRole[];
   isClinician: boolean;
   status: string;
   isActive: boolean;
@@ -42,6 +49,7 @@ const emptyAccount = (): MemberAccount => ({
   email: '',
   phoneNumber: '',
   role: 'doctor',
+  roles: ['doctor'],
   isClinician: true,
   status: 'active',
   isActive: true,
@@ -68,6 +76,10 @@ function mapAccount(raw: Record<string, unknown>): MemberAccount {
     email: String(raw.email || ''),
     phoneNumber: String(raw.phoneNumber || ''),
     role: (raw.role as PracticeRole) || 'doctor',
+    roles: normalizeMemberRoles(
+      (raw.role as PracticeRole) || 'doctor',
+      Array.isArray(raw.roles) ? (raw.roles as PracticeRole[]) : undefined,
+    ),
     isClinician: Boolean(raw.isClinician),
     status: String(raw.status || 'active'),
     isActive: raw.isActive !== false,
@@ -100,7 +112,7 @@ export const ClinicAdminMemberAccountPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [loadedRole, setLoadedRole] = useState<PracticeRole>('doctor');
+  const [loadedRoles, setLoadedRoles] = useState<PracticeRole[]>(['doctor']);
   const [draft, setDraft] = useState<MemberAccount>(emptyAccount());
 
   useEffect(() => {
@@ -112,7 +124,7 @@ export const ClinicAdminMemberAccountPage: React.FC = () => {
         if (!cancelled) {
           const next = mapAccount(raw);
           setDraft(next);
-          setLoadedRole(next.role);
+          setLoadedRoles(next.roles);
         }
       })
       .catch((err) => {
@@ -138,9 +150,14 @@ export const ClinicAdminMemberAccountPage: React.FC = () => {
         phoneNumber: draft.phoneNumber.trim(),
         isClinician: draft.isClinician,
         isActive: draft.isActive,
-        ...(isPracticeOwner || draft.role === loadedRole
+        ...(isPracticeOwner ||
+        JSON.stringify(draft.roles) === JSON.stringify(loadedRoles)
           ? {}
-          : { role: draft.role, permissions: permissionsForRole(draft.role) }),
+          : {
+              roles: draft.roles,
+              role: primaryPracticeRole(draft.roles),
+              permissions: permissionsForRoles(draft.roles),
+            }),
         title: draft.profile.title.trim(),
         specialty: draft.profile.specialty.trim(),
         licenseNumber: draft.profile.licenseNumber.trim(),
@@ -153,7 +170,7 @@ export const ClinicAdminMemberAccountPage: React.FC = () => {
       });
       const next = mapAccount(saved);
       setDraft(next);
-      setLoadedRole(next.role);
+      setLoadedRoles(next.roles);
       setSuccess('Team account saved.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save this account.');
@@ -232,22 +249,27 @@ export const ClinicAdminMemberAccountPage: React.FC = () => {
                   onChange={(e) => setDraft((current) => ({ ...current, phoneNumber: e.target.value }))}
                 />
               </label>
-              <label className="text-xs font-medium text-[#65758b]">
-                Role
-                <select
-                  className={fieldClass}
-                  value={draft.role}
-                  disabled={isPracticeOwner}
-                  onChange={(e) => setDraft((current) => ({ ...current, role: e.target.value as PracticeRole }))}
-                >
-                  {isPracticeOwner ? <option value={draft.role}>{ROLE_LABELS[draft.role] || 'Owner'}</option> : null}
-                  {INVITABLE_ROLES.map((role) => (
-                    <option key={role} value={role}>
-                      {ROLE_LABELS[role]}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="text-xs font-medium text-[#65758b] sm:col-span-2">
+                Roles
+                {isPracticeOwner ? (
+                  <p className={`${fieldClass} bg-[#f8fafc] text-[#344256]`}>
+                    {formatRoleList(draft.roles)}
+                  </p>
+                ) : (
+                  <PracticeRoleMultiSelect
+                    mode="member"
+                    className="mt-1"
+                    value={draft.roles}
+                    onChange={(roles) =>
+                      setDraft((current) => ({
+                        ...current,
+                        roles,
+                        role: primaryPracticeRole(roles),
+                      }))
+                    }
+                  />
+                )}
+              </div>
               <label className="flex items-center gap-2 pt-6 text-sm text-[#344256]">
                 <input
                   type="checkbox"

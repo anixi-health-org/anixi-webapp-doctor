@@ -260,11 +260,13 @@ export function isAdminStaffRole(role: PracticeRole): boolean {
 /** People who appear in schedule/booking doctor pickers. */
 export function isBookableClinician(member: {
   role: PracticeRole;
+  roles?: PracticeRole[];
   status?: 'active' | 'inactive' | 'invited';
   isClinician?: boolean;
 }): boolean {
   if (member.status && member.status !== 'active') return false;
-  if (!isClinicianRole(member.role)) return false;
+  const roles = normalizeMemberRoles(member.role, member.roles);
+  if (!roles.some(isClinicianRole)) return false;
   return member.isClinician !== false;
 }
 
@@ -272,22 +274,93 @@ export function permissionsForRole(role: PracticeRole): PracticePermissions {
   return { ...ROLE_PERMISSION_PRESETS[role] };
 }
 
-/** Stored flags only. Missing keys stay false until an administrator assigns a role. */
+const ROLE_DISPLAY_PRIORITY: PracticeRole[] = [
+  'owner',
+  'administrator',
+  'practice_manager',
+  'doctor',
+  'clinical_associate',
+  'nurse',
+  'allied_health',
+  'locum',
+  'receptionist',
+  'billing_clerk',
+  'content_creator',
+  'delegate',
+];
+
+export function normalizeMemberRoles(
+  role: PracticeRole,
+  roles?: PracticeRole[] | null,
+): PracticeRole[] {
+  const source = roles?.length ? roles : [role];
+  const seen = new Set<PracticeRole>();
+  const cleaned: PracticeRole[] = [];
+  for (const entry of source) {
+    if (!entry || seen.has(entry)) continue;
+    seen.add(entry);
+    cleaned.push(entry);
+  }
+  return cleaned.length ? cleaned : ['delegate'];
+}
+
+export function primaryPracticeRole(roles: PracticeRole[]): PracticeRole {
+  for (const preferred of ROLE_DISPLAY_PRIORITY) {
+    if (roles.includes(preferred)) return preferred;
+  }
+  return roles[0] ?? 'delegate';
+}
+
+/** Union of capability flags across all assigned roles. */
+export function permissionsForRoles(roles: PracticeRole[]): PracticePermissions {
+  const merged = { ...EMPTY_PERMISSIONS };
+  for (const role of normalizeMemberRoles('delegate', roles)) {
+    const preset = permissionsForRole(role);
+    (Object.keys(merged) as (keyof PracticePermissions)[]).forEach((key) => {
+      merged[key] = merged[key] || preset[key];
+    });
+  }
+  return merged;
+}
+
+export function formatRoleList(roles: PracticeRole[]): string {
+  return normalizeMemberRoles('delegate', roles)
+    .map((role) => ROLE_LABELS[role])
+    .join(', ');
+}
+
+/** Stored flags override role preset; missing keys inherit union preset (matches Django session). */
 export function normalizePermissions(
   raw: Partial<PracticePermissions> | undefined,
-  _role: PracticeRole = 'delegate'
+  roleOrRoles: PracticeRole | PracticeRole[] = 'delegate',
 ): PracticePermissions {
-  return {
-    manageAppointments: raw?.manageAppointments === true,
-    manageSoftBlocks: raw?.manageSoftBlocks === true,
-    overrideConflicts: raw?.overrideConflicts === true,
-    editBookingPolicies: raw?.editBookingPolicies === true,
-    managePatients: raw?.managePatients === true,
-    manageMembers: raw?.manageMembers === true,
-    viewAllDoctors: raw?.viewAllDoctors === true,
-    viewBilling: raw?.viewBilling === true,
-    manageContent: raw?.manageContent === true,
+  const roles = Array.isArray(roleOrRoles)
+    ? normalizeMemberRoles('delegate', roleOrRoles)
+    : normalizeMemberRoles(roleOrRoles, null);
+  const preset = permissionsForRoles(roles);
+  const resolve = (key: keyof PracticePermissions): boolean => {
+    if (raw && key in raw) return raw[key] === true;
+    return preset[key] === true;
   };
+  return {
+    manageAppointments: resolve('manageAppointments'),
+    manageSoftBlocks: resolve('manageSoftBlocks'),
+    overrideConflicts: resolve('overrideConflicts'),
+    editBookingPolicies: resolve('editBookingPolicies'),
+    managePatients: resolve('managePatients'),
+    manageMembers: resolve('manageMembers'),
+    viewAllDoctors: resolve('viewAllDoctors'),
+    viewBilling: resolve('viewBilling'),
+    manageContent: resolve('manageContent'),
+  };
+}
+
+export function memberHasRole(
+  member: { role: PracticeRole; roles?: PracticeRole[] },
+  ...check: PracticeRole[]
+): boolean {
+  const roles = normalizeMemberRoles(member.role, member.roles);
+  return check.some((role) => roles.includes(role));
 }
 
 export const EMPTY_PERMISSIONS: PracticePermissions = {

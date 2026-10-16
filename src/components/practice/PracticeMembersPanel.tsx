@@ -2,15 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
-import {
-  ASSIGNABLE_ROLES,
-  CORE_PRACTICE_ROLES,
-  INVITABLE_ROLES,
-  LEGACY_PRACTICE_ROLES,
-  ROLE_DESCRIPTIONS,
-  ROLE_LABELS,
-  permissionsForRole,
-} from '../../lib/practiceRoles';
+import { formatRoleList, normalizeMemberRoles, permissionsForRoles } from '../../lib/practiceRoles';
+import { PracticeRoleMultiSelect } from './PracticeRoleMultiSelect';
 import { ListRowsSkeleton, PageLoadingState } from '../ui/Skeleton';
 import {
   createPracticeInvite,
@@ -62,7 +55,7 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
   const [inviteForm, setInviteForm] = useState({
     email: '',
     displayName: '',
-    role: 'doctor' as PracticeRole,
+    roles: ['doctor'] as PracticeRole[],
   });
   const [saving, setSaving] = useState(false);
   const [resendingId, setResendingId] = useState<string | null>(null);
@@ -115,17 +108,19 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
     setSaving(true);
     setError(null);
     try {
+      const roles = normalizeMemberRoles('doctor', inviteForm.roles);
       await createPracticeInvite({
         practiceId: practice.id,
         practiceName: practice.name,
         email: inviteForm.email.trim(),
         displayName: inviteForm.displayName.trim() || undefined,
-        role: inviteForm.role,
-        permissions: permissionsForRole(inviteForm.role),
+        role: roles[0],
+        roles,
+        permissions: permissionsForRoles(roles),
         invitedBy: user.id,
         invitedByName: user.displayName,
       });
-      setInviteForm({ email: '', displayName: '', role: 'doctor' });
+      setInviteForm({ email: '', displayName: '', roles: ['doctor'] });
       setShowInvite(false);
       setSuccess(
         'Invitation emailed from info@anixihealth.com. They create a password via Accept invite.',
@@ -167,12 +162,13 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
     await reload();
   };
 
-  const onChangeRole = async (uid: string, role: PracticeRole) => {
+  const onChangeRoles = async (uid: string, roles: PracticeRole[]) => {
     if (uid === practice.ownerId) return;
     const member = members.find((m) => m.uid === uid);
+    const normalized = normalizeMemberRoles('doctor', roles);
     await updatePracticeMember(practice.id, uid, {
-      role,
-      permissions: permissionsForRole(role),
+      roles: normalized,
+      permissions: permissionsForRoles(normalized),
     });
     if (user?.id) {
       await logClinicAuditEvent({
@@ -182,8 +178,11 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
         actorName: user.displayName,
         targetType: 'member',
         targetId: uid,
-        summary: `Changed ${member?.displayName ?? member?.email ?? uid} to ${ROLE_LABELS[role]}`,
-        metadata: { previousRole: member?.role, nextRole: role },
+        summary: `Changed ${member?.displayName ?? member?.email ?? uid} to ${formatRoleList(normalized)}`,
+        metadata: {
+          previousRoles: member?.roles ?? [member?.role ?? 'delegate'],
+          nextRoles: normalized,
+        },
       });
     }
     await reload();
@@ -266,20 +265,11 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-gray-700">Role</label>
-              <select
-                value={inviteForm.role}
-                onChange={(e) =>
-                  setInviteForm((f) => ({ ...f, role: e.target.value as PracticeRole }))
-                }
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"
-              >
-                {INVITABLE_ROLES.map((role) => (
-                  <option key={role} value={role}>
-                    {ROLE_LABELS[role]} - {ROLE_DESCRIPTIONS[role]}
-                  </option>
-                ))}
-              </select>
+              <PracticeRoleMultiSelect
+                mode="invite"
+                value={inviteForm.roles}
+                onChange={(roles) => setInviteForm((f) => ({ ...f, roles }))}
+              />
             </div>
           </div>
           <div className="mt-4 flex gap-3">
@@ -342,31 +332,23 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
                 </div>
                 <div className="flex items-center gap-2">
                   {m.uid === practice.ownerId ? (
-                    <span className="text-sm text-gray-600">{ROLE_LABELS[m.role]}</span>
+                    <span className="text-sm text-gray-600">
+                      {formatRoleList(normalizeMemberRoles(m.role, m.roles))}
+                    </span>
                   ) : (
                     <>
-                      <select
-                        value={m.role}
-                        onChange={(e) => void onChangeRole(m.uid, e.target.value as PracticeRole)}
-                        className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
-                      >
-                        <optgroup label="Core roles">
-                          {CORE_PRACTICE_ROLES.map((role) => (
-                            <option key={role} value={role}>
-                              {ROLE_LABELS[role]}
-                            </option>
-                          ))}
-                        </optgroup>
-                        <optgroup label="Legacy / extended">
-                          {LEGACY_PRACTICE_ROLES.filter((role) =>
-                            ASSIGNABLE_ROLES.includes(role)
-                          ).map((role) => (
-                            <option key={role} value={role}>
-                              {ROLE_LABELS[role]}
-                            </option>
-                          ))}
-                        </optgroup>
-                      </select>
+                      <details className="relative">
+                        <summary className="cursor-pointer list-none rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-800">
+                          {formatRoleList(normalizeMemberRoles(m.role, m.roles))}
+                        </summary>
+                        <div className="absolute right-0 z-10 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+                          <PracticeRoleMultiSelect
+                            mode="member"
+                            value={normalizeMemberRoles(m.role, m.roles)}
+                            onChange={(roles) => void onChangeRoles(m.uid, roles)}
+                          />
+                        </div>
+                      </details>
                       <button
                         type="button"
                         onClick={() => void onRemoveMember(m.uid)}
@@ -412,7 +394,9 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
                   {inv.displayName?.trim() ? (
                     <p className="text-sm text-gray-500">{inv.email}</p>
                   ) : null}
-                  <p className="text-sm text-gray-500">{ROLE_LABELS[inv.role]}</p>
+                  <p className="text-sm text-gray-500">
+                    {formatRoleList(normalizeMemberRoles(inv.role, inv.roles))}
+                  </p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button
