@@ -8,6 +8,8 @@ import React, {
   type ReactNode,
 } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { normalizeMemberRoles } from '../lib/practiceRoles';
+import type { PracticeRole } from '../types';
 import {
   buildAyahDoctorWelcomeMessage,
   isLegacyAutoBriefSession,
@@ -32,7 +34,12 @@ function sanitizeMessages(messages: StoredAyahMessage[]): StoredAyahMessage[] {
 }
 
 export function AyahChatProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, practiceSession } = useAuth();
+  const practiceMember = practiceSession?.member;
+  const practiceRoles = useMemo((): PracticeRole[] => {
+    if (!practiceMember) return [];
+    return normalizeMemberRoles(practiceMember.role, practiceMember.roles);
+  }, [practiceMember]);
   const [messages, setMessages] = useState<StoredAyahMessage[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
@@ -42,10 +49,11 @@ export function AyahChatProvider({ children }: { children: ReactNode }) {
         buildAyahDoctorWelcomeMessage({
           displayName: options?.displayName ?? user?.displayName,
           patientName: options?.patientName,
+          practiceRoles,
         }),
       ]);
     },
-    [user?.displayName],
+    [practiceRoles, user?.displayName],
   );
 
   useEffect(() => {
@@ -56,12 +64,15 @@ export function AyahChatProvider({ children }: { children: ReactNode }) {
     }
 
     const loaded = sanitizeMessages(loadAyahChat(user.id));
-    const welcome = buildAyahDoctorWelcomeMessage({ displayName: user.displayName });
+    const welcome = buildAyahDoctorWelcomeMessage({
+      displayName: user.displayName,
+      practiceRoles,
+    });
     setMessages(
       loaded.length === 0 || isLegacyAutoBriefSession(loaded) ? [welcome] : loaded,
     );
     setHydrated(true);
-  }, [user?.id, user?.displayName]);
+  }, [practiceRoles, user?.id, user?.displayName]);
 
   useEffect(() => {
     if (!user?.id || !hydrated) return;

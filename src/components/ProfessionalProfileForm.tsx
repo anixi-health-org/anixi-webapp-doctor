@@ -14,6 +14,10 @@ import {
 import { PageHeaderSkeleton, Skeleton } from './ui/Skeleton';
 import { isOnboardingFormComplete, inheritClinicPracticeFields } from '../lib/doctorAccess';
 import { usePermissions } from '../hooks/usePermissions';
+import {
+  memberUsesDoctorHonorific,
+  practiceMemberSubtitle,
+} from '../lib/practiceMemberDisplay';
 import { ClinicManagedNotice } from './practice/ClinicManagedNotice';
 import { InheritedMedicalSchemesNotice } from './practice/InheritedMedicalSchemesNotice';
 import { PracticeMedicalAidSoloSection } from './practice/PracticeMedicalAidSoloSection';
@@ -77,7 +81,9 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
 }) => {
   const isOnboarding = mode === 'onboarding';
   const { user, practiceSession, refreshPracticeSession, refreshUser } = useAuth();
-  const { isClinicEmployedClinician: clinicEmployed } = usePermissions();
+  const { isClinicEmployedClinician: clinicEmployed, roles } = usePermissions();
+  const practiceRoleLabel = practiceMemberSubtitle(roles);
+  const usesDoctorTitle = memberUsesDoctorHonorific(roles);
   const lastStep = clinicEmployed ? 2 : 3;
   const [searchParams] = useSearchParams();
   const doctor = user?.role === 'doctor' ? user : null;
@@ -464,6 +470,17 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
 
   const renderPersonalInformation = () => (
     <div className="space-y-6">
+      {practiceRoleLabel ? (
+        <p className="rounded-xl border border-[#e1e7ef] bg-[#f8fafc] px-4 py-3 text-sm text-[#344256]">
+          <span className="font-semibold text-[#1a4d4d]">Practice role:</span> {practiceRoleLabel}
+          {!usesDoctorTitle ? (
+            <span className="mt-1 block text-[#65758b]">
+              Your honorific (Mr/Ms/Dr) is separate from your clinic role — choose the title that matches how you
+              introduce yourself.
+            </span>
+          ) : null}
+        </p>
+      ) : null}
       <div className="flex items-center justify-between gap-4 border-b border-[#eef2f6] pb-4">
         <div className="min-w-0">
           <h2 className={sectionTitleClass}>Personal Information</h2>

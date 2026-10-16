@@ -13,7 +13,12 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { usePermissions } from '../../hooks/usePermissions';
 import { usesClinicAdminPortal } from '../../lib/doctorAccess';
-import { clinicianDisplayName, clinicianHeaderLabel } from '../../lib/clinicianName';
+import { clinicianDisplayName } from '../../lib/clinicianName';
+import {
+  memberUsesDoctorHonorific,
+  practiceMemberHeaderLabel,
+  practiceMemberSubtitle,
+} from '../../lib/practiceMemberDisplay';
 
 interface UserProfileMenuProps {
   variant?: 'header' | 'mobile';
@@ -29,7 +34,7 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
   displayLabel,
 }) => {
   const { user, logout, practiceSession, joinIntent } = useAuth();
-  const { canManageContent } = usePermissions();
+  const { canManageContent, roles } = usePermissions();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -42,24 +47,30 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
       user.accountKind === 'clinic_admin' &&
       user.role === 'doctor');
   const isMarketPartner = joinIntent === 'market_partner' && user?.role === 'staff';
-  const displayName = user?.displayName || (isCaregiver ? 'Caregiver' : 'Doctor');
+  const roleSubtitle = practiceMemberSubtitle(roles);
+  const displayName =
+    user?.displayName ||
+    (isCaregiver ? 'Caregiver' : roleSubtitle || (isClinicAdmin ? 'Admin' : 'Team member'));
   const initial = displayName.charAt(0).toUpperCase();
   const email = user?.email || '';
   const shortName = displayName.split(' ')[0];
   const headerLabel =
     displayLabel ||
-    (isCaregiver || isClinicAdmin || isMarketPartner
+    (isCaregiver || isMarketPartner
       ? shortName
-      : clinicianHeaderLabel(displayName));
+      : roleSubtitle
+        ? practiceMemberHeaderLabel(displayName, roles)
+        : isClinicAdmin
+          ? shortName
+          : practiceMemberHeaderLabel(displayName, roles));
   const headerSubtitle =
     subtitle ||
     (isCaregiver
       ? 'Caregiver'
       : isMarketPartner
         ? 'Market Partner'
-        : isClinicAdmin
-          ? 'Clinic/Hospital admin'
-          : 'Physician');
+        : roleSubtitle ||
+          (isClinicAdmin ? 'Clinic/Hospital admin' : memberUsesDoctorHonorific(roles) ? 'Physician' : 'Team member'));
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -266,7 +277,9 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
               </div>
               <div className="min-w-0">
                 <p className="truncate font-sans text-sm font-semibold text-gray-900">
-                  {isCaregiver || isClinicAdmin ? displayName : clinicianDisplayName(displayName)}
+                  {isCaregiver || isClinicAdmin || !memberUsesDoctorHonorific(roles)
+                    ? displayName
+                    : clinicianDisplayName(displayName)}
                 </p>
                 <p className="truncate text-xs text-gray-500">{email}</p>
               </div>

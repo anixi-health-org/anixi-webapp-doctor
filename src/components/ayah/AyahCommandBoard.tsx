@@ -12,6 +12,8 @@ import { AyahAvatar } from './AyahAvatar';
 
 type Props = {
   greeting: string;
+  /** Name shown after the greeting (e.g. "Dr. Amina" or "Sarah"). */
+  greetingName: string;
   firstName: string;
   snapshot: DoctorBriefingSnapshot;
   pendingDrafts: DoctorAgentDraft[];
@@ -36,6 +38,7 @@ function minutesUntil(date?: Date | string | null): string | null {
 
 export function AyahCommandBoard({
   greeting,
+  greetingName,
   firstName,
   snapshot,
   pendingDrafts,
@@ -60,7 +63,7 @@ export function AyahCommandBoard({
               Clinical copilot
             </p>
             <h1 className="truncate text-[17px] font-semibold tracking-tight text-[#1b2b2b]">
-              {greeting}, Dr. {firstName}
+              {greeting}, {greetingName}
             </h1>
           </div>
         </div>

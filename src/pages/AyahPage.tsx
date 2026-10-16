@@ -13,7 +13,11 @@ import {
 } from '../hooks/useDoctorBriefingData';
 import { commandNeedsPatient, PRACTICE_COMMANDS, type AyahCommand } from '../lib/ayahCommands';
 import { formatAyahReply } from '../lib/formatAyahReply';
-import { clinicianGivenName, clinicianHeaderLabel } from '../lib/clinicianName';
+import { usePermissions } from '../hooks/usePermissions';
+import {
+  practiceMemberGreetingLabel,
+  practiceMemberWelcomeName,
+} from '../lib/practiceMemberDisplay';
 import { loadAyahPatientChart } from '../services/ayahPatientChart';
 import {
   formatAskAnixiError,
@@ -60,6 +64,7 @@ function formatTime(): string {
 export const AyahPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, practiceSession } = useAuth();
+  const { roles } = usePermissions();
   const { context, initialPrompt, autoSend, notifyDraftApproved, clearSessionPrompt, setContext } =
     useAskAnixi();
   const { loading: briefingLoading, snapshot, practiceSnapshot } = useDoctorBriefingData();
@@ -148,7 +153,8 @@ export const AyahPage: React.FC = () => {
     },
   });
 
-  const firstName = clinicianGivenName(user?.displayName);
+  const firstName = practiceMemberWelcomeName(user?.displayName, roles);
+  const greetingName = practiceMemberGreetingLabel(user?.displayName, roles);
   const greeting =
     new Date().getHours() < 12
       ? 'Good morning'
@@ -753,6 +759,7 @@ export const AyahPage: React.FC = () => {
 
       <AyahCommandBoard
         greeting={greeting}
+        greetingName={greetingName}
         firstName={firstName}
         snapshot={snapshot}
         pendingDrafts={pendingDrafts}
@@ -769,7 +776,7 @@ export const AyahPage: React.FC = () => {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="border-b border-[#e1e7ef] bg-white px-4 py-3 lg:hidden shrink-0">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#65758b]">
-          {greeting}, {clinicianHeaderLabel(user?.displayName)}
+          {greeting}, {greetingName}
         </p>
         <div className="mt-2 flex gap-2 overflow-x-auto">
           <span className="rounded-full bg-[#eef4f1] px-3 py-1 text-xs font-medium text-[#427160]">
