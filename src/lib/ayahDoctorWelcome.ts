@@ -1,5 +1,6 @@
+import type { PracticeRole } from '../types';
 import type { StoredAyahMessage } from './ayahChatStorage';
-import { clinicianGivenName } from './clinicianName';
+import { practiceMemberGreetingLabel } from './practiceMemberDisplay';
 
 export const AYAH_WELCOME_MESSAGE_ID = 'welcome';
 
@@ -21,19 +22,22 @@ export function ayahDoctorWelcomeContent(options: {
   greeting?: string;
   displayName?: string;
   patientName?: string;
+  practiceRoles?: PracticeRole[];
 }): string {
   const greeting = options.greeting ?? ayahDoctorGreeting();
-  const firstName = clinicianGivenName(options.displayName) || 'Doctor';
+  const roles = options.practiceRoles ?? [];
+  const nameLabel = practiceMemberGreetingLabel(options.displayName, roles);
   if (options.patientName) {
     const patientFirst = options.patientName.trim().split(/\s+/)[0];
-    return `${greeting}, ${firstName}. I'm Ayah. I can help you prepare for ${patientFirst}, review the chart, or draft notes — just tell me what you need when you're ready.`;
+    return `${greeting}, ${nameLabel}. I'm Ayah. I can help you prepare for ${patientFirst}, review the chart, or draft notes — just tell me what you need when you're ready.`;
   }
-  return `${greeting}, ${firstName}. I'm Ayah, your clinical copilot. Ask about your panel, a patient, or today's visits — I'm here whenever you need me.`;
+  return `${greeting}, ${nameLabel}. I'm Ayah, your clinical copilot. Ask about your panel, a patient, or today's visits — I'm here whenever you need me.`;
 }
 
 export function buildAyahDoctorWelcomeMessage(options: {
   displayName?: string;
   patientName?: string;
+  practiceRoles?: PracticeRole[];
 }): StoredAyahMessage {
   return {
     id: AYAH_WELCOME_MESSAGE_ID,

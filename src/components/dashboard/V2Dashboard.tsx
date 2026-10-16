@@ -11,6 +11,7 @@ import { Activity, HeartPulse } from 'lucide-react';
 import clsx from 'clsx';
 import { Patient, Appointment } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
+import { usePermissions } from '../../hooks/usePermissions';
 import { isManagedOrgType } from '../../lib/doctorAccess';
 import { listenToDoctorAppointments } from '../../services/appointmentService';
 import {
@@ -19,7 +20,10 @@ import {
 } from '../../services/patientManagementService';
 import type { PracticeDashboardStats } from '../../services/practiceDashboardService';
 import { usePracticeDashboardStats } from '../../hooks/usePracticeDashboardStats';
-import { clinicianGivenName } from '../../lib/clinicianName';
+import {
+  memberUsesDoctorHonorific,
+  practiceMemberWelcomeName,
+} from '../../lib/practiceMemberDisplay';
 import { patientAccountStatus, patientAccountStatusLabel } from '../../utils/patientRosterStatus';
 import { DashboardPageSkeleton, ListRowsSkeleton, Skeleton } from '../ui/Skeleton';
 import { PageHeader } from '../page-layout/PageHeader';
@@ -158,7 +162,8 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
 }) => {
   const navigate = useNavigate();
   const { user, practiceSession } = useAuth();
-  const firstName = clinicianGivenName(user?.displayName);
+  const { roles } = usePermissions();
+  const welcomeName = practiceMemberWelcomeName(user?.displayName, roles);
   const isClinic = isManagedOrgType(practiceSession?.practice?.orgType);
   const scheduleTimeZone =
     practiceSession?.practice?.timezone?.trim() || detectBrowserTimezone();
@@ -418,8 +423,8 @@ export const V2Dashboard: React.FC<V2DashboardProps> = ({
         title="Dashboard Overview"
         description={
           isClinic
-            ? `Welcome back, Dr. ${firstName}. Here's ${practiceSession?.practice?.name || 'your clinic'} at a glance.`
-            : `Welcome back, Dr. ${firstName}. Here's your practice summary.`
+            ? `Welcome back, ${memberUsesDoctorHonorific(roles) ? `Dr. ${welcomeName}` : welcomeName}. Here's ${practiceSession?.practice?.name || 'your clinic'} at a glance.`
+            : `Welcome back, ${memberUsesDoctorHonorific(roles) ? `Dr. ${welcomeName}` : welcomeName}. Here's your practice summary.`
         }
         className="mb-0"
         actions={

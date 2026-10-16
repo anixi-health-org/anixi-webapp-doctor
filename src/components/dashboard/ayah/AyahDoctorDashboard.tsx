@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { useAuth } from '../../../hooks/useAuth';
+import { usePermissions } from '../../../hooks/usePermissions';
+import { practiceMemberWelcomeName } from '../../../lib/practiceMemberDisplay';
 import { useDoctorDashboard } from '../../../hooks/useDoctorDashboard';
 import { useDoctorDashboardData } from '../../../hooks/useDoctorDashboardData';
 import type { DoctorDashboardWorkspace } from '../../../types/doctorDashboard';
@@ -12,13 +14,14 @@ import type { DashboardView } from './DashboardTabs';
 
 export function AyahDoctorDashboard() {
   const { user } = useAuth();
+  const { roles } = usePermissions();
   const { workspace, activeBoard, loading, hasBoards, selectBoard } = useDoctorDashboard(user?.id);
   const { resolved, practiceSnapshot } = useDoctorDashboardData();
   const [isCreating, setIsCreating] = useState(false);
   const [view, setView] = useState<DashboardView>('board');
   const [optimisticWorkspace, setOptimisticWorkspace] = useState<DoctorDashboardWorkspace | null>(null);
 
-  const firstName = user?.displayName?.split(' ')[0] || 'Doctor';
+  const firstName = practiceMemberWelcomeName(user?.displayName, roles);
   const liveWorkspace = workspace ?? optimisticWorkspace;
   const boards = liveWorkspace?.boards ?? [];
   const displayBoard =

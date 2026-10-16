@@ -33,7 +33,6 @@ import { NotificationBell } from './notifications/NotificationBell';
 import { GlobalPatientSearch } from './ui/GlobalPatientSearch';
 import { UserProfileMenu } from './page-layout/UserProfileMenu';
 import { AnixiLogo } from './brand/AnixiLogo';
-import { clinicianHeaderLabel } from '../lib/clinicianName';
 import { AskAnixiProvider } from '../context/AskAnixiContext';
 import { AyahChatProvider } from '../context/AyahChatContext';
 
@@ -256,7 +255,7 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
                 <GlobalPatientSearch />
               </div>
               <NotificationBell />
-              <UserProfileMenu displayLabel={clinicianHeaderLabel(user?.displayName)} />
+              <UserProfileMenu />
             </div>
           </div>
         </header>

@@ -24,6 +24,10 @@ import { usePermissions } from '../hooks/usePermissions';
 import { setAdherenceRulesPracticeContext } from '../services/adherenceRulesService';
 import { AnixiLogo } from './brand/AnixiLogo';
 import { ClinicErrorBoundary } from './clinic/ClinicErrorBoundary';
+import {
+  practiceMemberHeaderLabel,
+  practiceMemberSubtitle,
+} from '../lib/practiceMemberDisplay';
 import { UserProfileMenu } from './page-layout/UserProfileMenu';
 
 type NavSectionId = 'today' | 'care' | 'business' | 'admin';
@@ -214,7 +218,8 @@ const ClinicAdminShell: React.FC = () => {
   };
 
   const closeMobile = () => setMobileNavOpen(false);
-  const firstName = user?.displayName?.split(' ')[0] || 'Admin';
+  const memberSubtitle = practiceMemberSubtitle(roles);
+  const profileLabel = practiceMemberHeaderLabel(user?.displayName, roles);
   const clinicName = practiceSession?.practice?.name || 'Your clinic';
   const isAyahRoute = location.pathname === '/clinic/ayah';
 
@@ -286,7 +291,7 @@ const ClinicAdminShell: React.FC = () => {
                 {clinicName}
               </h1>
             </div>
-            <UserProfileMenu displayLabel={firstName} />
+            <UserProfileMenu displayLabel={profileLabel} subtitle={memberSubtitle ?? undefined} />
           </div>
         </header>
 
