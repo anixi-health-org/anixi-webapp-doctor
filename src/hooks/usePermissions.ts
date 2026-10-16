@@ -1,6 +1,11 @@
 import { useAuth } from './AuthContext';
 import { PracticePermissions, PracticeRole } from '../types';
-import { EMPTY_PERMISSIONS, normalizePermissions } from '../lib/practiceRoles';
+import {
+  EMPTY_PERMISSIONS,
+  memberHasRole,
+  normalizeMemberRoles,
+  normalizePermissions,
+} from '../lib/practiceRoles';
 import {
   canManageOperationalSettings,
   isClinicEmployedClinician,
@@ -9,11 +14,14 @@ import {
 
 export const usePermissions = () => {
   const { practiceSession, joinIntent, user } = useAuth();
-  const role: PracticeRole | null = practiceSession?.member?.role ?? null;
-  const rawPermissions = practiceSession?.member?.permissions;
+  const member = practiceSession?.member;
+  const role: PracticeRole | null = member?.role ?? null;
+  const roles =
+    member && role != null ? normalizeMemberRoles(role, member.roles) : [];
+  const rawPermissions = member?.permissions;
   const permissions =
-    role != null
-      ? normalizePermissions(rawPermissions ?? undefined, role)
+    roles.length > 0
+      ? normalizePermissions(rawPermissions ?? undefined, roles)
       : EMPTY_PERMISSIONS;
   const orgType = practiceSession?.practice?.orgType ?? 'solo';
   const clinicEmployed = isClinicEmployedClinician(practiceSession, {
@@ -21,27 +29,34 @@ export const usePermissions = () => {
     accountKind: user && 'accountKind' in user ? user.accountKind : undefined,
   });
   const canManageOps = canManageOperationalSettings(practiceSession);
-  const isOwner = role === 'owner';
-  const isAdministrator = role === 'administrator' || isOwner;
+  const isOwner = memberHasRole({ role: role ?? 'delegate', roles }, 'owner');
+  const isAdministrator =
+    isOwner || memberHasRole({ role: role ?? 'delegate', roles }, 'administrator');
 
   return {
     role,
+    roles,
     permissions,
     orgType,
     isOwner,
     isAdministrator,
     isPracticeManager:
-      role === 'practice_manager' || role === 'administrator' || isOwner,
-    isDelegate: role === 'delegate',
-    isClinician: Boolean(practiceSession?.member?.isClinician),
+      isOwner ||
+      memberHasRole({ role: role ?? 'delegate', roles }, 'practice_manager', 'administrator'),
+    isDelegate: memberHasRole({ role: role ?? 'delegate', roles }, 'delegate') && roles.length === 1,
+    isClinician:
+      Boolean(member?.isClinician) ||
+      roles.some((r) => r === 'doctor' || r === 'nurse' || r === 'clinical_associate' || r === 'allied_health' || r === 'locum'),
     isClinic: isManagedOrgType(orgType),
     isClinicEmployedClinician: clinicEmployed,
     canManageOperationalSettings: canManageOps,
     can: (permission: keyof PracticePermissions): boolean => {
-      if (isOwner || role === 'administrator') return true;
+      if (isOwner || isAdministrator) return true;
       return Boolean(permissions[permission]);
     },
-    canManageMembers: Boolean(permissions.manageMembers) || isOwner || role === 'administrator',
-    canManageContent: Boolean(permissions.manageContent) || isOwner || role === 'administrator',
+    hasRole: (check: PracticeRole) =>
+      memberHasRole({ role: role ?? 'delegate', roles }, check),
+    canManageMembers: Boolean(permissions.manageMembers) || isOwner || isAdministrator,
+    canManageContent: Boolean(permissions.manageContent) || isOwner || isAdministrator,
   };
 };

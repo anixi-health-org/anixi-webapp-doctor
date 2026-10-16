@@ -174,16 +174,22 @@ export const ClinicAdminLayout: React.FC = () => (
 
 const ClinicAdminShell: React.FC = () => {
   const { user, practiceSession } = useAuth();
-  const { can, isOwner, isPracticeManager, role } = usePermissions();
+  const { can, isOwner, isPracticeManager, roles } = usePermissions();
   const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
 
   const visibleNav = React.useMemo(
     () =>
       mainNav.filter((item) => {
-        // Content creators — overview and Ayah only (plus Support in footer).
-        if (role === 'content_creator') {
-          return item.href === '/clinic' || item.href === '/clinic/ayah';
+        // Sole content creators — overview, content tools, and Ayah only (plus Support in footer).
+        const contentCreatorOnly =
+          roles.length === 1 && roles[0] === 'content_creator';
+        if (contentCreatorOnly) {
+          return (
+            item.href === '/clinic' ||
+            item.href === '/clinic/content' ||
+            item.href === '/clinic/ayah'
+          );
         }
         if (!item.requires) return true;
         if (isOwner || isPracticeManager) return true;
@@ -193,7 +199,7 @@ const ClinicAdminShell: React.FC = () => {
         if (item.requires === 'manageContent') return can('manageContent');
         return can(item.requires);
       }),
-    [can, isOwner, isPracticeManager, role]
+    [can, isOwner, isPracticeManager, roles]
   );
 
   React.useEffect(() => {

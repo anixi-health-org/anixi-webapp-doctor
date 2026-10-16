@@ -1,4 +1,11 @@
-import type { Doctor, Practice, PracticeSession, ProfessionalUser } from '../types';
+import {
+  isClinicianRole,
+  memberHasRole,
+  normalizeMemberRoles,
+  normalizePermissions,
+} from './practiceRoles';
+import type { Doctor, Practice, PracticeRole, PracticeSession, ProfessionalUser } from '../types';
+import type { AuthRole } from '../types/auth';
 import type { JoinPath } from '../types/auth';
 import type { ProfessionalProfileFormData } from '../types/doctorProfile';
 import { normalizeBillingProfile } from './practiceBillingProfile';
@@ -15,23 +22,22 @@ export function parsePracticeOrgType(value: unknown): 'solo' | 'clinic' | 'hospi
 
 /** Practice owner for a clinic or hospital (portal admin, not an invited clinician). */
 export function isClinicOwner(session: PracticeSession | null): boolean {
-  return isManagedOrgType(session?.practice?.orgType) && session?.member?.role === 'owner';
+  if (!session?.member || !isManagedOrgType(session.practice?.orgType)) return false;
+  return memberHasRole(session.member, 'owner');
 }
 
 /** Users who operate the clinic admin portal (not individual clinician workflows). */
 export function usesClinicAdminPortal(session: PracticeSession | null): boolean {
   if (!session || !isManagedOrgType(session.practice?.orgType)) return false;
-  const role = session.member?.role;
+  const member = session.member;
+  if (!member) return false;
   if (
-    role === 'owner' ||
-    role === 'administrator' ||
-    role === 'practice_manager' ||
-    role === 'content_creator'
+    memberHasRole(member, 'owner', 'administrator', 'practice_manager', 'content_creator')
   ) {
     return true;
   }
-  if (role === 'receptionist' || role === 'billing_clerk') {
-    return session.member?.isClinician !== true;
+  if (memberHasRole(member, 'receptionist', 'billing_clerk')) {
+    return member.isClinician !== true;
   }
   return false;
 }
@@ -39,8 +45,9 @@ export function usesClinicAdminPortal(session: PracticeSession | null): boolean 
 /** Owner, administrator, and practice manager can switch clinic ops ↔ clinical workspace. */
 export function canSwitchWorkspaces(session: PracticeSession | null): boolean {
   if (!session || !isManagedOrgType(session.practice?.orgType)) return false;
-  const role = session.member?.role;
-  return role === 'owner' || role === 'administrator' || role === 'practice_manager';
+  const member = session.member;
+  if (!member) return false;
+  return memberHasRole(member, 'owner', 'administrator', 'practice_manager');
 }
 
 export type ClinicEmployedHints = {
@@ -58,8 +65,17 @@ export function isClinicEmployedClinician(
 ): boolean {
   if (session && isManagedOrgType(session.practice?.orgType)) {
     if (canSwitchWorkspaces(session)) return false;
-    const role = session.member?.role;
-    if (role === 'doctor' || role === 'nurse' || session.member?.isClinician === true) {
+    if (
+      memberHasRole(
+        session.member,
+        'doctor',
+        'nurse',
+        'clinical_associate',
+        'allied_health',
+        'locum',
+      ) ||
+      session.member?.isClinician === true
+    ) {
       return true;
     }
     return false;
@@ -84,33 +100,108 @@ export function isClinicManagedPractice(session: PracticeSession | null): boolea
 
 /** Who may edit operational settings (hours, blocks, branding, booking rules). */
 export function canManageOperationalSettings(session: PracticeSession | null): boolean {
-  if (!session?.practice) return false;
+  if (!session?.practice || !session.member) return false;
+  const member = session.member;
+  const roles = normalizeMemberRoles(member.role, member.roles);
+  const permissions = normalizePermissions(member.permissions, roles);
+
   if (!isManagedOrgType(session.practice.orgType)) {
-    const role = session.member?.role;
-    if (role === 'owner') return true;
-    const permissions = session.member?.permissions;
+    if (memberHasRole(member, 'owner')) return true;
     return Boolean(
-      permissions?.manageAppointments ||
-        permissions?.editBookingPolicies ||
-        permissions?.manageMembers
+      permissions.manageAppointments ||
+        permissions.editBookingPolicies ||
+        permissions.manageMembers
     );
   }
   if (canSwitchWorkspaces(session)) return true;
-  if (session.member?.isClinician === true) return false;
-  const role = session.member?.role;
-  if (role === 'receptionist' || role === 'billing_clerk' || role === 'content_creator') {
-    return true;
+  if (member.isClinician === true) {
+    const opsRole = memberHasRole(
+      member,
+      'receptionist',
+      'billing_clerk',
+      'content_creator',
+      'practice_manager',
+      'administrator',
+      'owner',
+    );
+    const opsPerms = Boolean(
+      permissions.manageAppointments ||
+        permissions.editBookingPolicies ||
+        permissions.manageMembers,
+    );
+    if (!opsRole && !opsPerms) return false;
   }
-  const permissions = session.member?.permissions;
-  return Boolean(
-    permissions?.manageAppointments ||
-      permissions?.editBookingPolicies ||
-      permissions?.manageMembers
+  return (
+    memberHasRole(member, 'receptionist', 'billing_clerk', 'content_creator') ||
+    Boolean(
+      permissions.manageAppointments ||
+        permissions.editBookingPolicies ||
+        permissions.manageMembers,
+    )
   );
 }
 
-export function clinicAdminHomePath(_session?: PracticeSession | null): string {
+export function clinicAdminHomePath(session?: PracticeSession | null): string {
+  if (session?.member) {
+    const roles = normalizeMemberRoles(session.member.role, session.member.roles);
+    if (roles.length === 1 && roles[0] === 'content_creator') {
+      return '/clinic/content';
+    }
+  }
   return '/clinic';
+}
+
+const PRACTICE_INVITE_DOCTOR_AUTH_ROLES: PracticeRole[] = [
+  'owner',
+  'administrator',
+  'doctor',
+  'clinical_associate',
+  'nurse',
+  'allied_health',
+  'locum',
+  'practice_manager',
+];
+
+export function invitePracticeRoles(invite: {
+  role: PracticeRole;
+  roles?: PracticeRole[] | null;
+}): PracticeRole[] {
+  return normalizeMemberRoles(invite.role, invite.roles);
+}
+
+export function authRoleForPracticeInvite(invite: {
+  role: PracticeRole;
+  roles?: PracticeRole[] | null;
+}): AuthRole {
+  const roles = invitePracticeRoles(invite);
+  return roles.some((r) => PRACTICE_INVITE_DOCTOR_AUTH_ROLES.includes(r)) ? 'doctor' : 'staff';
+}
+
+/** Landing route immediately after accepting a practice invite (before full session hydration). */
+export function postPracticeInviteAcceptPath(roles: PracticeRole[]): string {
+  const normalized = normalizeMemberRoles('delegate', roles);
+  if (normalized.length === 1 && normalized[0] === 'content_creator') {
+    return '/clinic/content';
+  }
+  if (normalized.includes('doctor')) {
+    return '/onboarding';
+  }
+  const usesClinicPortal = normalized.some(
+    (r) =>
+      r === 'owner' ||
+      r === 'administrator' ||
+      r === 'practice_manager' ||
+      r === 'receptionist' ||
+      r === 'billing_clerk' ||
+      r === 'content_creator',
+  );
+  if (usesClinicPortal && !normalized.some(isClinicianRole)) {
+    return clinicAdminHomePath();
+  }
+  if (usesClinicPortal && normalized.some(isClinicianRole)) {
+    return clinicAdminHomePath();
+  }
+  return '/dashboard';
 }
 
 /** Clinic owner who manages the practice but does not see patients */

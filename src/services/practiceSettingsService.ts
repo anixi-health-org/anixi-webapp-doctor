@@ -170,7 +170,9 @@ export const listPracticeClinicians = async (practiceId: string): Promise<Practi
 export const updatePracticeMember = async (
   practiceId: string,
   uid: string,
-  updates: Partial<Pick<PracticeMember, 'role' | 'permissions' | 'status' | 'displayName' | 'isClinician'>>,
+  updates: Partial<
+    Pick<PracticeMember, 'role' | 'roles' | 'permissions' | 'status' | 'displayName' | 'isClinician'>
+  >,
 ): Promise<void> => {
   const { djangoPatchPracticeMember } = await import('./djangoApiService');
   await djangoPatchPracticeMember(practiceId, uid, updates);

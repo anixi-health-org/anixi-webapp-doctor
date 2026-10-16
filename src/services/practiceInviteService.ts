@@ -1,4 +1,8 @@
-import { normalizePermissions, permissionsForRole } from '../lib/practiceRoles';
+import {
+  normalizeMemberRoles,
+  normalizePermissions,
+  permissionsForRoles,
+} from '../lib/practiceRoles';
 import {
   djangoAcceptPracticeInvite,
   djangoCreatePracticeInvite,
@@ -28,7 +32,11 @@ const mapInvite = (id: string, practiceId: string, d: Record<string, any>): Prac
   email: String(d.email ?? '').toLowerCase(),
   displayName: d.displayName,
   role: d.role as PracticeRole,
-  permissions: normalizePermissions(d.permissions, d.role as PracticeRole),
+  roles: normalizeMemberRoles(d.role as PracticeRole, d.roles as PracticeRole[] | undefined),
+  permissions: normalizePermissions(
+    d.permissions,
+    normalizeMemberRoles(d.role as PracticeRole, d.roles as PracticeRole[] | undefined),
+  ),
   invitedBy: String(d.invitedBy ?? ''),
   invitedByName: d.invitedByName,
   status: d.status,
@@ -68,6 +76,7 @@ export type CreatePracticeInviteInput = {
   email: string;
   displayName?: string;
   role: PracticeRole;
+  roles?: PracticeRole[];
   permissions?: PracticePermissions;
   invitedBy: string;
   invitedByName?: string;
@@ -81,14 +90,16 @@ export const createPracticeInvite = async (
 ): Promise<PracticeInvite> => {
   const email = input.email.trim().toLowerCase();
   if (!email) throw new Error('Email is required');
-  if (input.role === 'owner') throw new Error('Cannot invite another owner');
+  const roles = normalizeMemberRoles(input.role, input.roles);
+  if (roles.includes('owner')) throw new Error('Cannot invite another owner');
 
   if (isDjangoApiEnabled()) {
     const row = await djangoCreatePracticeInvite(input.practiceId, {
       email,
       displayName: input.displayName,
-      role: input.role,
-      permissions: input.permissions ?? permissionsForRole(input.role),
+      role: roles[0],
+      roles,
+      permissions: input.permissions ?? permissionsForRoles(roles),
       invitedByName: input.invitedByName,
     });
     return mapDjangoInvite(row);

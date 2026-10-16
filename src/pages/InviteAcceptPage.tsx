@@ -4,35 +4,21 @@ import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { AuthLayout } from '../components/auth/AuthLayout';
 import { SignInPrompt } from '../components/auth/AuthLinks';
 import { useAuth } from '../hooks/AuthContext';
-import { clinicAdminHomePath } from '../lib/doctorAccess';
-import { ROLE_LABELS } from '../lib/practiceRoles';
+import {
+  authRoleForPracticeInvite,
+  invitePracticeRoles,
+  postPracticeInviteAcceptPath,
+} from '../lib/doctorAccess';
+import { formatRoleList } from '../lib/practiceRoles';
 import { registerProfessional } from '../services/authService';
 import {
   acceptPracticeInvite,
   getPracticeInvite,
 } from '../services/practiceInviteService';
-import type { PracticeInvite, PracticeRole } from '../types';
+import type { PracticeInvite } from '../types';
 import type { AuthRole } from '../types/auth';
 import { getJoinPathConfig } from '../lib/joinPathConfig';
 import JoinInviteLandingPage from './JoinInviteLandingPage';
-
-const doctorAuthRoles: PracticeRole[] = [
-  'owner',
-  'administrator',
-  'doctor',
-  'clinical_associate',
-  'nurse',
-  'allied_health',
-  'locum',
-  'practice_manager',
-];
-const clinicAdminRoles: PracticeRole[] = [
-  'administrator',
-  'practice_manager',
-  'receptionist',
-  'billing_clerk',
-  'content_creator',
-];
 
 export const InviteAcceptPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -95,12 +81,7 @@ export const InviteAcceptPage: React.FC = () => {
     return <JoinInviteLandingPage />;
   }
 
-  const finishAccept = async (
-    uid: string,
-    userEmail: string,
-    name?: string,
-    role?: PracticeRole,
-  ) => {
+  const finishAccept = async (uid: string, userEmail: string, name?: string) => {
     await acceptPracticeInvite({
       practiceId,
       inviteId,
@@ -111,22 +92,8 @@ export const InviteAcceptPage: React.FC = () => {
     });
     await refreshPracticeSession();
     await refreshUser();
-    const acceptedRole = role || invite?.role;
-
-    if (acceptedRole && clinicAdminRoles.includes(acceptedRole)) {
-      navigate(
-        acceptedRole === 'content_creator' ? '/clinic/content' : clinicAdminHomePath(),
-        { replace: true }
-      );
-      return;
-    }
-
-    if (acceptedRole === 'doctor') {
-      navigate('/onboarding', { replace: true });
-      return;
-    }
-
-    navigate('/dashboard', { replace: true });
+    const roles = invite ? invitePracticeRoles(invite) : [];
+    navigate(postPracticeInviteAcceptPath(roles), { replace: true });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -135,14 +102,14 @@ export const InviteAcceptPage: React.FC = () => {
     setError('');
     setSubmitting(true);
     try {
-      const authRole: AuthRole = doctorAuthRoles.includes(invite.role) ? 'doctor' : 'staff';
+      const authRole: AuthRole = authRoleForPracticeInvite(invite);
 
       if (isAuthenticated && user) {
         if (user.email.trim().toLowerCase() !== invite.email.trim().toLowerCase()) {
           setError('Sign out and continue with the invited email address.');
           return;
         }
-        await finishAccept(user.id, user.email, user.displayName, invite.role);
+        await finishAccept(user.id, user.email, user.displayName);
         return;
       }
 
@@ -173,21 +140,11 @@ export const InviteAcceptPage: React.FC = () => {
         );
         const professional = await login(email, password, authRole);
         if (!professional) throw new Error('Could not sign in after registration');
-        await finishAccept(
-          professional.id,
-          professional.email,
-          professional.displayName,
-          invite.role,
-        );
+        await finishAccept(professional.id, professional.email, professional.displayName);
       } else {
         const professional = await login(email, password);
         if (!professional) throw new Error('Login failed');
-        await finishAccept(
-          professional.id,
-          professional.email,
-          professional.displayName,
-          invite.role,
-        );
+        await finishAccept(professional.id, professional.email, professional.displayName);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
@@ -266,7 +223,8 @@ export const InviteAcceptPage: React.FC = () => {
         <div className="mb-6 rounded-xl bg-[#eef4f1] px-4 py-3 text-sm text-[#344256]">
           <p className="font-medium">{invite.practiceName}</p>
           <p className="mt-1 text-[#65758b]">
-            Invited as <strong>{ROLE_LABELS[invite.role]}</strong>
+            Invited as{' '}
+            <strong>{formatRoleList(invitePracticeRoles(invite))}</strong>
             {invite.invitedByName ? ` by ${invite.invitedByName}` : ''}
           </p>
         </div>
