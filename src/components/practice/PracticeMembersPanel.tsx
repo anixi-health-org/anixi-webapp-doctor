@@ -1,8 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ClinicFormModal } from '../clinic/ClinicFormModal';
+import { clinicButtonClasses } from '../clinic/clinicButtonStyles';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
-import { formatRoleList, normalizeMemberRoles, permissionsForRoles } from '../../lib/practiceRoles';
+import {
+  formatRoleList,
+  isClinicianRole,
+  normalizeMemberRoles,
+  permissionsForRoles,
+} from '../../lib/practiceRoles';
 import { PracticeRoleMultiSelect } from './PracticeRoleMultiSelect';
 import { ListRowsSkeleton, PageLoadingState } from '../ui/Skeleton';
 import {
@@ -10,6 +17,7 @@ import {
   listPracticeInvites,
   resendPracticeInvite,
   revokePracticeInvite,
+  updatePracticeInvite,
 } from '../../services/practiceInviteService';
 import { logClinicAuditEvent } from '../../services/clinicAuditService';
 import {
@@ -59,6 +67,17 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
   });
   const [saving, setSaving] = useState(false);
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [roleEditor, setRoleEditor] = useState<{
+    uid: string;
+    name: string;
+    roles: PracticeRole[];
+  } | null>(null);
+  const [inviteEditor, setInviteEditor] = useState<{
+    id: string;
+    email: string;
+    displayName: string;
+    roles: PracticeRole[];
+  } | null>(null);
   const onLoadedRef = React.useRef(onLoaded);
   onLoadedRef.current = onLoaded;
 
@@ -188,6 +207,49 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
     await reload();
   };
 
+  const saveRoleEditor = async () => {
+    if (!roleEditor) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await onChangeRoles(roleEditor.uid, roleEditor.roles);
+      setRoleEditor(null);
+      setSuccess('Roles updated.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update roles');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveInviteEditor = async () => {
+    if (!inviteEditor || !inviteEditor.email.trim()) {
+      setError('Email is required');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const roles = normalizeMemberRoles('doctor', inviteEditor.roles);
+      await updatePracticeInvite(practice.id, inviteEditor.id, {
+        email: inviteEditor.email,
+        displayName: inviteEditor.displayName,
+        roles,
+        permissions: permissionsForRoles(roles),
+      });
+      setInviteEditor(null);
+      setSuccess('Invitation updated.');
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update invitation');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inviteFieldClass =
+    'mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:border-anixi-green focus:outline-none focus:ring-2 focus:ring-anixi-green/20';
+
   const showInviteUi = variant !== 'listOnly';
 
   return (
@@ -206,7 +268,7 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
             <button
               type="button"
               onClick={() => setShowInvite(true)}
-              className="rounded-full bg-anixi-green px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+              className={clinicButtonClasses('primary')}
             >
               Invite member
             </button>
@@ -227,7 +289,7 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
             <button
               type="button"
               onClick={() => setShowInvite(true)}
-              className="rounded-full bg-anixi-green px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+              className={clinicButtonClasses('primary')}
             >
               Invite one person
             </button>
@@ -277,14 +339,14 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
               type="button"
               disabled={saving}
               onClick={() => void onInvite()}
-              className="rounded-full bg-anixi-green px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              className={clinicButtonClasses('primary')}
             >
               {saving ? 'Sending…' : 'Send invite'}
             </button>
             <button
               type="button"
               onClick={() => setShowInvite(false)}
-              className="rounded-full border border-gray-200 px-5 py-2.5 text-sm font-semibold text-gray-700"
+              className={clinicButtonClasses('outline')}
             >
               Cancel
             </button>
@@ -330,41 +392,55 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
                     <p className="text-sm text-gray-500">{m.email}</p>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   {m.uid === practice.ownerId ? (
-                    <span className="text-sm text-gray-600">
+                    <span
+                      className={clinicButtonClasses('outline', 'sm', 'pointer-events-none opacity-90')}
+                    >
                       {formatRoleList(normalizeMemberRoles(m.role, m.roles))}
                     </span>
                   ) : (
                     <>
-                      <details className="relative">
-                        <summary className="cursor-pointer list-none rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-800">
-                          {formatRoleList(normalizeMemberRoles(m.role, m.roles))}
-                        </summary>
-                        <div className="absolute right-0 z-10 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
-                          <PracticeRoleMultiSelect
-                            mode="member"
-                            value={normalizeMemberRoles(m.role, m.roles)}
-                            onChange={(roles) => void onChangeRoles(m.uid, roles)}
-                          />
-                        </div>
-                      </details>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRoleEditor({
+                            uid: m.uid,
+                            name: label,
+                            roles: normalizeMemberRoles(m.role, m.roles),
+                          })
+                        }
+                        className={clinicButtonClasses('outline', 'sm')}
+                      >
+                        {formatRoleList(normalizeMemberRoles(m.role, m.roles))}
+                      </button>
                       <button
                         type="button"
                         onClick={() => void onRemoveMember(m.uid)}
-                        className="text-sm font-medium text-red-600 hover:underline"
+                        className={clinicButtonClasses('dangerOutline', 'sm')}
                       >
                         Remove
                       </button>
                     </>
                   )}
                   {variant === 'clinic' ? (
-                    <Link
-                      to={`/clinic/team/${m.uid}`}
-                      className="text-sm font-semibold text-anixi-green hover:underline"
-                    >
-                      Manage
-                    </Link>
+                    <>
+                      {normalizeMemberRoles(m.role, m.roles).some(isClinicianRole) &&
+                      m.isClinician !== false ? (
+                        <Link
+                          to={`/clinic/team/${m.uid}#booking-schedule`}
+                          className={clinicButtonClasses('secondary', 'sm')}
+                        >
+                          Schedule
+                        </Link>
+                      ) : null}
+                      <Link
+                        to={`/clinic/team/${m.uid}`}
+                        className={clinicButtonClasses('primary', 'sm')}
+                      >
+                        Manage
+                      </Link>
+                    </>
                   ) : null}
                 </div>
               </li>
@@ -398,19 +474,33 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
                     {formatRoleList(normalizeMemberRoles(inv.role, inv.roles))}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setInviteEditor({
+                        id: inv.id,
+                        email: inv.email,
+                        displayName: inv.displayName?.trim() || '',
+                        roles: normalizeMemberRoles(inv.role, inv.roles),
+                      })
+                    }
+                    className={clinicButtonClasses('outline', 'sm')}
+                  >
+                    Edit
+                  </button>
                   <button
                     type="button"
                     disabled={resendingId === inv.id}
                     onClick={() => void onResend(inv.id)}
-                    className="text-sm font-medium text-anixi-green hover:underline disabled:opacity-50"
+                    className={clinicButtonClasses('secondary', 'sm')}
                   >
                     {resendingId === inv.id ? 'Sending…' : 'Resend'}
                   </button>
                   <button
                     type="button"
                     onClick={() => void onRevoke(inv.id)}
-                    className="text-sm font-medium text-red-600 hover:underline"
+                    className={clinicButtonClasses('dangerOutline', 'sm')}
                   >
                     Revoke
                   </button>
@@ -420,6 +510,109 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
           </ul>
         </div>
       )}
+
+      <ClinicFormModal
+        open={roleEditor != null}
+        title="Change roles"
+        description={
+          roleEditor ? `Update roles for ${roleEditor.name}. Changes apply immediately.` : undefined
+        }
+        onClose={() => setRoleEditor(null)}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setRoleEditor(null)}
+              className={clinicButtonClasses('outline')}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveRoleEditor()}
+              className={clinicButtonClasses('primary')}
+              disabled={saving || !roleEditor}
+            >
+              {saving ? 'Saving…' : 'Save roles'}
+            </button>
+          </>
+        }
+      >
+        {roleEditor ? (
+          <PracticeRoleMultiSelect
+            mode="member"
+            value={roleEditor.roles}
+            onChange={(roles) =>
+              setRoleEditor((current) => (current ? { ...current, roles } : current))
+            }
+          />
+        ) : null}
+      </ClinicFormModal>
+
+      <ClinicFormModal
+        open={inviteEditor != null}
+        title="Edit pending invite"
+        description="Update details before they accept. The invite link stays the same."
+        onClose={() => setInviteEditor(null)}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setInviteEditor(null)}
+              className={clinicButtonClasses('outline')}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveInviteEditor()}
+              className={clinicButtonClasses('primary')}
+              disabled={saving || !inviteEditor}
+            >
+              {saving ? 'Saving…' : 'Save invite'}
+            </button>
+          </>
+        }
+      >
+        {inviteEditor ? (
+          <div className="space-y-4">
+            <label className="block text-sm font-medium text-gray-700">
+              Email
+              <input
+                type="email"
+                className={inviteFieldClass}
+                value={inviteEditor.email}
+                onChange={(e) =>
+                  setInviteEditor((current) =>
+                    current ? { ...current, email: e.target.value } : current,
+                  )
+                }
+              />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Name (optional)
+              <input
+                className={inviteFieldClass}
+                value={inviteEditor.displayName}
+                onChange={(e) =>
+                  setInviteEditor((current) =>
+                    current ? { ...current, displayName: e.target.value } : current,
+                  )
+                }
+              />
+            </label>
+            <PracticeRoleMultiSelect
+              mode="invite"
+              value={inviteEditor.roles}
+              onChange={(roles) =>
+                setInviteEditor((current) => (current ? { ...current, roles } : current))
+              }
+            />
+          </div>
+        ) : null}
+      </ClinicFormModal>
     </div>
   );
 };
