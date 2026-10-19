@@ -9,6 +9,7 @@ import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import {
   bulkAssignPracticePatients,
+  bulkSendPatientAppInvites,
   listPracticePatientsPage,
   updatePracticePatientAssignedDoctor,
 } from '../../services/practicePatientService';
@@ -37,6 +38,9 @@ export const ClinicAdminPatientsPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectAllMatching, setSelectAllMatching] = useState(false);
   const [bulkDoctorId, setBulkDoctorId] = useState('');
+  const [inviteChannel, setInviteChannel] = useState<
+    'whatsapp_and_email' | 'whatsapp' | 'email'
+  >('whatsapp_and_email');
   const [bulkBusy, setBulkBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -160,6 +164,61 @@ export const ClinicAdminPatientsPage: React.FC = () => {
   const clearSelection = () => {
     setSelectedIds(new Set());
     setSelectAllMatching(false);
+  };
+
+  const handleBulkAppInvite = async () => {
+    if (!canManagePatients || !practice?.id || selectedCount === 0) return;
+    const preview = await bulkSendPatientAppInvites(practice.id, {
+      channels: inviteChannel,
+      patientIds: selectAllMatching ? [] : Array.from(selectedIds),
+      allMatching: selectAllMatching,
+      q: selectAllMatching ? debouncedSearch : '',
+      dryRun: true,
+    });
+    const sample = preview.previewText?.trim() || '';
+    const intro =
+      selectAllMatching && total > pageIds.length
+        ? `Send the Anixi app invite to all ${total} patients matching this search`
+        : `Send the Anixi app invite to ${selectedCount} selected patient${selectedCount === 1 ? '' : 's'}`;
+    const channelLabel =
+      inviteChannel === 'whatsapp'
+        ? 'via WhatsApp'
+        : inviteChannel === 'email'
+          ? 'via email'
+          : 'via WhatsApp and email (where contact details exist)';
+    if (
+      !window.confirm(
+        `${intro} ${channelLabel}?\n\nMessage preview:\n\n${sample.slice(0, 900)}${sample.length > 900 ? '…' : ''}`,
+      )
+    ) {
+      return;
+    }
+    setBulkBusy(true);
+    setError(null);
+    try {
+      const result = await bulkSendPatientAppInvites(practice.id, {
+        channels: inviteChannel,
+        patientIds: selectAllMatching ? [] : Array.from(selectedIds),
+        allMatching: selectAllMatching,
+        q: selectAllMatching ? debouncedSearch : '',
+      });
+      const wa = result.sentWhatsapp ?? 0;
+      const em = result.sentEmail ?? 0;
+      const fail = result.failed ?? 0;
+      setSuccess(
+        `App invites sent — WhatsApp: ${wa}, email: ${em}${fail ? `, failed: ${fail}` : ''}.`,
+      );
+      if (fail > 0 && (result.results?.length ?? 0) > 0) {
+        const firstErr = result.results?.find((row) => !row.success)?.error;
+        if (firstErr) {
+          setError(`Some invites failed (example: ${firstErr})`);
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not send app invites.');
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   const handleBulkAssign = async (assignedDoctorId: string | null) => {
@@ -378,6 +437,28 @@ export const ClinicAdminPatientsPage: React.FC = () => {
               ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={inviteChannel}
+                onChange={(event) =>
+                  setInviteChannel(
+                    event.target.value as 'whatsapp_and_email' | 'whatsapp' | 'email',
+                  )
+                }
+                className="min-w-[160px] rounded-lg border border-[#e1e7ef] px-2 py-1.5 text-sm"
+                aria-label="App invite channel"
+              >
+                <option value="whatsapp_and_email">WhatsApp + email</option>
+                <option value="whatsapp">WhatsApp only</option>
+                <option value="email">Email only</option>
+              </select>
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={() => void handleBulkAppInvite()}
+                className="rounded-full border border-anixi-green/40 bg-[#f0faf6] px-4 py-2 text-sm font-semibold text-anixi-green disabled:opacity-50"
+              >
+                {bulkBusy ? 'Sending…' : 'Send app invite'}
+              </button>
               <select
                 value={bulkDoctorId}
                 onChange={(event) => setBulkDoctorId(event.target.value)}

@@ -1,6 +1,7 @@
 import {
   djangoAssignPracticePatient,
   djangoBulkAssignPracticePatients,
+  djangoBulkPatientAppInvites,
   djangoGetPracticePatientAccount,
   djangoListPracticePatients,
   djangoPatchPracticePatientAccount,
@@ -88,6 +89,17 @@ export const updatePracticePatientAssignedDoctor = async (
   await djangoAssignPracticePatient(practiceId, patientId, assignedDoctorId);
   invalidateDoctorPatientPanelCache();
 };
+
+export const bulkSendPatientAppInvites = async (
+  practiceId: string,
+  payload: {
+    channels?: 'whatsapp' | 'email' | 'whatsapp_and_email';
+    patientIds?: string[];
+    allMatching?: boolean;
+    q?: string;
+    dryRun?: boolean;
+  },
+) => djangoBulkPatientAppInvites(practiceId, payload);
 
 export const bulkAssignPracticePatients = async (
   practiceId: string,

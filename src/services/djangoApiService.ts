@@ -1600,6 +1600,51 @@ export async function djangoAssignPracticePatient(
   return djangoJson<DjangoPracticePatient>(res);
 }
 
+export async function djangoBulkPatientAppInvites(
+  practiceId: string,
+  payload: {
+    channels?: string;
+    patientIds?: string[];
+    allMatching?: boolean;
+    q?: string;
+    dryRun?: boolean;
+  },
+) {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/patients/practice/${encodeURIComponent(practiceId)}/app-invites/`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        channels: payload.channels ?? 'whatsapp_and_email',
+        patientIds: payload.patientIds ?? [],
+        allMatching: Boolean(payload.allMatching),
+        q: payload.q ?? '',
+        dryRun: Boolean(payload.dryRun),
+      }),
+    },
+  );
+  return djangoJson<{
+    ok?: boolean;
+    dryRun?: boolean;
+    channels?: string[];
+    recipientCount?: number;
+    previewText?: string;
+    sentWhatsapp?: number;
+    sentEmail?: number;
+    failed?: number;
+    results?: Array<{
+      patientId: string;
+      displayName?: string;
+      channel: string;
+      success: boolean;
+      error?: string;
+    }>;
+  }>(res);
+}
+
 export async function djangoBulkAssignPracticePatients(
   practiceId: string,
   payload: {
