@@ -1,10 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { PageHeader, PageShell } from '../../components/page-layout';
+import { ClinicBackNav } from '../../components/clinic/ClinicBackNav';
+import { DoctorBookingSchedulePanel } from '../../components/clinic/DoctorBookingSchedulePanel';
+import { clinicButtonClasses } from '../../components/clinic/clinicButtonStyles';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import {
   formatRoleList,
+  isClinicianRole,
   normalizeMemberRoles,
   permissionsForRoles,
   primaryPracticeRole,
@@ -102,11 +106,13 @@ function mapAccount(raw: Record<string, unknown>): MemberAccount {
 export const ClinicAdminMemberAccountPage: React.FC = () => {
   const { memberId = '' } = useParams();
   const navigate = useNavigate();
-  const { practiceSession } = useAuth();
-  const { canManageMembers, isOwner } = usePermissions();
+  const { practiceSession, refreshPracticeSession } = useAuth();
+  const { canManageMembers, isOwner, can } = usePermissions();
   const practice = practiceSession?.practice;
   const canManage = canManageMembers || isOwner;
   const isPracticeOwner = Boolean(practice && memberId === practice.ownerId);
+  const canManageSchedules = can('manageAppointments');
+  const canManageSoftBlocks = can('manageSoftBlocks');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -114,6 +120,24 @@ export const ClinicAdminMemberAccountPage: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [loadedRoles, setLoadedRoles] = useState<PracticeRole[]>(['doctor']);
   const [draft, setDraft] = useState<MemberAccount>(emptyAccount());
+
+  const showBookingSchedule = useMemo(
+    () =>
+      draft.isClinician && draft.isActive && draft.roles.some(isClinicianRole),
+    [draft.isActive, draft.isClinician, draft.roles],
+  );
+
+  useEffect(() => {
+    if (loading || !showBookingSchedule) return;
+    if (window.location.hash !== '#booking-schedule') return;
+    const timer = window.setTimeout(() => {
+      document.getElementById('booking-schedule')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [loading, showBookingSchedule]);
 
   useEffect(() => {
     if (!practice?.id || !memberId) return;
@@ -197,9 +221,7 @@ export const ClinicAdminMemberAccountPage: React.FC = () => {
 
   return (
     <PageShell className="py-6 sm:py-8">
-      <Link to="/clinic/team" className="text-sm font-semibold text-anixi-green hover:underline">
-        Back to team
-      </Link>
+      <ClinicBackNav label="Back to team" to="/clinic/team" />
       <PageHeader
         className="mt-3"
         title={draft.displayName || 'Team account'}
@@ -389,11 +411,25 @@ export const ClinicAdminMemberAccountPage: React.FC = () => {
             </div>
           </section>
 
+          {showBookingSchedule && practice ? (
+            <DoctorBookingSchedulePanel
+              practiceId={practice.id}
+              doctorId={memberId}
+              doctorDisplayName={draft.displayName.trim() || 'this doctor'}
+              timezone={practice.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}
+              locations={practice.locations ?? []}
+              practiceConsultTypes={practice.consultTypes}
+              canManageSchedules={canManageSchedules}
+              canManageSoftBlocks={canManageSoftBlocks}
+              onPracticeUpdated={() => void refreshPracticeSession()}
+            />
+          ) : null}
+
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="submit"
               disabled={saving || !canManage}
-              className="rounded-full bg-anixi-green px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              className={clinicButtonClasses('primary')}
             >
               {saving ? 'Saving…' : 'Save account'}
             </button>
@@ -402,7 +438,7 @@ export const ClinicAdminMemberAccountPage: React.FC = () => {
                 type="button"
                 disabled={saving}
                 onClick={() => void removeMember()}
-                className="rounded-full border border-red-200 px-5 py-2.5 text-sm font-semibold text-red-600"
+                className={clinicButtonClasses('dangerOutline')}
               >
                 Deactivate on team
               </button>
@@ -410,7 +446,7 @@ export const ClinicAdminMemberAccountPage: React.FC = () => {
             <button
               type="button"
               onClick={() => navigate('/clinic/team')}
-              className="rounded-full px-5 py-2.5 text-sm font-semibold text-[#65758b]"
+              className={clinicButtonClasses('outline')}
             >
               Cancel
             </button>

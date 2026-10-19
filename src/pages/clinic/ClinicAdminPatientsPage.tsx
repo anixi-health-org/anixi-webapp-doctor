@@ -3,10 +3,16 @@ import { Link } from 'react-router-dom';
 import { BulkPatientImportPanel } from '../../components/onboarding/BulkPatientImportPanel';
 import { UnichartPdfImportPanel } from '../../components/clinic/UnichartPdfImportPanel';
 import { ClinicAddPatientPanel, type ClinicAddPatientResult } from '../../components/clinic/ClinicAddPatientPanel';
+import {
+  BULK_APP_INVITE_MAX,
+  ClinicPatientBulkActions,
+  type AppInviteChannel,
+} from '../../components/clinic/ClinicPatientBulkActions';
 import { ClinicSecondaryAction } from '../../components/clinic/ClinicSecondaryAction';
 import { PageShell } from '../../components/page-layout';
 import { useAuth } from '../../hooks/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
+import { userFacingLoadError } from '../../services/djangoApiService';
 import {
   bulkAssignPracticePatients,
   bulkSendPatientAppInvites,
@@ -38,10 +44,9 @@ export const ClinicAdminPatientsPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectAllMatching, setSelectAllMatching] = useState(false);
   const [bulkDoctorId, setBulkDoctorId] = useState('');
-  const [inviteChannel, setInviteChannel] = useState<
-    'whatsapp_and_email' | 'whatsapp' | 'email'
-  >('whatsapp_and_email');
-  const [bulkBusy, setBulkBusy] = useState(false);
+  const [inviteChannel, setInviteChannel] = useState<AppInviteChannel>('whatsapp');
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [assignBusy, setAssignBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -168,34 +173,43 @@ export const ClinicAdminPatientsPage: React.FC = () => {
 
   const handleBulkAppInvite = async () => {
     if (!canManagePatients || !practice?.id || selectedCount === 0) return;
-    const preview = await bulkSendPatientAppInvites(practice.id, {
-      channels: inviteChannel,
-      patientIds: selectAllMatching ? [] : Array.from(selectedIds),
-      allMatching: selectAllMatching,
-      q: selectAllMatching ? debouncedSearch : '',
-      dryRun: true,
-    });
-    const sample = preview.previewText?.trim() || '';
-    const intro =
-      selectAllMatching && total > pageIds.length
-        ? `Send the Anixi app invite to all ${total} patients matching this search`
-        : `Send the Anixi app invite to ${selectedCount} selected patient${selectedCount === 1 ? '' : 's'}`;
-    const channelLabel =
-      inviteChannel === 'whatsapp'
-        ? 'via WhatsApp'
-        : inviteChannel === 'email'
-          ? 'via email'
-          : 'via WhatsApp and email (where contact details exist)';
-    if (
-      !window.confirm(
-        `${intro} ${channelLabel}?\n\nMessage preview:\n\n${sample.slice(0, 900)}${sample.length > 900 ? '…' : ''}`,
-      )
-    ) {
+    if (selectedCount > BULK_APP_INVITE_MAX) {
+      setError(
+        `Select at most ${BULK_APP_INVITE_MAX} patients per batch (you have ${selectedCount}).`,
+      );
       return;
     }
-    setBulkBusy(true);
+    setInviteBusy(true);
     setError(null);
+    setSuccess(null);
     try {
+      const preview = await bulkSendPatientAppInvites(practice.id, {
+        channels: inviteChannel,
+        patientIds: selectAllMatching ? [] : Array.from(selectedIds),
+        allMatching: selectAllMatching,
+        q: selectAllMatching ? debouncedSearch : '',
+        dryRun: true,
+      });
+      const sample = preview.previewText?.trim() || '';
+      const appLink = preview.appDownloadUrl?.trim() || '';
+      const intro =
+        selectAllMatching && total > pageIds.length
+          ? `Send the Anixi app invite to all ${selectedCount} patients matching this search`
+          : `Send the Anixi app invite to ${selectedCount} selected patient${selectedCount === 1 ? '' : 's'}`;
+      const channelLabel =
+        inviteChannel === 'whatsapp'
+          ? 'via WhatsApp only (Meta template with app link + clinic code)'
+          : inviteChannel === 'email'
+            ? 'via email only'
+            : 'via WhatsApp and email (where contact details exist)';
+      const linkLine = appLink ? `\n\nApp link in message:\n${appLink}` : '';
+      if (
+        !window.confirm(
+          `${intro} ${channelLabel}?${linkLine}\n\nMessage preview:\n\n${sample.slice(0, 900)}${sample.length > 900 ? '…' : ''}`,
+        )
+      ) {
+        return;
+      }
       const result = await bulkSendPatientAppInvites(practice.id, {
         channels: inviteChannel,
         patientIds: selectAllMatching ? [] : Array.from(selectedIds),
@@ -205,9 +219,19 @@ export const ClinicAdminPatientsPage: React.FC = () => {
       const wa = result.sentWhatsapp ?? 0;
       const em = result.sentEmail ?? 0;
       const fail = result.failed ?? 0;
-      setSuccess(
-        `App invites sent — WhatsApp: ${wa}, email: ${em}${fail ? `, failed: ${fail}` : ''}.`,
-      );
+      if (inviteChannel === 'whatsapp') {
+        setSuccess(
+          fail > 0
+            ? `WhatsApp invites — sent: ${wa}, failed: ${fail}.`
+            : `WhatsApp app invites sent to ${wa} patient${wa === 1 ? '' : 's'}.`,
+        );
+      } else if (inviteChannel === 'email') {
+        setSuccess(`Email app invites sent to ${em} patient${em === 1 ? '' : 's'}.`);
+      } else {
+        setSuccess(
+          `App invites sent — WhatsApp: ${wa}, email: ${em}${fail ? `, failed: ${fail}` : ''}.`,
+        );
+      }
       if (fail > 0 && (result.results?.length ?? 0) > 0) {
         const firstErr = result.results?.find((row) => !row.success)?.error;
         if (firstErr) {
@@ -215,9 +239,9 @@ export const ClinicAdminPatientsPage: React.FC = () => {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not send app invites.');
+      setError(userFacingLoadError(err, 'Could not send WhatsApp invites.'));
     } finally {
-      setBulkBusy(false);
+      setInviteBusy(false);
     }
   };
 
@@ -238,7 +262,7 @@ export const ClinicAdminPatientsPage: React.FC = () => {
             : `Assign ${selectedCount} selected patients to ${doctorLabel}?`
           : null;
     if (confirmLarge && !window.confirm(confirmLarge)) return;
-    setBulkBusy(true);
+    setAssignBusy(true);
     setError(null);
     try {
       const result = await bulkAssignPracticePatients(practice.id, {
@@ -257,7 +281,7 @@ export const ClinicAdminPatientsPage: React.FC = () => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not assign these patients.');
     } finally {
-      setBulkBusy(false);
+      setAssignBusy(false);
     }
   };
 
@@ -416,87 +440,27 @@ export const ClinicAdminPatientsPage: React.FC = () => {
           </div>
         ) : null}
         {canManagePatients && selectedCount > 0 ? (
-          <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-anixi-green/20 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-[#344256]">
-                {selectAllMatching
-                  ? `All ${selectedCount} matching patients selected`
-                  : `${selectedCount} selected`}
-              </p>
-              {!selectAllMatching && total > pageIds.length && selectedCount > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectAllMatching(true);
-                    setSelectedIds(new Set(pageIds));
-                  }}
-                  className="mt-1 text-sm font-semibold text-anixi-green hover:underline"
-                >
-                  Select all {total} matching this search
-                </button>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={inviteChannel}
-                onChange={(event) =>
-                  setInviteChannel(
-                    event.target.value as 'whatsapp_and_email' | 'whatsapp' | 'email',
-                  )
-                }
-                className="min-w-[160px] rounded-lg border border-[#e1e7ef] px-2 py-1.5 text-sm"
-                aria-label="App invite channel"
-              >
-                <option value="whatsapp_and_email">WhatsApp + email</option>
-                <option value="whatsapp">WhatsApp only</option>
-                <option value="email">Email only</option>
-              </select>
-              <button
-                type="button"
-                disabled={bulkBusy}
-                onClick={() => void handleBulkAppInvite()}
-                className="rounded-full border border-anixi-green/40 bg-[#f0faf6] px-4 py-2 text-sm font-semibold text-anixi-green disabled:opacity-50"
-              >
-                {bulkBusy ? 'Sending…' : 'Send app invite'}
-              </button>
-              <select
-                value={bulkDoctorId}
-                onChange={(event) => setBulkDoctorId(event.target.value)}
-                className="min-w-[180px] rounded-lg border border-[#e1e7ef] px-2 py-1.5 text-sm"
-              >
-                <option value="">Choose a doctor</option>
-                {clinicians.map((clinician) => (
-                  <option key={clinician.uid} value={clinician.uid}>
-                    {clinician.displayName || clinician.email || clinician.uid}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                disabled={bulkBusy || !bulkDoctorId}
-                onClick={() => void handleBulkAssign(bulkDoctorId)}
-                className="rounded-full bg-anixi-green px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {bulkBusy ? 'Assigning…' : 'Assign selected'}
-              </button>
-              <button
-                type="button"
-                disabled={bulkBusy}
-                onClick={() => void handleBulkAssign(null)}
-                className="rounded-full border border-[#e1e7ef] px-4 py-2 text-sm font-semibold text-[#344256] disabled:opacity-50"
-              >
-                Unassign
-              </button>
-              <button
-                type="button"
-                disabled={bulkBusy}
-                onClick={clearSelection}
-                className="rounded-full px-3 py-2 text-sm font-semibold text-[#65758b]"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
+          <ClinicPatientBulkActions
+            selectedCount={selectedCount}
+            selectAllMatching={selectAllMatching}
+            totalMatching={total}
+            pagePatientCount={pageIds.length}
+            inviteChannel={inviteChannel}
+            onInviteChannelChange={setInviteChannel}
+            onSendAppInvite={() => void handleBulkAppInvite()}
+            inviteBusy={inviteBusy}
+            bulkDoctorId={bulkDoctorId}
+            onBulkDoctorChange={setBulkDoctorId}
+            clinicians={clinicians}
+            onAssign={(doctorId) => void handleBulkAssign(doctorId)}
+            onUnassign={() => void handleBulkAssign(null)}
+            assignBusy={assignBusy}
+            onSelectAllMatching={() => {
+              setSelectAllMatching(true);
+              setSelectedIds(new Set(pageIds));
+            }}
+            onClear={clearSelection}
+          />
         ) : null}
         <div className="overflow-hidden rounded-2xl border border-[#e1e7ef] bg-white shadow-sm">
           {loading ? (

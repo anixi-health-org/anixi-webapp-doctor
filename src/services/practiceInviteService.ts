@@ -10,6 +10,7 @@ import {
   djangoPreviewPracticeInvite,
   djangoListPracticeInvites,
   djangoNotifyClinicLiveInvites,
+  djangoPatchPracticeInvite,
   djangoResendPracticeInvite,
   djangoRevokePracticeInvite,
   isDjangoApiEnabled,
@@ -153,6 +154,42 @@ export const revokePracticeInvite = async (
   if (isDjangoApiEnabled()) {
     await djangoRevokePracticeInvite(practiceId, inviteId);
     return;
+  }
+
+  throw new Error('Clinic invites require the Anixi API. Set REACT_APP_ANIXI_API_URL.');
+};
+
+export type UpdatePracticeInviteInput = {
+  email?: string;
+  displayName?: string;
+  role?: PracticeRole;
+  roles?: PracticeRole[];
+  permissions?: PracticePermissions;
+};
+
+export const updatePracticeInvite = async (
+  practiceId: string,
+  inviteId: string,
+  input: UpdatePracticeInviteInput,
+): Promise<PracticeInvite> => {
+  if (isDjangoApiEnabled()) {
+    const roles = input.roles
+      ? normalizeMemberRoles(input.role ?? input.roles[0], input.roles)
+      : undefined;
+    const row = await djangoPatchPracticeInvite(practiceId, inviteId, {
+      ...(input.email !== undefined ? { email: input.email.trim().toLowerCase() } : {}),
+      ...(input.displayName !== undefined ? { displayName: input.displayName.trim() } : {}),
+      ...(roles
+        ? {
+            role: roles[0],
+            roles: [...roles],
+            permissions: {
+              ...(input.permissions ?? permissionsForRoles(roles)),
+            } as Record<string, unknown>,
+          }
+        : {}),
+    });
+    return mapDjangoInvite(row);
   }
 
   throw new Error('Clinic invites require the Anixi API. Set REACT_APP_ANIXI_API_URL.');

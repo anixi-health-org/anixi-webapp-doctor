@@ -161,13 +161,8 @@ export const ClinicAdminReportsPage: React.FC = () => {
         <div className="mb-8 rounded-2xl border border-[#dfe6e1] bg-gradient-to-br from-[#f4f7f6] via-white to-white p-5 sm:p-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-anixi-green">Clinic pulse</p>
           <h2 className="mt-1 font-heading text-lg font-bold text-[#1a4d4d] sm:text-xl">
-            How your warriors and front desk are doing
+            How your patients and front desk are doing
           </h2>
-          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[#65758b]">
-            Numbers below come from your imported roster, mobile app activity, and bookings. Clinical
-            tiles use the last 30 days; operations tiles follow calendar today, this week, and this
-            month in your clinic timezone.
-          </p>
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-white/80 bg-white/90 p-4 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-[#8FA0B6]">Roster</p>
@@ -206,7 +201,7 @@ export const ClinicAdminReportsPage: React.FC = () => {
             <div>
               <h3 className="font-semibold text-[#344256]">Warrior engagement (30 days)</h3>
               <p className="mt-1 text-sm text-[#65758b]">
-                Adherence, vitals, symptoms, and documents — aggregated across the full roster.
+                Adherence, vitals, symptoms, and documents - aggregated across the full roster.
               </p>
             </div>
             <Link
@@ -232,7 +227,7 @@ export const ClinicAdminReportsPage: React.FC = () => {
               <p className="mt-4 text-xs leading-relaxed text-[#65758b]">
                 Most imported patients start as{' '}
                 <span className="font-medium text-[#344256]">pending activation</span> until they join
-                the app. Engagement % rises as warriors log doses and vitals.
+                the app. Engagement % rises as patients log doses and vitals.
               </p>
             </div>
           </div>

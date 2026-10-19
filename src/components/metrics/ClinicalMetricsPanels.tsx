@@ -24,13 +24,13 @@ export const RosterClinicalMetricsGrid: React.FC<{
 }> = ({ metrics, variant = 'default' }) => {
   const adherenceHint =
     metrics.patientsWithAdherenceData != null
-      ? `${metrics.patientsWithAdherenceData.toLocaleString()} warriors with dose logs`
+      ? `${metrics.patientsWithAdherenceData.toLocaleString()} patients with dose logs`
       : undefined;
   const avgAdherenceValue =
     metrics.avgAdherence != null
       ? `${metrics.avgAdherence}%`
       : variant === 'practice'
-        ? 'No dose data yet'
+        ? 'No data yet'
         : '—';
 
   return (

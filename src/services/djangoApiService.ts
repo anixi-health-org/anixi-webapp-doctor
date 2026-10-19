@@ -803,6 +803,30 @@ export async function djangoGetPracticeInvite(
   return djangoJson<DjangoPracticeInvite>(res);
 }
 
+export async function djangoPatchPracticeInvite(
+  practiceId: string,
+  inviteId: string,
+  body: {
+    email?: string;
+    displayName?: string;
+    role?: string;
+    roles?: string[];
+    permissions?: Record<string, unknown>;
+  },
+): Promise<DjangoPracticeInvite> {
+  if (!enabled()) throw new Error('Django API not configured');
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/practices/${encodeURIComponent(practiceId)}/invites/${encodeURIComponent(inviteId)}/`,
+    {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  );
+  return djangoJson<DjangoPracticeInvite>(res);
+}
+
 export async function djangoResendPracticeInvite(practiceId: string, inviteId: string) {
   if (!enabled()) throw new Error('Django API not configured');
   const headers = await authHeaders();
@@ -1618,7 +1642,7 @@ export async function djangoBulkPatientAppInvites(
       method: 'POST',
       headers,
       body: JSON.stringify({
-        channels: payload.channels ?? 'whatsapp_and_email',
+        channels: payload.channels ?? 'whatsapp',
         patientIds: payload.patientIds ?? [],
         allMatching: Boolean(payload.allMatching),
         q: payload.q ?? '',
@@ -1632,6 +1656,9 @@ export async function djangoBulkPatientAppInvites(
     channels?: string[];
     recipientCount?: number;
     previewText?: string;
+    appDownloadUrl?: string;
+    whatsappTemplate?: string | null;
+    whatsappSendMode?: string | null;
     sentWhatsapp?: number;
     sentEmail?: number;
     failed?: number;
