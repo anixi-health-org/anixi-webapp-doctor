@@ -5,7 +5,14 @@ import { PageHeader } from './page-layout/PageHeader';
 import { PageShell } from './page-layout/PageShell';
 import { LogoCropModal } from './LogoCropModal';
 import { useAuth } from '../hooks/useAuth';
-import { getDoctorProfileFormData, saveDoctorProfileForm, uploadDoctorProfilePhoto, uploadPracticeLogo } from '../services/doctorService';
+import {
+  getDoctorProfileFormData,
+  saveDoctorProfileForm,
+  uploadDoctorCredential,
+  uploadDoctorProfilePhoto,
+  uploadPracticeLogo,
+} from '../services/doctorService';
+import { djangoResolveMediaUrl } from '../services/djangoApiService';
 import { updatePractice } from '../services/practiceSettingsService';
 import {
   EMPTY_PROFILE_FORM,
@@ -30,6 +37,8 @@ import {
   shouldSkipCrop,
   validateImageFile,
 } from '../lib/imageUpload';
+
+type CredentialField = 'hpcsaCertificate' | 'practiceLicenceUrl';
 
 const ProfileFormSkeleton: React.FC = () => (
   <>
@@ -96,6 +105,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState('');
   const [logoUploading, setLogoUploading] = useState(false);
+  const [credentialUploading, setCredentialUploading] = useState<CredentialField | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState('');
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -309,6 +319,62 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
     const src = URL.createObjectURL(file);
     setCropImageSrc(src);
     setCropModalOpen(true);
+  };
+
+  const handleCredentialSelected = async (field: CredentialField, file: File | undefined) => {
+    if (!file) return;
+    setMessage('');
+    setCredentialUploading(field);
+    try {
+      const url = await uploadDoctorCredential(file);
+      setFormData((prev) => ({ ...prev, [field]: url }));
+    } catch (err) {
+      console.error('[ProfessionalProfileForm] credential upload failed:', err);
+      setMessage(err instanceof Error ? err.message : 'Upload failed. Try again.');
+    } finally {
+      setCredentialUploading(null);
+    }
+  };
+
+  const openCredential = async (url: string) => {
+    const resolved = (await djangoResolveMediaUrl(url)) ?? url;
+    window.open(resolved, '_blank', 'noopener,noreferrer');
+  };
+
+  const renderCredentialUpload = (field: CredentialField, label: string) => {
+    const value = formData[field];
+    const uploading = credentialUploading === field;
+    return (
+      <div>
+        <label className={labelClass}>
+          {label} <span className="text-gray-500">(PDF, JPEG or PNG)</span>
+        </label>
+        <input
+          type="file"
+          accept="application/pdf,image/jpeg,image/png"
+          disabled={uploading}
+          onChange={(e) => {
+            void handleCredentialSelected(field, e.target.files?.[0]);
+            e.target.value = '';
+          }}
+          className={fieldClass}
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          {uploading ? (
+            'Uploading…'
+          ) : value ? (
+            <>
+              Uploaded ·{' '}
+              <button type="button" className="text-[#1f6feb] underline" onClick={() => void openCredential(value)}>
+                View
+              </button>
+            </>
+          ) : (
+            'Only Anixi verification staff can see this file.'
+          )}
+        </p>
+      </div>
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -756,33 +822,9 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
           </select>
         </div>
 
-        <div>
-          <label className={labelClass}>
-            HPCSA Certificate <span className="text-gray-500">(optional)</span>
-          </label>
-          <input
-            type="url"
-            name="hpcsaCertificate"
-            value={formData.hpcsaCertificate}
-            onChange={handleInputChange}
-            placeholder="URL to certificate or upload link"
-            className={fieldClass}
-          />
-        </div>
+        {renderCredentialUpload('hpcsaCertificate', 'HPCSA certificate')}
 
-        <div className="md:col-span-2">
-          <label className={labelClass}>
-            Practice Licence URL <span className="text-gray-500">(optional)</span>
-          </label>
-          <input
-            type="url"
-            name="practiceLicenceUrl"
-            value={formData.practiceLicenceUrl}
-            onChange={handleInputChange}
-            placeholder="URL to practice licence"
-            className={fieldClass}
-          />
-        </div>
+        <div className="md:col-span-2">{renderCredentialUpload('practiceLicenceUrl', 'Practice licence')}</div>
       </div>
     </div>
   );

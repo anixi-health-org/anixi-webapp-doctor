@@ -70,6 +70,22 @@ export async function uploadDoctorProfilePhoto(doctorId: string, file: File): Pr
     throw new Error('Profile photo upload is not available. Set REACT_APP_ANIXI_API_URL to enable the Django document endpoint.');
 }
 
+const CREDENTIAL_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
+
+/** HPCSA certificate / practice licence go to private storage that only admins verifying doctors can read. */
+export async function uploadDoctorCredential(file: File): Promise<string> {
+    if (!CREDENTIAL_TYPES.includes(file.type)) {
+        throw new Error('Upload a PDF, JPEG or PNG.');
+    }
+    const uploaded = await djangoUploadDocument(file, 'doctor-credential', file.name);
+    return uploaded.url;
+}
+
+const credentialKey = (value: string): string | null => {
+    const key = djangoMediaUrlToStorageKey(value) ?? '';
+    return key.startsWith('doctor-credentials/') ? key : null;
+};
+
 export const saveDoctorProfileForm = async (
     doctorId: string,
     form: ProfessionalProfileFormData,
@@ -103,6 +119,8 @@ export const saveDoctorProfileForm = async (
             ...(years != null ? { years_of_experience: years } : {}),
             ...(resolvedLogo ? { logo_url: resolvedLogo } : {}),
             ...(resolvedPhoto ? { profile_image_url: resolvedPhoto } : {}),
+            ...(credentialKey(form.hpcsaCertificate) ? { hpcsa_certificate_key: credentialKey(form.hpcsaCertificate) } : {}),
+            ...(credentialKey(form.practiceLicenceUrl) ? { practice_license_key: credentialKey(form.practiceLicenceUrl) } : {}),
             ...(options?.submitForReview ? { submit_for_review: true } : {}),
         });
         if (options?.submitForReview) {

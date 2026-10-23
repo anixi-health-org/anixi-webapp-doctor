@@ -78,6 +78,8 @@ export function djangoMeToFormRecord(me: Record<string, unknown>): Record<string
     practiceFacility: profile.practice_facility ?? profile.practiceFacility,
     practiceNumberBhf: profile.practice_number_bhf ?? profile.practiceNumberBhf,
     vatNumber: profile.vat_number ?? profile.vatNumber,
+    hpcsaCertificateUrl: profile.hpcsa_certificate_url || undefined,
+    practiceLicenseUrl: profile.practice_license_url || undefined,
     logoUrl: profile.logo_url ?? profile.logoUrl,
     profileImageUrl: profile.profile_image_url ?? profile.profileImageUrl,
   };

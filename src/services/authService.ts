@@ -1,5 +1,6 @@
 import {
   clearDjangoTokens,
+  revokeDjangoSession,
   djangoGetMe,
   djangoLogin,
   djangoRegister,
@@ -90,7 +91,7 @@ export const loginDoctor = async (email: string, password: string): Promise<Doct
 };
 
 export const logoutDoctor = async (): Promise<void> => {
-  clearDjangoTokens();
+  await revokeDjangoSession();
 };
 
 export const getCurrentProfessionalFromSession = async (): Promise<ProfessionalUser | null> => {

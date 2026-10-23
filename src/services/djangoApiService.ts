@@ -549,7 +549,7 @@ async function djangoJson<T>(res: Response): Promise<T> {
 
 export async function djangoUploadDocument(
   file: Blob,
-  purpose: 'doctor-profile' | 'practice-logo' | 'medical-file' | 'appointment-document',
+  purpose: 'doctor-profile' | 'practice-logo' | 'medical-file' | 'appointment-document' | 'doctor-credential',
   filename: string,
 ): Promise<{ storageKey: string; url: string; mimeType: string; sizeBytes: number; recordId?: string }> {
   if (!enabled()) throw new Error('Django API not configured');
@@ -1786,6 +1786,23 @@ export async function djangoMarkNotificationRead(notificationId: string) {
 export function clearDjangoTokens() {
   localStorage.removeItem('anixi_jwt_access');
   localStorage.removeItem('anixi_jwt_refresh');
+}
+
+/** Blacklist the refresh token on the server, then drop local tokens. Best effort. */
+export async function revokeDjangoSession(): Promise<void> {
+  const refresh = localStorage.getItem('anixi_jwt_refresh');
+  if (enabled() && refresh) {
+    try {
+      await fetch(`${API_BASE}/api/v1/auth/logout/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Client': 'doctor-web' },
+        body: JSON.stringify({ refresh }),
+      });
+    } catch {
+      // Offline: the refresh token still expires on its own.
+    }
+  }
+  clearDjangoTokens();
 }
 
 const clinicOnboardingKey = (userId: string) => `anixi_clinic_onboarding_complete_${userId}`;
