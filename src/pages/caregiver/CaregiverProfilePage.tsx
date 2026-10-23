@@ -17,7 +17,7 @@ export const CaregiverProfilePage: React.FC = () => {
   const [city, setCity] = useState('');
   const [province, setProvince] = useState('');
   const [services, setServices] = useState('');
-  const [published, setPublished] = useState(false);
+  const [listingRequested, setListingRequested] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
@@ -28,20 +28,24 @@ export const CaregiverProfilePage: React.FC = () => {
 
   useEffect(() => {
     if (!user?.id) return;
-    void getCaregiverProfile(user.id).then((profile) => {
+    void getCaregiverProfile()
+      .then((profile) => {
       if (profile) {
         setDisplayName(profile.displayName || '');
         setPhoneNumber(profile.phoneNumber || '');
-        setOrganization(profile.organization || profile.professionalCaregiverProfile?.organization || '');
+        setOrganization(profile.professionalCaregiverProfile?.organization || '');
         setCaregiverTier(profile.caregiverTier ?? 'family');
         setBio(profile.professionalCaregiverProfile?.bio || '');
         setCity(profile.professionalCaregiverProfile?.city || '');
         setProvince(profile.professionalCaregiverProfile?.province || '');
         setServices((profile.professionalCaregiverProfile?.services ?? []).join(', '));
-        setPublished(profile.professionalCaregiverProfile?.published === true);
+        setListingRequested(profile.professionalCaregiverProfile?.listingRequested === true);
       }
-      setLoading(false);
-    });
+      })
+      .catch(() => {
+        setToast({ visible: true, message: 'Could not load your profile.', type: 'error' });
+      })
+      .finally(() => setLoading(false));
   }, [user?.id]);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -54,10 +58,9 @@ export const CaregiverProfilePage: React.FC = () => {
         .map((s) => s.trim())
         .filter(Boolean);
 
-      await updateCaregiverProfile(user.id, {
+      await updateCaregiverProfile({
         displayName: displayName.trim(),
         phoneNumber: phoneNumber.trim(),
-        organization: organization.trim(),
         caregiverTier,
         professionalCaregiverProfile:
           caregiverTier === 'professional'
@@ -67,7 +70,7 @@ export const CaregiverProfilePage: React.FC = () => {
                 bio: bio.trim(),
                 city: city.trim(),
                 province: province.trim(),
-                published,
+                listingRequested,
               }
             : undefined,
       });
@@ -205,10 +208,10 @@ export const CaregiverProfilePage: React.FC = () => {
                 <label className="flex items-center gap-2 text-sm text-gray-700">
                   <input
                     type="checkbox"
-                    checked={published}
-                    onChange={(e) => setPublished(e.target.checked)}
+                    checked={listingRequested}
+                    onChange={(e) => setListingRequested(e.target.checked)}
                   />
-                  List my profile in the patient marketplace
+                  Request a listing in the patient marketplace (Anixi reviews it before it goes live)
                 </label>
               </>
             ) : null}

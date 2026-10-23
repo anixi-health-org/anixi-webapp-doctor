@@ -79,7 +79,7 @@ export const CaregiverPatientList: React.FC<CaregiverPatientListProps> = ({
               <p className="truncate font-semibold text-gray-900">
                 {patient.displayName || 'Unnamed patient'}
               </p>
-              <p className="truncate text-sm text-gray-500">{contact || '—'}</p>
+              <p className="truncate text-sm text-gray-500">{contact || '-'}</p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
               <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${statusStyles}`}>

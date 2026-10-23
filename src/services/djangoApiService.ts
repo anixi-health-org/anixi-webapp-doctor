@@ -1191,6 +1191,53 @@ export async function djangoListCaregiverLinkedPatients() {
   return (await djangoJson<Array<Record<string, unknown>>>(res)) ?? [];
 }
 
+/** Links this caregiver to every warrior who nominated their own sign-in email. */
+export async function djangoLinkCaregiverToNominations(): Promise<number> {
+  if (!enabled() || !API_BASE) return 0;
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/patients/caregiver/link/`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({}),
+  });
+  const data = await djangoJson<{ linked: number }>(res);
+  return Number(data?.linked ?? 0);
+}
+
+export async function djangoGetCaregiverPatientSummary(patientId: string) {
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/patients/caregiver/patients/${encodeURIComponent(patientId)}/summary/`,
+    { headers },
+  );
+  return djangoJson<Record<string, unknown>>(res);
+}
+
+export async function djangoUnlinkCaregiverPatient(patientId: string): Promise<void> {
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/patients/caregiver/patients/${encodeURIComponent(patientId)}/unlink/`,
+    { method: 'POST', headers, body: JSON.stringify({}) },
+  );
+  await djangoJson(res);
+}
+
+export async function djangoGetCaregiverProfile() {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/patients/caregiver/profile/`, { headers });
+  return djangoJson<Record<string, unknown>>(res);
+}
+
+export async function djangoPatchCaregiverProfile(patch: Record<string, unknown>) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/patients/caregiver/profile/`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(patch),
+  });
+  return djangoJson<Record<string, unknown>>(res);
+}
+
 const sharingListCache = new Map<
   string,
   { expiresAt: number; rows: Array<Record<string, unknown>> }

@@ -13,11 +13,20 @@ import { DashboardStatsCard } from '../dashboard/DashboardStatsCard';
 import { CaregiverPatientList } from './CaregiverPatientList';
 import { useAuth } from '../../hooks/useAuth';
 import { useCaregiverPatients } from '../../hooks/useCaregiverPatients';
-import { getCaregiverPatientSummaries } from '../../services/caregiverService';
+import {
+  getCaregiverPatientSummaries,
+  type CaregiverPatientCategory,
+} from '../../services/caregiverService';
+import { ANDROID_APP_LINK, IOS_APP_LINK } from '../../lib/appStoreLinks';
 import { DashboardPageSkeleton } from '../ui/Skeleton';
 
-const IOS_APP_LINK = 'https://apps.apple.com/app/anixi-health';
-const ANDROID_APP_LINK = 'https://play.google.com/store/apps/details?id=com.anixi.health';
+
+const FILTER_TITLES: Record<'all' | CaregiverPatientCategory, string> = {
+  all: 'Your patients',
+  attention: 'Needs attention',
+  stable: 'Stable',
+  inactive: 'No medication logs in 30 days',
+};
 
 export const CaregiverDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -27,7 +36,8 @@ export const CaregiverDashboard: React.FC = () => {
   const [stableCount, setStableCount] = useState(0);
   const [inactiveCount, setInactiveCount] = useState(0);
   const [adherenceMap, setAdherenceMap] = useState<Map<string, number>>(new Map());
-  const [filter, setFilter] = useState<'all' | 'attention' | 'stable' | 'inactive'>('all');
+  const [categoryMap, setCategoryMap] = useState<Map<string, CaregiverPatientCategory>>(new Map());
+  const [filter, setFilter] = useState<'all' | CaregiverPatientCategory>('all');
 
   useEffect(() => {
     if (patients.length === 0) {
@@ -35,55 +45,43 @@ export const CaregiverDashboard: React.FC = () => {
       setStableCount(0);
       setInactiveCount(0);
       setAdherenceMap(new Map());
+      setCategoryMap(new Map());
       return;
     }
 
+    let cancelled = false;
     const load = async () => {
       setSummariesLoading(true);
       try {
         const summaries = await getCaregiverPatientSummaries(patients);
-        const map = new Map<string, number>();
-        let attention = 0;
-        let stable = 0;
-        let inactive = 0;
-
+        if (cancelled) return;
+        const adherence = new Map<string, number>();
+        const categories = new Map<string, CaregiverPatientCategory>();
         summaries.forEach((s) => {
-          map.set(s.patient.id, s.adherenceRate);
-          if (s.status === 'inactive') inactive += 1;
-          else if (s.needsAttention) attention += 1;
+          if (s.hasAdherenceData) adherence.set(s.patient.id, s.adherenceRate);
+          categories.set(s.patient.id, s.category);
         });
-
-        setAdherenceMap(map);
-        setAttentionCount(attention);
-        setStableCount(stable);
-        setInactiveCount(inactive);
+        const count = (c: CaregiverPatientCategory) => summaries.filter((s) => s.category === c).length;
+        setAdherenceMap(adherence);
+        setCategoryMap(categories);
+        setAttentionCount(count('attention'));
+        setStableCount(count('stable'));
+        setInactiveCount(count('inactive'));
       } finally {
-        setSummariesLoading(false);
+        if (!cancelled) setSummariesLoading(false);
       }
     };
 
     void load();
+    return () => {
+      cancelled = true;
+    };
   }, [patients]);
 
-  const filteredPatients = useMemo(() => {
-    if (filter === 'all') return patients;
-    return patients.filter((patient) => {
-      const status = patient.chronicDiseases?.length ? 'warning' : 'stable';
-      const adherence = adherenceMap.get(patient.id) ?? 100;
-      if (filter === 'attention') {
-        return status === 'warning' || adherence < 70;
-      }
-      if (filter === 'inactive') {
-        const fiveDaysAgo = Date.now() - 5 * 24 * 60 * 60 * 1000;
-        const last = patient.updatedAt ? new Date(patient.updatedAt).getTime() : 0;
-        return last < fiveDaysAgo;
-      }
-      if (filter === 'stable') {
-        return status !== 'warning' && adherence >= 70;
-      }
-      return true;
-    });
-  }, [patients, filter, adherenceMap]);
+  const filteredPatients = useMemo(
+    () => (filter === 'all' ? patients : patients.filter((p) => categoryMap.get(p.id) === filter)),
+    [patients, filter, categoryMap],
+  );
 
   const firstName = user?.displayName?.split(' ')[0] || 'Caregiver';
 
@@ -155,7 +153,7 @@ export const CaregiverDashboard: React.FC = () => {
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>
-              {filter === 'all' ? 'Your patients' : `${filter} patients`}
+              {FILTER_TITLES[filter]}
             </CardTitle>
             {summariesLoading && (
               <span className="text-xs text-gray-400">Updating metrics…</span>
