@@ -75,14 +75,30 @@ function enabled(): boolean {
 let refreshInFlight: Promise<string | null> | null = null;
 let lastRefreshAt = 0;
 
+/** Thrown when the API could not be reached; the stored session is still good. */
+export class SessionUnavailableError extends Error {
+  constructor() {
+    super('Anixi is temporarily unreachable. Please try again in a moment.');
+    this.name = 'SessionUnavailableError';
+  }
+}
+
+/** null means the server rejected the refresh token; network and 5xx failures throw instead. */
 async function refreshAccessToken(refresh: string): Promise<string | null> {
   if (!API_BASE) return null;
+  let res: Response;
   try {
-    const res = await fetch(`${API_BASE}/api/v1/auth/refresh/`, {
+    res = await fetch(`${API_BASE}/api/v1/auth/refresh/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Client': 'doctor-web' },
       body: JSON.stringify({ refresh }),
     });
+  } catch (error) {
+    console.warn('refreshAccessToken failed:', error);
+    throw new SessionUnavailableError();
+  }
+  if (res.status >= 500) throw new SessionUnavailableError();
+  try {
     if (!res.ok) return null;
     const json = await readResponseJson<Envelope<{ access: string; refresh?: string }>>(res);
     if (!json.success || !json.data?.access) return null;
@@ -995,6 +1011,27 @@ export async function djangoGetMe() {
   }
 }
 
+/** Like djangoGetMe, but an unreachable API throws SessionUnavailableError instead of looking signed out. */
+export async function djangoGetMeForSession() {
+  if (!enabled() || !API_BASE) return null;
+  let headers: HeadersInit;
+  try {
+    headers = await authHeaders();
+  } catch (error) {
+    if (error instanceof SessionUnavailableError) throw error;
+    return null;
+  }
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/v1/auth/me/`, { headers });
+  } catch {
+    throw new SessionUnavailableError();
+  }
+  if (res.status >= 500) throw new SessionUnavailableError();
+  if (!res.ok) return null;
+  return djangoJson<Record<string, unknown>>(res);
+}
+
 export async function djangoPatchMe(patch: Record<string, unknown>) {
   if (!enabled()) throw new Error('Django API not configured');
   const headers = await authHeaders();
@@ -1053,6 +1090,18 @@ export async function djangoListAppointments(
     console.warn('djangoListAppointments failed:', error);
     return [];
   }
+}
+
+/** One appointment, with post-consult actions for clinicians. null when it does not exist. */
+export async function djangoGetAppointment(appointmentId: string) {
+  if (!enabled() || !API_BASE) return null;
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/appointments/${encodeURIComponent(appointmentId)}/`,
+    { headers },
+  );
+  if (res.status === 404) return null;
+  return djangoJson<Record<string, unknown>>(res);
 }
 
 export async function djangoCancelAppointment(appointmentId: string) {
@@ -1779,6 +1828,14 @@ export async function djangoListPharmacyOrders() {
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/api/v1/marketplace/pharmacy-orders/`, { headers });
   if (!res.ok) return [];
+  return djangoJson<Array<Record<string, unknown>>>(res);
+}
+
+/** Published pharmacies (approved Market partners) a prescription can be sent to. */
+export async function djangoListPharmacies() {
+  if (!enabled()) return [];
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/marketplace/pharmacies/`, { headers });
   return djangoJson<Array<Record<string, unknown>>>(res);
 }
 
@@ -2745,6 +2802,10 @@ export type MarketplacePartnerApplication = {
   address?: string | null;
   deliveryAvailable?: boolean;
   offerings?: Array<{ name: string; description?: string; price?: string | null }>;
+  website?: string | null;
+  registrationNumber?: string | null;
+  operatingHours?: string | null;
+  country?: string | null;
   status: 'pending' | 'approved' | 'rejected';
   rejectionReason?: string | null;
   createdAt?: string | null;

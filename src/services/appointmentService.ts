@@ -4,6 +4,7 @@ import {
   djangoBookAppointment,
   djangoAttachAppointmentDocument,
   djangoGetPracticePatientEncounterSummaries,
+  djangoGetAppointment,
   djangoListAppointments,
   djangoPatchAppointment,
   djangoResolveMediaUrl,
@@ -117,6 +118,9 @@ const normalizePostConsultActions = (value: any): PostConsultAction[] => {
       if (!item || typeof item !== 'object') return null;
       const actionType = item.type as PostConsultActionType;
       if (!validTypes.includes(actionType)) return null;
+      // Older saves stored dates as {}; their ids end in the creation time in ms.
+      const idMs = Number(String(item.id ?? '').split('-').pop());
+      const savedAt = Number.isFinite(idMs) && idMs > 1e12 ? new Date(idMs) : new Date();
 
       return {
         id: typeof item.id === 'string' ? item.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -126,8 +130,8 @@ const normalizePostConsultActions = (value: any): PostConsultAction[] => {
         status: item.status === 'finalized' ? 'finalized' : 'draft',
         metadata: item.metadata && typeof item.metadata === 'object' ? item.metadata : undefined,
         createdBy: typeof item.createdBy === 'string' ? item.createdBy : '',
-        createdAt: convertTimestamp(item.createdAt) || new Date(),
-        updatedAt: convertTimestamp(item.updatedAt) || convertTimestamp(item.createdAt) || new Date(),
+        createdAt: convertTimestamp(item.createdAt) || savedAt,
+        updatedAt: convertTimestamp(item.updatedAt) || convertTimestamp(item.createdAt) || savedAt,
       } as PostConsultAction;
     })
     .filter((item): item is PostConsultAction => item !== null)
@@ -357,10 +361,7 @@ export const getAppointmentById = async (
   appointmentId: string
 ): Promise<Appointment | null> => {
   try {
-    const rows = await djangoListAppointments('doctor');
-    const row = (rows as Array<Record<string, unknown>>).find(
-      (item) => String(item.id) === appointmentId
-    );
+    const row = await djangoGetAppointment(appointmentId);
     if (!row) return null;
     return mapAppointmentFields(appointmentId, doctorId, row as Record<string, any>);
   } catch (error) {

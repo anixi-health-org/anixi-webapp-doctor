@@ -44,12 +44,12 @@ export const PartnerAccountPage: React.FC = () => {
             <div>
               <dt className="text-xs font-semibold uppercase tracking-wide text-[#65758b]">Name</dt>
               <dd className="mt-1 font-medium text-[#344256]">
-                {user?.displayName || '—'}
+                {user?.displayName || 'Not set'}
               </dd>
             </div>
             <div>
               <dt className="text-xs font-semibold uppercase tracking-wide text-[#65758b]">Email</dt>
-              <dd className="mt-1 font-medium text-[#344256]">{user?.email || '—'}</dd>
+              <dd className="mt-1 font-medium text-[#344256]">{user?.email || 'Not set'}</dd>
             </div>
             <div>
               <dt className="text-xs font-semibold uppercase tracking-wide text-[#65758b]">Role</dt>
@@ -60,7 +60,7 @@ export const PartnerAccountPage: React.FC = () => {
                 Linked listing
               </dt>
               <dd className="mt-1 font-medium text-[#344256]">
-                {listing?.businessName || '—'}
+                {listing?.businessName || 'Not set'}
                 {listing?.partnerType ? (
                   <span className="ml-2 capitalize text-[#65758b]">({listing.partnerType})</span>
                 ) : null}

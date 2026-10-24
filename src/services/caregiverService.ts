@@ -6,7 +6,6 @@ import {
   djangoGetCaregiverProfile,
   djangoLinkCaregiverToNominations,
   djangoListCaregiverLinkedPatients,
-  djangoListWellnessProviders,
   djangoPatchCaregiverProfile,
   djangoUnlinkCaregiverPatient,
   isDjangoApiEnabled,
@@ -208,6 +207,12 @@ export type CaregiverProfileData = {
     province?: string;
     listingRequested?: boolean;
   };
+  /** Anixi review of the Market listing request; null until one is requested. */
+  marketListing?: {
+    status: 'pending' | 'approved' | 'rejected';
+    published: boolean;
+    rejectionReason?: string;
+  } | null;
 };
 
 function mapProfile(row: Record<string, unknown>): CaregiverProfileData {
@@ -227,6 +232,19 @@ function mapProfile(row: Record<string, unknown>): CaregiverProfileData {
       province: toText(pro.province),
       listingRequested: Boolean(pro.listingRequested),
     },
+    marketListing: mapMarketListing(row.marketListing),
+  };
+}
+
+function mapMarketListing(raw: unknown): CaregiverProfileData['marketListing'] {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const status = row.status;
+  if (status !== 'pending' && status !== 'approved' && status !== 'rejected') return null;
+  return {
+    status,
+    published: Boolean(row.published),
+    rejectionReason: toText(row.rejectionReason) || undefined,
   };
 }
 
@@ -247,10 +265,3 @@ export const updateCaregiverProfile = async (updates: {
   return mapProfile(row);
 };
 
-export const listPublishedProfessionalCaregivers = async () => {
-  try {
-    return await djangoListWellnessProviders('caregiver');
-  } catch {
-    return [];
-  }
-};

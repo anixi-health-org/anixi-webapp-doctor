@@ -4,7 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Ca
 import { Toast } from '../../components/ui';
 import { PageHeaderSkeleton } from '../../components/ui/Skeleton';
 import { useAuth } from '../../hooks/useAuth';
-import { getCaregiverProfile, updateCaregiverProfile } from '../../services/caregiverService';
+import {
+  getCaregiverProfile,
+  updateCaregiverProfile,
+  type CaregiverProfileData,
+} from '../../services/caregiverService';
 import type { CaregiverTier } from '../../types';
 
 export const CaregiverProfilePage: React.FC = () => {
@@ -18,6 +22,7 @@ export const CaregiverProfilePage: React.FC = () => {
   const [province, setProvince] = useState('');
   const [services, setServices] = useState('');
   const [listingRequested, setListingRequested] = useState(false);
+  const [marketListing, setMarketListing] = useState<CaregiverProfileData['marketListing']>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
@@ -40,6 +45,7 @@ export const CaregiverProfilePage: React.FC = () => {
         setProvince(profile.professionalCaregiverProfile?.province || '');
         setServices((profile.professionalCaregiverProfile?.services ?? []).join(', '));
         setListingRequested(profile.professionalCaregiverProfile?.listingRequested === true);
+        setMarketListing(profile.marketListing ?? null);
       }
       })
       .catch(() => {
@@ -58,7 +64,7 @@ export const CaregiverProfilePage: React.FC = () => {
         .map((s) => s.trim())
         .filter(Boolean);
 
-      await updateCaregiverProfile({
+      const saved = await updateCaregiverProfile({
         displayName: displayName.trim(),
         phoneNumber: phoneNumber.trim(),
         caregiverTier,
@@ -74,6 +80,7 @@ export const CaregiverProfilePage: React.FC = () => {
               }
             : undefined,
       });
+      setMarketListing(saved.marketListing ?? null);
       setToast({ visible: true, message: 'Profile updated successfully.', type: 'success' });
     } catch {
       setToast({ visible: true, message: 'Failed to update profile.', type: 'error' });
@@ -213,6 +220,25 @@ export const CaregiverProfilePage: React.FC = () => {
                   />
                   Request a listing in the patient marketplace (Anixi reviews it before it goes live)
                 </label>
+                {listingRequested && marketListing ? (
+                  <p
+                    className={
+                      marketListing.status === 'rejected'
+                        ? 'rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900'
+                        : 'rounded-lg bg-[#f0f7f4] px-3 py-2 text-sm text-[#1a4d4d]'
+                    }
+                  >
+                    {marketListing.status === 'pending'
+                      ? 'Your listing is waiting for Anixi review.'
+                      : marketListing.status === 'approved'
+                        ? marketListing.published
+                          ? 'Your listing is live in the patient marketplace. Saving here updates it.'
+                          : 'Your listing is approved but currently hidden from patients.'
+                        : `Your listing was not approved${
+                            marketListing.rejectionReason ? `: ${marketListing.rejectionReason}` : '.'
+                          } Update your profile and save to send it for review again.`}
+                  </p>
+                ) : null}
               </>
             ) : null}
 
