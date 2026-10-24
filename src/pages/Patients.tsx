@@ -531,6 +531,8 @@ export const Patients: React.FC = () => {
         onAdded={(result) => {
           setSuccessMessage(result.inviteWarning || 'Patient added successfully');
           setShowAddPatient(false);
+          void refreshAssignedPatients();
+          if (showClinicRoster) void loadRoster();
         }}
       />
     </PageShell>

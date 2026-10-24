@@ -635,7 +635,7 @@ export async function generateInvoicePDF(
   y += 7;
 
   drawTotalRow('Subtotal (ex VAT)', fmtZAR(subtotalExVat));
-  drawTotalRow(`VAT (${vatPctLabel})`, fmtZAR(vatAmount));
+  if (vatRate > 0) drawTotalRow(`VAT (${vatPctLabel})`, fmtZAR(vatAmount));
 
   // Separator sits between VAT and Total, keep clear of text baselines.
   y += 1;
@@ -644,7 +644,7 @@ export async function generateInvoicePDF(
   doc.line(totalsLeft, y, RIGHT, y);
   y += 6;
 
-  drawTotalRow('Total (incl VAT)', fmtZAR(totalIncl), {
+  drawTotalRow(vatRate > 0 ? 'Total (incl VAT)' : 'Total (no VAT charged)', fmtZAR(totalIncl), {
     bold: true,
     size: 11,
     color: BRAND_RGB,

@@ -162,7 +162,9 @@ export const AccountUnderReviewPage: React.FC = () => {
             </div>
             {clinicName ? (
               <div>
-                <dt className="text-[#65758b]">Clinic</dt>
+                <dt className="text-[#65758b]">
+                  {practiceSession?.practice?.orgType === 'solo' ? 'Practice' : 'Clinic'}
+                </dt>
                 <dd className="mt-0.5 font-medium text-[#344256]">{clinicName}</dd>
               </div>
             ) : null}

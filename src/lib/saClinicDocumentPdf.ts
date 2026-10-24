@@ -162,21 +162,23 @@ export function renderSaClinicInvoicePdf(
     });
   });
 
-  drawTableRow(
-    {
-      date: '',
-      icd10: '',
-      details: `Vat@${vatPct}%`,
-      debit: fmtZAR(vatAmount),
-    },
-    { boldDetails: true },
-  );
+  if (vatRate > 0) {
+    drawTableRow(
+      {
+        date: '',
+        icd10: '',
+        details: `Vat@${vatPct}%`,
+        debit: fmtZAR(vatAmount),
+      },
+      { boldDetails: true },
+    );
+  }
 
   drawTableRow(
     {
       date: '',
       icd10: '',
-      details: 'Total (incl VAT)',
+      details: vatRate > 0 ? 'Total (incl VAT)' : 'Total (no VAT charged)',
       debit: fmtZAR(totalIncl),
     },
     { boldDetails: true, boldDebit: true },

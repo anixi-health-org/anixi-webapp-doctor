@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { TabBar, TabPill } from '../components/ui/TabPill';
 import { PageHeader } from './page-layout/PageHeader';
@@ -129,9 +129,24 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
     profileImageUrl: doctor?.profileImageUrl || '',
   });
 
+  // Full load happens once per doctor. Session refreshes (e.g. after saving medical aid
+  // schemes) used to reload the saved profile over unsaved edits and wipe the form.
+  const loadedForDoctorRef = useRef<string | null>(null);
+  const practiceRef = useRef(practiceSession?.practice);
+  practiceRef.current = practiceSession?.practice;
+  const practiceId = practiceSession?.practice?.id;
+
   useEffect(() => {
     if (!doctor?.id) {
       setIsProfileLoading(false);
+      return;
+    }
+
+    if (loadedForDoctorRef.current === doctor.id) {
+      const practice = practiceRef.current;
+      if (clinicEmployed && practice) {
+        setFormData((prev) => ({ ...prev, ...inheritClinicPracticeFields(practice) }));
+      }
       return;
     }
 
@@ -145,8 +160,8 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
 
         if (saved) {
           const inherited =
-            clinicEmployed && practiceSession?.practice
-              ? inheritClinicPracticeFields(practiceSession.practice)
+            clinicEmployed && practiceRef.current
+              ? inheritClinicPracticeFields(practiceRef.current)
               : {};
           setFormData((prev) => ({
             ...prev,
@@ -157,7 +172,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
             timezone:
               inherited.timezone ||
               saved.timezone ||
-              practiceSession?.practice?.timezone ||
+              practiceRef.current?.timezone ||
               defaultPracticeTimezone(doctor?.country),
           }));
           if (saved.logoUrl) {
@@ -168,8 +183,8 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
           }
         } else {
           const inherited =
-            clinicEmployed && practiceSession?.practice
-              ? inheritClinicPracticeFields(practiceSession.practice)
+            clinicEmployed && practiceRef.current
+              ? inheritClinicPracticeFields(practiceRef.current)
               : {};
           setFormData((prev) => ({
             ...prev,
@@ -177,7 +192,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
             timezone:
               inherited.timezone ||
               prev.timezone ||
-              practiceSession?.practice?.timezone ||
+              practiceRef.current?.timezone ||
               defaultPracticeTimezone(doctor?.country),
           }));
         }
@@ -187,6 +202,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
         }
       } finally {
         if (!cancelled) {
+          loadedForDoctorRef.current = doctor.id;
           setIsProfileLoading(false);
         }
       }
@@ -197,7 +213,8 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [doctor?.id, doctor?.displayName, doctor?.email, doctor?.country, practiceSession?.practice, clinicEmployed]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- practice is read via ref; re-run only when its id changes
+  }, [doctor?.id, doctor?.displayName, doctor?.email, doctor?.country, practiceId, clinicEmployed]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -375,6 +392,17 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
         </p>
       </div>
     );
+  };
+
+  // Save a draft on every step so a closed tab or refresh doesn't lose the application.
+  const handleContinue = async () => {
+    setCurrentStep((step) => Math.min(lastStep, step + 1));
+    if (!doctor?.id) return;
+    try {
+      await saveDoctorProfileForm(doctor.id, formData);
+    } catch {
+      // Draft save is best effort; the final submit still validates and saves everything.
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1130,7 +1158,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
                 {currentStep < lastStep && (
                   <button
                     type="button"
-                    onClick={() => setCurrentStep((s) => Math.min(lastStep, s + 1))}
+                    onClick={() => void handleContinue()}
                     className={btnPrimaryClass}
                   >
                     Continue

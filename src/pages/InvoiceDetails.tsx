@@ -362,12 +362,14 @@ const InvoiceDetails: React.FC = () => {
               <span>Subtotal (ex VAT)</span>
               <span className="tabular-nums text-[#344256]">{fmtMoney(subtotal)}</span>
             </div>
-            <div className="flex justify-between gap-6 text-[#65758b]">
-              <span>VAT ({Math.round(vatRate * 100)}%)</span>
-              <span className="tabular-nums text-[#344256]">{fmtMoney(vatAmount)}</span>
-            </div>
+            {vatRate > 0 ? (
+              <div className="flex justify-between gap-6 text-[#65758b]">
+                <span>VAT ({Math.round(vatRate * 100)}%)</span>
+                <span className="tabular-nums text-[#344256]">{fmtMoney(vatAmount)}</span>
+              </div>
+            ) : null}
             <div className="flex justify-between gap-6 border-t border-anixi-green/40 pt-2 text-base font-bold text-anixi-green">
-              <span>Total (incl VAT)</span>
+              <span>{vatRate > 0 ? 'Total (incl VAT)' : 'Total (no VAT charged)'}</span>
               <span className="tabular-nums">{fmtMoney(totalIncl)}</span>
             </div>
           </div>
