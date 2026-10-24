@@ -507,6 +507,8 @@ export interface AvailableSlot {
     locationId: string;
     consultTypes: ConsultType[];
     bookableBlockId: string;
+    /** Practice IANA timezone the slot was generated in; use it to label the slot. */
+    timeZone?: string;
 }
 
 

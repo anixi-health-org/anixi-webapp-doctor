@@ -52,6 +52,7 @@ import type {
   Doctor,
   InvoiceLineItem,
 } from '../../types';
+import { isValidTimeZone, zonedDayTime } from '../../lib/zonedTime';
 import clsx from 'clsx';
 
 type Props = {
@@ -149,6 +150,9 @@ const MoreAction: React.FC<{
 
 export const ClinicAppointmentSheet: React.FC<Props> = ({ appointment, onClose, onChanged }) => {
   const { user, practiceSession } = useAuth();
+  const practiceTimeZone = isValidTimeZone(practiceSession?.practice?.timezone)
+    ? practiceSession?.practice?.timezone
+    : undefined;
   const { can } = usePermissions();
   const practice = practiceSession?.practice;
   const practiceId = appointment.practiceId || practice?.id;
@@ -278,9 +282,13 @@ export const ClinicAppointmentSheet: React.FC<Props> = ({ appointment, onClose, 
     let start: Date;
     let end: Date;
     if (overrideMode && overrideTime) {
-      const [hours, minutes] = overrideTime.split(':').map(Number);
-      start = parseDateKey(selectedDate);
-      start.setHours(hours || 0, minutes || 0, 0, 0);
+      if (practiceTimeZone) {
+        start = zonedDayTime(parseDateKey(selectedDate), overrideTime, practiceTimeZone);
+      } else {
+        const [hours, minutes] = overrideTime.split(':').map(Number);
+        start = parseDateKey(selectedDate);
+        start.setHours(hours || 0, minutes || 0, 0, 0);
+      }
       end = new Date(start.getTime() + durationMinutes * 60_000);
     } else if (selectedSlot) {
       start = selectedSlot.startAt;
@@ -296,11 +304,11 @@ export const ClinicAppointmentSheet: React.FC<Props> = ({ appointment, onClose, 
           practiceId,
           startAt: start,
           endAt: end,
-          timeLabel: formatSlotTime(start),
+          timeLabel: formatSlotTime(start, practiceTimeZone),
           consultType,
           canOverride: can('overrideConflicts') || canManage,
         }),
-      `Moved to ${start.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })} at ${formatSlotTime(start)}.`,
+      `Moved to ${start.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })} at ${formatSlotTime(start, practiceTimeZone)}.`,
     );
   };
 

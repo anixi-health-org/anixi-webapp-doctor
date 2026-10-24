@@ -319,7 +319,7 @@ export const ClinicRoomsManager: React.FC<Props> = ({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           { label: 'Active rooms', value: activeCount, hint: `${allRooms.length} total configured` },
-          { label: 'In use now', value: liveLoading ? '—' : inUseCount, hint: 'Checked in or with doctor' },
+          { label: 'In use now', value: liveLoading ? '-' : inUseCount, hint: 'Checked in or with doctor' },
           {
             label: 'Consult rooms',
             value: typeCounts.consult,
@@ -580,7 +580,7 @@ export const ClinicRoomsManager: React.FC<Props> = ({
                       {locationName(practice, room.locationId)}
                     </td>
                     <td className="px-4 py-3 tabular-nums text-[#65758b]">
-                      {room.capacity ?? '—'}
+                      {room.capacity ?? '-'}
                     </td>
                     <td className="px-4 py-3">
                       {liveLoading ? (
@@ -669,7 +669,7 @@ export const ClinicRoomsManager: React.FC<Props> = ({
           <li>Front desk assigns rooms from today&apos;s queue; inactive rooms are hidden there.</li>
           <li>Reports show utilization counts per room for operational planning.</li>
           <li>
-            CSV columns: <code className="text-xs">room_name, type, location, capacity</code> — use
+            CSV columns: <code className="text-xs">room_name, type, location, capacity</code>, use
             the import panel to download a template.
           </li>
         </ul>

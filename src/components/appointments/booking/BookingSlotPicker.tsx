@@ -43,7 +43,12 @@ const groupSlots = (slots: AvailableSlot[]) => {
     { label: 'Evening', items: [] },
   ];
   slots.forEach((slot) => {
-    const hour = slot.startAt.getHours();
+    // Group by the clinic's clock, not the browser's.
+    const hour = slot.timeZone
+      ? Number(
+          slot.startAt.toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: slot.timeZone }),
+        )
+      : slot.startAt.getHours();
     if (hour < 12) groups[0].items.push(slot);
     else if (hour < 17) groups[1].items.push(slot);
     else groups[2].items.push(slot);
@@ -190,7 +195,7 @@ export const BookingSlotPicker: React.FC<Props> = ({
                           : 'border-[#e1e7ef] bg-white text-[#344256] hover:border-anixi-green/50 hover:bg-[#eef4f1]',
                       )}
                     >
-                      {formatSlotTime(slot.startAt)}
+                      {formatSlotTime(slot.startAt, slot.timeZone)}
                       <span className={clsx('mt-0.5 block text-[10px] font-medium', selected ? 'text-white/80' : 'text-[#8FA0B6]')}>
                         {slotDurationMinutes(slot)} min
                       </span>

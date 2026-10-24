@@ -25,6 +25,7 @@ import { CONSULT_TYPE_CATALOG } from '../../lib/consultTypeSettings';
 import { parseDateKey } from '../calendar/calendarDateUtils';
 import { BookingWeekStrip } from './booking/BookingWeekStrip';
 import { BookingSlotPicker } from './booking/BookingSlotPicker';
+import { isValidTimeZone, zonedDayTime } from '../../lib/zonedTime';
 import {
   doctorHasAnyHours,
   filterUpcomingSlots,
@@ -72,6 +73,10 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
 }) => {
   const { user, practiceSession } = useAuth();
   const { permissions } = usePermissions();
+  // Bookings are clinic wall-clock times, whatever timezone this browser is in.
+  const practiceTimeZone = isValidTimeZone(practiceSession?.practice?.timezone)
+    ? practiceSession?.practice?.timezone
+    : undefined;
   const canManagePatients = Boolean(permissions.managePatients);
   const canViewAllDoctors = Boolean(permissions.viewAllDoctors);
   const canManageAppointments = Boolean(permissions.manageAppointments);
@@ -359,9 +364,13 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
       let conflictMeta: { reason?: string } | undefined;
 
       if (overrideMode && overrideTime) {
-        const [hours, minutes] = overrideTime.split(':').map(Number);
-        startAt = parseDateKey(selectedDate);
-        startAt.setHours(hours, minutes, 0, 0);
+        if (practiceTimeZone) {
+          startAt = zonedDayTime(parseDateKey(selectedDate), overrideTime, practiceTimeZone);
+        } else {
+          const [hours, minutes] = overrideTime.split(':').map(Number);
+          startAt = parseDateKey(selectedDate);
+          startAt.setHours(hours, minutes, 0, 0);
+        }
         endAt = new Date(startAt.getTime() + (consultMeta?.durationMinutes || 30) * 60_000);
         overrideApplied = true;
         conflictMeta = { reason: 'Manual override by practitioner' };
@@ -398,7 +407,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
         }
       }
 
-      const timeStr = formatSlotTime(startAt);
+      const timeStr = formatSlotTime(startAt, practiceTimeZone);
       const appointmentStatus =
         bookingMode === 'manual' || practiceSession?.bookingPolicy?.confirmationMode === 'auto'
           ? 'confirmed'
@@ -482,7 +491,7 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
   const summaryTime = overrideMode && overrideTime
     ? overrideTime
     : selectedSlot
-      ? formatSlotTime(selectedSlot.startAt)
+      ? formatSlotTime(selectedSlot.startAt, selectedSlot.timeZone ?? practiceTimeZone)
       : null;
   const summaryDuration = selectedSlot
     ? slotDurationMinutes(selectedSlot)

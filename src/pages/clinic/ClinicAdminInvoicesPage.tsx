@@ -76,6 +76,10 @@ export const ClinicAdminInvoicesPage: React.FC = () => {
       ]);
       setInvoices(all);
       setClinicians(doctors);
+      // One clinician: preselect them so the form isn't silently blocked by an empty field.
+      if (doctors.length === 1) {
+        setDraft((current) => (current.doctorId ? current : { ...current, doctorId: doctors[0].uid }));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load clinic invoices');
     } finally {
@@ -125,7 +129,12 @@ export const ClinicAdminInvoicesPage: React.FC = () => {
         amount: Number(draft.amount),
         bhfPracticeNumber: practice?.bhfPracticeNumber,
       });
-      setDraft({ patientId: '', doctorId: '', description: 'Consultation', amount: '' });
+      setDraft({
+        patientId: '',
+        doctorId: clinicians.length === 1 ? clinicians[0].uid : '',
+        description: 'Consultation',
+        amount: '',
+      });
       setToast({ visible: true, message: 'Invoice created', type: 'success' });
       await loadData();
     } catch (err) {

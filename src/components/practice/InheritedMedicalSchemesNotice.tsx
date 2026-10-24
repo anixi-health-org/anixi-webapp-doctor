@@ -44,7 +44,7 @@ export const InheritedMedicalSchemesNotice: React.FC<Props> = ({
         {practiceName ? (
           <>
             Set by <span className="font-medium text-[#344256]">{practiceName}</span>. You inherit
-            this list for warrior matching and claims — you cannot edit it here.
+            this list for warrior matching and claims, you cannot edit it here.
           </>
         ) : (
           <>Set by your clinic. You inherit this list for warrior matching and claims.</>

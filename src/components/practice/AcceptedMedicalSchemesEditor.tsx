@@ -41,13 +41,14 @@ export const AcceptedMedicalSchemesEditor: React.FC<Props> = ({
   const initialPlanSlugsKey = initialPlanSlugs.join('|');
   const selectedKey = selected.join('|');
 
+  // Re-seed only when the incoming selection's contents change (callers often pass new arrays).
   useEffect(() => {
-    setSelected(initialSlugs);
-  }, [initialSlugs, initialSlugsKey]);
+    setSelected(initialSlugsKey ? initialSlugsKey.split('|') : []);
+  }, [initialSlugsKey]);
 
   useEffect(() => {
-    setSelectedPlans(initialPlanSlugs);
-  }, [initialPlanSlugs, initialPlanSlugsKey]);
+    setSelectedPlans(initialPlanSlugsKey ? initialPlanSlugsKey.split('|') : []);
+  }, [initialPlanSlugsKey]);
 
   useEffect(() => {
     onSelectionChange?.(selected, selectedPlans);

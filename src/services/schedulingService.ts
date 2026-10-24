@@ -10,6 +10,7 @@ import {
   normalizeConsultTypeSettings,
   resolveConsultTypeSetting,
 } from '../lib/consultTypeSettings';
+import { isValidTimeZone, zonedDayTime, zonedParts } from '../lib/zonedTime';
 import type {
   AvailableSlot,
   BookableBlock,
@@ -144,6 +145,8 @@ export type GenerateRawSlotsOptions = {
   typeSettings?: ConsultTypeSetting[] | null;
   /** Legacy enabled allow-list used only when typeSettings is empty. */
   legacyEnabledTypes?: ConsultType[] | null;
+  /** Practice timezone. Block hours are clinic wall-clock times, not the browser's. */
+  timeZone?: string | null;
 };
 
 export const generateRawSlots = (
@@ -160,6 +163,7 @@ export const generateRawSlots = (
   const dow = date.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
   const slots: AvailableSlot[] = [];
   const consultType = options?.consultType;
+  const zone = isValidTimeZone(options?.timeZone) ? options?.timeZone : null;
 
   let typeDuration: number | null = null;
   let typeBuffer: number | null = null;
@@ -200,7 +204,9 @@ export const generateRawSlots = (
         .toString()
         .padStart(2, '0');
       const mm = (cursor % 60).toString().padStart(2, '0');
-      const slotStart = dateAtTime(date, `${hh}:${mm}`);
+      const slotStart = zone
+        ? zonedDayTime(date, `${hh}:${mm}`, zone)
+        : dateAtTime(date, `${hh}:${mm}`);
       const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60_000);
       slots.push({
         startAt: slotStart,
@@ -208,6 +214,7 @@ export const generateRawSlots = (
         locationId: block.locationId,
         consultTypes: consultType ? [consultType] : block.allowedConsultTypes,
         bookableBlockId: block.id,
+        ...(zone ? { timeZone: zone } : {}),
       });
       cursor += step;
     }
@@ -259,20 +266,23 @@ export const getAvailableSlots = async (
   consultType?: ConsultType,
   options?: { excludeAppointmentId?: string },
 ): Promise<AvailableSlot[]> => {
-  const dayStart = startOfDay(date);
-  const dayEnd = endOfDay(date);
-
   const [blocks, allSoftBlocks, appointments, dailySchedule, practice] =
     await Promise.all([
       getBookableBlocks(practiceId),
       getAllSoftBlocks(practiceId),
-      getDoctorAppointments(doctorId),
+      getDoctorAppointments(doctorId, practiceId),
       getPracticeDailySchedule(
         practiceId,
         `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
       ),
       getPractice(practiceId),
     ]);
+
+  const zone = isValidTimeZone(practice?.timezone) ? practice?.timezone : null;
+  const dayStart = zone ? zonedDayTime(date, '00:00', zone) : startOfDay(date);
+  const dayEnd = zone
+    ? new Date(zonedDayTime(addDays(date, 1), '00:00', zone).getTime() - 1)
+    : endOfDay(date);
 
   const typeSettings = normalizeConsultTypeSettings(
     practice?.consultTypeSettings,
@@ -300,6 +310,7 @@ export const getAvailableSlots = async (
     consultType,
     typeSettings,
     legacyEnabledTypes: practice?.consultTypes,
+    timeZone: zone,
   });
 
   const dayAppointments = appointments.filter((a) => {
@@ -343,20 +354,34 @@ export const validateSlot = async (
   consultType: ConsultType,
   excludeAppointmentId?: string
 ): Promise<SlotValidationResult> => {
-  const dayStart = startOfDay(startAt);
-  const dayEnd = endOfDay(startAt);
+  // Block hours are clinic wall-clock times: read the slot on the practice's clock.
+  const practice = await getPractice(practiceId);
+  const zone = isValidTimeZone(practice?.timezone) ? practice?.timezone : null;
+  const local = zone
+    ? zonedParts(startAt, zone)
+    : {
+        year: startAt.getFullYear(),
+        month: startAt.getMonth(),
+        day: startAt.getDate(),
+        hour: startAt.getHours(),
+        minute: startAt.getMinutes(),
+        weekday: startAt.getDay(),
+      };
+  const calendarDay = new Date(local.year, local.month, local.day);
+  const dayStart = zone ? zonedDayTime(calendarDay, '00:00', zone) : startOfDay(startAt);
+  const dayEnd = zone
+    ? new Date(zonedDayTime(addDays(calendarDay, 1), '00:00', zone).getTime() - 1)
+    : endOfDay(startAt);
 
-  const [blocks, allSoftBlocks, appointments, dailySchedule, practice] =
-    await Promise.all([
-      getBookableBlocks(practiceId),
-      getAllSoftBlocks(practiceId),
-      getDoctorAppointments(doctorId),
-      getPracticeDailySchedule(
-        practiceId,
-        `${startAt.getFullYear()}-${String(startAt.getMonth() + 1).padStart(2, '0')}-${String(startAt.getDate()).padStart(2, '0')}`,
-      ),
-      getPractice(practiceId),
-    ]);
+  const [blocks, allSoftBlocks, appointments, dailySchedule] = await Promise.all([
+    getBookableBlocks(practiceId),
+    getAllSoftBlocks(practiceId),
+    getDoctorAppointments(doctorId, practiceId),
+    getPracticeDailySchedule(
+      practiceId,
+      `${local.year}-${String(local.month + 1).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`,
+    ),
+  ]);
 
   const typeSettings = normalizeConsultTypeSettings(
     practice?.consultTypeSettings,
@@ -394,7 +419,7 @@ export const validateSlot = async (
   }
   const effectiveBlocks = applyDailyScheduleToBlocks(
     doctorBlocks,
-    startAt,
+    calendarDay,
     dailySchedule,
   );
   const softBlocks = getEffectiveSoftBlocksForDay(
@@ -402,8 +427,8 @@ export const validateSlot = async (
     dayStart,
     dayEnd
   );
-  const dow = startAt.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
-  const slotStartMin = startAt.getHours() * 60 + startAt.getMinutes();
+  const dow = local.weekday as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  const slotStartMin = local.hour * 60 + local.minute;
   const slotEndMin = slotStartMin + setting.durationMinutes;
 
   // Doctor-side create with empty schedule remains allowed.
@@ -580,6 +605,8 @@ export const createScheduledAppointment = async (
     startAt: data.startAt.toISOString(),
     durationMinutes: setting.durationMinutes,
     status: data.status ?? 'pending',
+    // The API refuses double-bookings; staff with override permission may bypass on purpose.
+    ...(data.overrideApplied ? { overrideConflicts: true } : {}),
   });
   return booked.appointmentId;
 };

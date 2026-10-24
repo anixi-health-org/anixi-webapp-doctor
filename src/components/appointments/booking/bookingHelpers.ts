@@ -47,8 +47,13 @@ export const formatBookingDateShort = (key: string): string =>
     month: 'short',
   });
 
-export const formatSlotTime = (date: Date): string =>
-  date.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+/** Clock time for a slot; pass the practice timezone so it reads as clinic time. */
+export const formatSlotTime = (date: Date, timeZone?: string): string =>
+  date.toLocaleTimeString('en-ZA', {
+    hour: '2-digit',
+    minute: '2-digit',
+    ...(timeZone ? { timeZone } : {}),
+  });
 
 export const slotDurationMinutes = (slot: AvailableSlot): number =>
   Math.max(1, Math.round((slot.endAt.getTime() - slot.startAt.getTime()) / 60_000));

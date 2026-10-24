@@ -48,7 +48,8 @@ const makeBookableBlock = (): BookableBlock => ({
 const makePractice = (overrides?: Partial<Practice>): Practice => ({
   id: practiceId,
   name: 'Test Practice',
-  timezone: 'Africa/Johannesburg',
+  // Fixtures build dates in the runner's local zone; keep the practice on the same clock.
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   ownerId: doctorId,
   locations: [{ id: 'loc-1', name: 'Clinic', type: 'clinic' }],
   consultTypes: ['initial', 'follow-up'],

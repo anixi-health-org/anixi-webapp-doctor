@@ -82,7 +82,7 @@ export const ClinicPublicListingPanel: React.FC<Props> = ({
 
   const statusLabel = draft.published
     ? 'Visible on the Anixi marketplace'
-    : 'Not published — only your team sees this clinic';
+    : 'Not published, only your team sees this clinic';
 
   return (
     <div className="space-y-6">

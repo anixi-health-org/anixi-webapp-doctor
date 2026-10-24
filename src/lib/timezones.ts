@@ -31,6 +31,46 @@ export const PRACTICE_TIMEZONES: { value: string; label: string }[] = [
   { value: 'UTC', label: 'UTC' },
 ];
 
+/** Main timezone for each practice country offered at registration (ISO 3166-1 alpha-2). */
+const COUNTRY_DEFAULT_TIMEZONE: Record<string, string> = {
+  ZA: 'Africa/Johannesburg',
+  BW: 'Africa/Gaborone',
+  NA: 'Africa/Windhoek',
+  ZW: 'Africa/Harare',
+  MZ: 'Africa/Maputo',
+  ZM: 'Africa/Lusaka',
+  KE: 'Africa/Nairobi',
+  NG: 'Africa/Lagos',
+  GH: 'Africa/Accra',
+  EG: 'Africa/Cairo',
+  MA: 'Africa/Casablanca',
+  GB: 'Europe/London',
+  IE: 'Europe/London',
+  FR: 'Europe/Paris',
+  DE: 'Europe/Berlin',
+  CH: 'Europe/Zurich',
+  US: 'America/New_York',
+  CA: 'America/Toronto',
+  AE: 'Asia/Dubai',
+  SA: 'Asia/Riyadh',
+  IN: 'Asia/Kolkata',
+  JP: 'Asia/Tokyo',
+  CN: 'Asia/Shanghai',
+  AU: 'Australia/Sydney',
+  NZ: 'Pacific/Auckland',
+};
+
+/**
+ * Default practice timezone: the country the clinic registered in, not the browser of
+ * whoever is doing setup (Anixi ops often onboard South African clinics from abroad).
+ */
+export function defaultPracticeTimezone(country?: string | null): string {
+  const fromCountry = country ? COUNTRY_DEFAULT_TIMEZONE[country.toUpperCase()] : undefined;
+  if (fromCountry) return fromCountry;
+  const detected = detectBrowserTimezone();
+  return detected === 'UTC' ? 'Africa/Johannesburg' : detected;
+}
+
 export function detectBrowserTimezone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Africa/Johannesburg';

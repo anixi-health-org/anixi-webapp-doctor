@@ -10,7 +10,7 @@ type Props = {
 
 export function WhatsAppRosterBadge({ status }: Props) {
   if (!status) {
-    return <span className="text-xs text-[#9aa8a2]">—</span>;
+    return <span className="text-xs text-[#9aa8a2]">-</span>;
   }
 
   const label = whatsAppRosterLabel(status);

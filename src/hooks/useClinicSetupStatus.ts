@@ -60,7 +60,8 @@ export function useClinicSetupStatus(practiceId: string | undefined): ClinicSetu
   }, [reload]);
 
   /** Owner alone is not enough; match the Team page “Active members” card. */
-  const hasInvitedTeam = doctorCount > 0 || activeMembers >= 2;
+  // Sending an invite completes this step; acceptance shows up in pending invites.
+  const hasInvitedTeam = doctorCount > 0 || activeMembers >= 2 || pendingInvites > 0;
   const hasPatients = patientCount > 0;
 
   const steps: SetupStep[] = [

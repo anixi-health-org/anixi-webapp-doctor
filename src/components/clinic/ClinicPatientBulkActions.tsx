@@ -65,7 +65,7 @@ export function ClinicPatientBulkActions({
           ) : null}
           {overInviteLimit ? (
             <p className="mt-2 text-sm text-amber-800">
-              WhatsApp invites: max {BULK_APP_INVITE_MAX} per batch — narrow your selection or
+              WhatsApp invites: max {BULK_APP_INVITE_MAX} per batch, narrow your selection or
               filter the list.
             </p>
           ) : null}

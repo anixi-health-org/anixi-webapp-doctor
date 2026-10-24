@@ -291,9 +291,18 @@ export const migrateDoctorAppointmentsToGlobal = async (_doctorId: string): Prom
   return 0;
 };
 
-export const getDoctorAppointments = async (doctorId: string): Promise<Appointment[]> => {
+/**
+ * Appointments for `doctorId`. Pass `practiceId` when staff book for another doctor:
+ * without it the API returns the signed-in user's own calendar.
+ */
+export const getDoctorAppointments = async (
+  doctorId: string,
+  practiceId?: string,
+): Promise<Appointment[]> => {
   try {
-    const rows = await djangoListAppointments('doctor');
+    const rows = await djangoListAppointments(
+      practiceId ? { practiceId, doctorId } : 'doctor',
+    );
     return mapDjangoAppointments(rows as Array<Record<string, unknown>>, doctorId);
   } catch (error) {
     console.error('Django getDoctorAppointments failed:', error);

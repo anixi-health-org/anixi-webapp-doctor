@@ -28,7 +28,7 @@ import {
 import { ClinicManagedNotice } from './practice/ClinicManagedNotice';
 import { InheritedMedicalSchemesNotice } from './practice/InheritedMedicalSchemesNotice';
 import { PracticeMedicalAidSoloSection } from './practice/PracticeMedicalAidSoloSection';
-import { detectBrowserTimezone, timezoneSelectOptions } from '../lib/timezones';
+import { defaultPracticeTimezone, timezoneSelectOptions } from '../lib/timezones';
 import { SA_PROVINCES, validateSouthAfricanId } from '../lib/southAfrica';
 import {
   ACCEPTED_IMAGE_INPUT,
@@ -123,7 +123,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
     hpcsaRegistrationNumber: doctor?.licenseNumber || '',
     medicalSpecialty: doctor?.specialty || '',
     practiceName: doctor?.practiceName || '',
-    timezone: practiceSession?.practice?.timezone || detectBrowserTimezone(),
+    timezone: practiceSession?.practice?.timezone || defaultPracticeTimezone(doctor?.country),
     practiceAddress: doctor?.officeAddress || '',
     logoUrl: doctor?.logoUrl || '',
     profileImageUrl: doctor?.profileImageUrl || '',
@@ -158,7 +158,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
               inherited.timezone ||
               saved.timezone ||
               practiceSession?.practice?.timezone ||
-              detectBrowserTimezone(),
+              defaultPracticeTimezone(doctor?.country),
           }));
           if (saved.logoUrl) {
             setLogoPreview(saved.logoUrl);
@@ -178,7 +178,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
               inherited.timezone ||
               prev.timezone ||
               practiceSession?.practice?.timezone ||
-              detectBrowserTimezone(),
+              defaultPracticeTimezone(doctor?.country),
           }));
         }
       } catch {
@@ -197,7 +197,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [doctor?.id, doctor?.displayName, doctor?.email, practiceSession?.practice, clinicEmployed]);
+  }, [doctor?.id, doctor?.displayName, doctor?.email, doctor?.country, practiceSession?.practice, clinicEmployed]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -541,7 +541,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
           <span className="font-semibold text-[#1a4d4d]">Practice role:</span> {practiceRoleLabel}
           {!usesDoctorTitle ? (
             <span className="mt-1 block text-[#65758b]">
-              Your honorific (Mr/Ms/Dr) is separate from your clinic role — choose the title that matches how you
+              Your honorific (Mr/Ms/Dr) is separate from your clinic role, choose the title that matches how you
               introduce yourself.
             </span>
           ) : null}
