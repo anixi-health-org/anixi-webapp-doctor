@@ -715,6 +715,9 @@ export interface TeleconsultConsent {
     obtained: boolean;
     at?: Date;
     by?: string;
+    /** Patient agreed to Ayah transcribing the call for the doctor's notes (asked separately). */
+    scribe?: boolean;
+    scribeAt?: Date;
 }
 
 export interface Appointment {

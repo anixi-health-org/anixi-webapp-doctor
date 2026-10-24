@@ -271,6 +271,18 @@ const doctor = user?.role === 'doctor' ? user : null;
     () => (ayahScribeNote ? scribeNoteFromAction(ayahScribeNote) : null),
     [ayahScribeNote],
   );
+  const scribeTranscript =
+    typeof ayahScribeNote?.metadata?.transcript === 'string' ? ayahScribeNote.metadata.transcript : '';
+
+  // Ayah's drafts open in the normal editors; nothing is saved until the doctor saves it.
+  const applyPrescriptionFromScribe = (text: string) => {
+    setPrescriptionDraft(text);
+    setShowPrescriptionModal(true);
+  };
+  const applyReferralFromScribe = (text: string) => {
+    setDoctorLetterDraft(text);
+    setShowDoctorLetterModal(true);
+  };
 
   const latestPrescriptionDraft = useMemo(() => {
     const actions = appointment?.postConsultActions ?? [];
@@ -1491,6 +1503,21 @@ const doctor = user?.role === 'doctor' ? user : null;
     navigate(`/teleconsult/${appointment.id}`, { state: { appointment } });
   };
 
+  const handleScribeConsentChange = async (checked: boolean) => {
+    if (!user?.id || !appointment?.teleconsultConsent?.obtained) return;
+    const consent = {
+      ...appointment.teleconsultConsent,
+      scribe: checked,
+      scribeAt: checked ? new Date() : undefined,
+    };
+    try {
+      await updateAppointment(user.id, appointment.id, { teleconsultConsent: consent });
+      setAppointment((prev) => (prev ? { ...prev, teleconsultConsent: consent } : prev));
+    } catch {
+      setToast({ visible: true, message: 'Failed to save the Ayah notes agreement.', type: 'error' });
+    }
+  };
+
   const handleTeleconsultConsentChange = async (checked: boolean) => {
     setTeleconsultConsentChecked(checked);
     if (!checked || !user?.id || !appointment) return;
@@ -1698,6 +1725,9 @@ const doctor = user?.role === 'doctor' ? user : null;
                 <AyahScribeSummaryCard
                   note={ayahScribeParsed}
                   onApply={() => setNoteValue(ayahScribeParsed.fullText)}
+                  transcript={scribeTranscript}
+                  onUsePrescription={applyPrescriptionFromScribe}
+                  onUseReferral={applyReferralFromScribe}
                 />
               </div>
             ) : null}
@@ -1771,6 +1801,9 @@ const doctor = user?.role === 'doctor' ? user : null;
                     <AyahScribeSummaryCard
                       note={ayahScribeParsed}
                       onApply={() => setNoteValue(ayahScribeParsed.fullText)}
+                      transcript={scribeTranscript}
+                      onUsePrescription={applyPrescriptionFromScribe}
+                      onUseReferral={applyReferralFromScribe}
                     />
                   </div>
                 ) : null}
@@ -2060,6 +2093,22 @@ const doctor = user?.role === 'doctor' ? user : null;
                 </span>
               </span>
             </label>
+            {teleconsultConsentChecked ? (
+              <label className="flex max-w-xs cursor-pointer items-start gap-3 rounded-xl border border-[#e1e7ef] bg-[#f6f8fa] px-3.5 py-3 text-[13px] text-[#344256]">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-anixi-green focus:ring-anixi-green"
+                  checked={Boolean(appointment.teleconsultConsent?.scribe)}
+                  onChange={(e) => void handleScribeConsentChange(e.target.checked)}
+                />
+                <span>
+                  <span className="font-semibold text-[#0E2340]">Ayah notes (optional)</span>
+                  <span className="mt-0.5 block text-[#65758b]">
+                    Patient agreed to Ayah transcribing the call for your notes.
+                  </span>
+                </span>
+              </label>
+            ) : null}
             <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:items-end">
               {!teleconsultConsentChecked ? (
                 <p className="text-center text-[12px] text-[#8FA0B6] sm:text-right">
