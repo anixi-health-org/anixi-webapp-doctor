@@ -18,6 +18,8 @@ interface AppointmentListProps {
   pageSize?: number;
   /** When false, all appointments are listed (scrollable). Default true. */
   paginate?: boolean;
+  emptyTitle?: string;
+  emptyDescription?: string;
 }
 
 export const AppointmentList: React.FC<AppointmentListProps> = ({
@@ -28,6 +30,8 @@ export const AppointmentList: React.FC<AppointmentListProps> = ({
   showDoctor = false,
   pageSize = 5,
   paginate = true,
+  emptyTitle = 'No Appointments',
+  emptyDescription = 'There are no appointments to display',
 }) => {
   const [visibleCount, setVisibleCount] = useState(pageSize > 0 ? pageSize : appointments.length);
 
@@ -54,8 +58,8 @@ export const AppointmentList: React.FC<AppointmentListProps> = ({
       <div className="flex items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 py-14">
         <div className="text-center">
           <CalendarX2 className="mx-auto mb-3 h-12 w-12 text-gray-300" />
-          <p className="font-heading text-lg font-medium text-gray-900">No Appointments</p>
-          <p className="mt-1 font-sans text-sm text-gray-500">There are no appointments to display</p>
+          <p className="font-heading text-lg font-medium text-gray-900">{emptyTitle}</p>
+          <p className="mt-1 font-sans text-sm text-gray-500">{emptyDescription}</p>
         </div>
       </div>
     );

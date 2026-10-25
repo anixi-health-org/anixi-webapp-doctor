@@ -33,7 +33,15 @@ export const CaregiverOnboardingPage: React.FC = () => {
     setError('');
     setSaving(true);
     try {
-      await updateCaregiverProfile({ onboardingCompleted: true });
+      await updateCaregiverProfile({
+        onboardingCompleted: true,
+        ...(caregiverTier === 'professional'
+          ? {
+              caregiverTier: 'professional',
+              professionalCaregiverProfile: { listingRequested: true },
+            }
+          : {}),
+      });
       if (user?.id) markCaregiverOnboardingComplete(user.id);
       navigate('/caregiver', { replace: true });
     } catch {
@@ -52,6 +60,9 @@ export const CaregiverOnboardingPage: React.FC = () => {
         displayName: user.displayName,
         phoneNumber: phoneNumber.trim(),
         caregiverTier,
+        ...(caregiverTier === 'professional'
+          ? { professionalCaregiverProfile: { listingRequested: true } }
+          : {}),
       });
       setStep(2);
     } catch {

@@ -230,7 +230,8 @@ function mapProfile(row: Record<string, unknown>): CaregiverProfileData {
       bio: toText(pro.bio),
       city: toText(pro.city),
       province: toText(pro.province),
-      listingRequested: Boolean(pro.listingRequested),
+      listingRequested:
+        row.caregiverTier === 'professional' ? pro.listingRequested !== false : Boolean(pro.listingRequested),
     },
     marketListing: mapMarketListing(row.marketListing),
   };

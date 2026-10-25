@@ -4,7 +4,7 @@ import {
   AlertTriangle,
   BellOff,
   CheckCircle2,
-  Smartphone,
+  Link2,
   Users,
 } from 'lucide-react';
 import { PageHeader, PageShell } from '../page-layout';
@@ -17,7 +17,6 @@ import {
   getCaregiverPatientSummaries,
   type CaregiverPatientCategory,
 } from '../../services/caregiverService';
-import { ANDROID_APP_LINK, IOS_APP_LINK } from '../../lib/appStoreLinks';
 import { DashboardPageSkeleton } from '../ui/Skeleton';
 
 
@@ -169,58 +168,36 @@ export const CaregiverDashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
-          <Card className="border-anixi-green/20 bg-gradient-to-br from-white to-anixi-green/5">
-            <CardContent className="space-y-4 p-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-anixi-green/10">
-                  <Smartphone className="h-5 w-5 text-anixi-green" />
-                </div>
-                <div>
-                  <h3 className="font-heading font-semibold text-gray-900">Anixi mobile app</h3>
-                  <p className="text-xs text-gray-500">On-the-go monitoring</p>
-                </div>
+        <Card className="h-fit border-anixi-green/15 bg-gradient-to-br from-white to-anixi-green/[0.04]">
+          <CardHeader className="pb-2">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-anixi-green/10">
+                <Link2 className="h-5 w-5 text-anixi-green" />
               </div>
-              <p className="text-sm leading-relaxed text-gray-600">
-                Get real-time alerts, log care notes, and coordinate with clinical teams from your
-                phone.
-              </p>
-              <div className="flex flex-col gap-2">
-                <a
-                  href={IOS_APP_LINK}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-lg bg-anixi-green px-4 py-2 text-center text-sm font-semibold text-white hover:opacity-90"
-                >
-                  iOS app
-                </a>
-                <a
-                  href={ANDROID_APP_LINK}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-lg border border-anixi-green px-4 py-2 text-center text-sm font-semibold text-anixi-green hover:bg-anixi-green/5"
-                >
-                  Android app
-                </a>
+              <div>
+                <CardTitle className="text-base">Linking patients</CardTitle>
+                <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                  Use this portal or the Anixi mobile app (Caregiver sign-up) once a patient links
+                  you.
+                </p>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Getting linked to a patient</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm text-gray-600">
-              <p>
-                Ask the patient (or their family) to add your email as their caregiver in the Anixi
-                mobile app under <strong>Medical Profile</strong>.
-              </p>
-              <p>
-                Once linked, their medications, mood, and vitals will appear here automatically.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm leading-relaxed text-gray-600">
+            <p>
+              Ask your patient to open the <strong>Anixi mobile app</strong>, go to{' '}
+              <strong>Medical Profile → Caregivers</strong>, and add{' '}
+              <strong className="text-gray-900">{user?.email || 'your sign-in email'}</strong>.
+            </p>
+            <p>After they save, linked warriors show up here with meds, mood, and vitals.</p>
+            <Link
+              to="/caregiver/support"
+              className="inline-flex text-sm font-semibold text-anixi-green hover:underline"
+            >
+              Step-by-step linking guide
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     </PageShell>
   );

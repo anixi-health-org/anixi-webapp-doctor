@@ -24,6 +24,7 @@ import { setAdherenceRulesPracticeContext } from '../services/adherenceRulesServ
 import { useIncomingRecordShares } from '../hooks/useIncomingRecordShares';
 import { useIncomingSharingRequests } from '../hooks/useIncomingSharingRequests';
 import { usePendingAppointmentsCount } from '../hooks/usePendingAppointments';
+import { appointmentsPageHref } from '../lib/pendingConfirmations';
 import {
   getUnreadPingCount,
   listenToDoctorConversations,
@@ -153,7 +154,7 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
     },
     {
       name: 'Appointments',
-      href: '/appointments',
+      href: appointmentsPageHref(pendingAppointments > 0),
       icon: CalendarIcon,
       badge: pendingAppointments || undefined,
       badgeTone: 'teal',

@@ -15,6 +15,8 @@ import {
   isDirectBrowserMediaUrl,
 } from '../lib/mediaUrls';
 import type { PracticePermissions } from '../types';
+import type { PracticeSnapshot } from '../hooks/useDoctorBriefingData';
+import { slimPracticeSnapshotForCompanion } from '../lib/slimPracticeSnapshot';
 
 type Envelope<T> = {
   success: boolean;
@@ -169,6 +171,20 @@ export function isDjangoApiEnabled(): boolean {
   return enabled();
 }
 
+function slimCompanionContext(
+  context?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (!context?.practiceSnapshot || typeof context.practiceSnapshot !== 'object') {
+    return context;
+  }
+  return {
+    ...context,
+    practiceSnapshot: slimPracticeSnapshotForCompanion(
+      context.practiceSnapshot as PracticeSnapshot,
+    ),
+  };
+}
+
 export async function djangoCompanionStream(params: {
   message: string;
   context?: Record<string, unknown>;
@@ -179,6 +195,7 @@ export async function djangoCompanionStream(params: {
 }): Promise<void> {
   if (!enabled()) throw new Error('Django API not configured');
   const headers = await authHeaders();
+  const context = slimCompanionContext(params.context);
   const res = await fetch(`${API_BASE}/api/v1/companion/stream/`, {
     method: 'POST',
     headers,
@@ -186,7 +203,7 @@ export async function djangoCompanionStream(params: {
       message: params.message,
       agentId: params.agentId || 'doctor-practice-partner',
       threadId: params.threadId,
-      context: params.context,
+      context,
     }),
     signal: params.signal,
   });
@@ -241,11 +258,13 @@ export async function djangoVoiceTurn(params: {
 }): Promise<DjangoVoiceTurnResult> {
   if (!enabled()) throw new Error('Django API not configured');
   const headers = await authHeaders();
+  const context = slimCompanionContext(params.context);
   const res = await fetch(`${API_BASE}/api/v1/companion/voice/turn/`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
       ...params,
+      context,
       agentId: 'doctor-practice-partner',
     }),
   });
@@ -278,6 +297,7 @@ export async function djangoVoiceStream(params: {
 }): Promise<void> {
   if (!enabled()) throw new Error('Django API not configured');
   const headers = await authHeaders();
+  const context = slimCompanionContext(params.context);
   const res = await fetch(`${API_BASE}/api/v1/companion/voice/stream/`, {
     method: 'POST',
     headers,
@@ -288,7 +308,7 @@ export async function djangoVoiceStream(params: {
       languageCode: params.languageCode,
       threadId: params.threadId,
       speakReply: params.speakReply,
-      context: params.context,
+      context,
       agentId: 'doctor-practice-partner',
     }),
     signal: params.signal,

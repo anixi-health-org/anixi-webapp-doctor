@@ -21,7 +21,7 @@ export const CaregiverProfilePage: React.FC = () => {
   const [city, setCity] = useState('');
   const [province, setProvince] = useState('');
   const [services, setServices] = useState('');
-  const [listingRequested, setListingRequested] = useState(false);
+  const [listingRequested, setListingRequested] = useState(true);
   const [marketListing, setMarketListing] = useState<CaregiverProfileData['marketListing']>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,7 +44,11 @@ export const CaregiverProfilePage: React.FC = () => {
         setCity(profile.professionalCaregiverProfile?.city || '');
         setProvince(profile.professionalCaregiverProfile?.province || '');
         setServices((profile.professionalCaregiverProfile?.services ?? []).join(', '));
-        setListingRequested(profile.professionalCaregiverProfile?.listingRequested === true);
+        setListingRequested(
+          profile.caregiverTier === 'professional'
+            ? profile.professionalCaregiverProfile?.listingRequested !== false
+            : false,
+        );
         setMarketListing(profile.marketListing ?? null);
       }
       })
@@ -76,7 +80,7 @@ export const CaregiverProfilePage: React.FC = () => {
                 bio: bio.trim(),
                 city: city.trim(),
                 province: province.trim(),
-                listingRequested,
+                listingRequested: true,
               }
             : undefined,
       });
@@ -129,7 +133,11 @@ export const CaregiverProfilePage: React.FC = () => {
               <label className="mb-1.5 block text-sm font-medium text-gray-700">Caregiver type</label>
               <select
                 value={caregiverTier}
-                onChange={(e) => setCaregiverTier(e.target.value as CaregiverTier)}
+                onChange={(e) => {
+                  const next = e.target.value as CaregiverTier;
+                  setCaregiverTier(next);
+                  if (next === 'professional') setListingRequested(true);
+                }}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"
               >
                 <option value="family">Family / informal carer</option>
@@ -212,15 +220,11 @@ export const CaregiverProfilePage: React.FC = () => {
                     />
                   </div>
                 </div>
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={listingRequested}
-                    onChange={(e) => setListingRequested(e.target.checked)}
-                  />
-                  Request a listing in the patient marketplace (Anixi reviews it before it goes live)
-                </label>
-                {listingRequested && marketListing ? (
+                <p className="rounded-lg bg-[#f0f7f4] px-3 py-2.5 text-sm text-[#1a4d4d]">
+                  Professional carers are included in the patient marketplace by default. Anixi
+                  reviews your profile before it goes live.
+                </p>
+                {marketListing ? (
                   <p
                     className={
                       marketListing.status === 'rejected'

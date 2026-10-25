@@ -5,6 +5,12 @@ import { getDoctorAppointments } from '../../services/appointmentService';
 import { Appointment } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { convertTimestamp } from '../../utils/dateFormatter';
+import { appointmentsPageHref } from '../../lib/pendingConfirmations';
+import {
+  appointmentInstant,
+  DEFAULT_APPOINTMENT_TIMEZONE,
+} from '../../lib/appointmentDateFilters';
+import { formatAppointmentWhen } from '../../lib/dashboardAppointmentItems';
 
 const isSameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() &&
@@ -66,7 +72,14 @@ export const NotificationBell: React.FC = () => {
   }, []);
 
   const today = new Date();
-  const todaysApts = appointments.filter((a) => isSameDay(a.date, today));
+  const todaysApts = appointments.filter((a) => {
+    const instant = appointmentInstant(a);
+    if (!instant) return isSameDay(a.date, today);
+    const tz = a.timezone || DEFAULT_APPOINTMENT_TIMEZONE;
+    const key = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(instant);
+    const todayKey = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(today);
+    return key === todayKey;
+  });
   const pending = appointments.filter((a) => a.status === 'pending' || a.status === 'rescheduled');
   const recentCancellations = appointments.filter(
     (a) => a.status === 'cancelled' && withinDays(a.updatedAt, 2)
@@ -105,7 +118,46 @@ export const NotificationBell: React.FC = () => {
           </div>
 
           <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
-            
+
+            {pending.length > 0 && (
+              <div className="bg-amber-50/80 px-4 py-3">
+                <p className="text-xs font-semibold uppercase text-amber-900 mb-2">
+                  Needs your confirmation ({pending.length})
+                </p>
+                <ul className="space-y-2">
+                  {pending.slice(0, 5).map((a) => {
+                    const tz = a.timezone || DEFAULT_APPOINTMENT_TIMEZONE;
+                    const when = formatAppointmentWhen(a, tz, true);
+                    return (
+                      <li key={a.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigate(`/appointments/${a.id}`, { state: { appointment: a } });
+                            setOpen(false);
+                          }}
+                          className="flex w-full items-center justify-between gap-2 rounded-lg border border-amber-200/80 bg-white px-3 py-2 text-left text-xs text-gray-800 transition hover:border-anixi-green/40 hover:shadow-sm"
+                        >
+                          <span className="min-w-0 truncate font-medium">{a.patientName}</span>
+                          <span className="shrink-0 text-gray-500">{when}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate(appointmentsPageHref(true));
+                    setOpen(false);
+                  }}
+                  className="mt-2 text-xs font-medium text-anixi-green hover:underline"
+                >
+                  Review all on Appointments →
+                </button>
+              </div>
+            )}
+
             <div className="px-4 py-3">
               <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Today's Schedule</p>
               {todaysApts.length === 0 ? (
@@ -135,35 +187,6 @@ export const NotificationBell: React.FC = () => {
               )}
             </div>
 
-            
-            {pending.length > 0 && (
-              <div className="px-4 py-3">
-                <p className="text-xs font-semibold text-yellow-700 uppercase mb-2">
-                  ⏳ New Booking Requests ({pending.length})
-                </p>
-                <ul className="space-y-1">
-                  {pending.slice(0, 4).map((a) => {
-                    const dateObj = convertTimestamp(a.date) || a.date as Date;
-                    return (
-                      <li key={a.id} className="text-xs text-gray-700 flex items-center justify-between gap-2">
-                        <span className="truncate">{a.patientName}</span>
-                        <span className="text-gray-400 shrink-0">
-                          {dateObj instanceof Date ? dateObj.toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' }) : 'N/A'} {getSafeTimeLabel(a.time)}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-                <button
-                  onClick={() => { navigate('/appointments'); setOpen(false); }}
-                  className="mt-2 text-xs text-blue-600 hover:underline"
-                >
-                  View all →
-                </button>
-              </div>
-            )}
-
-            
             {recentCancellations.length > 0 && (
               <div className="px-4 py-3">
                 <p className="text-xs font-semibold text-red-600 uppercase mb-2">
@@ -192,10 +215,14 @@ export const NotificationBell: React.FC = () => {
 
           <div className="px-4 py-2 bg-gray-50 border-t border-gray-100">
             <button
-              onClick={() => { navigate('/appointments'); setOpen(false); }}
+              type="button"
+              onClick={() => {
+                navigate(pending.length > 0 ? appointmentsPageHref(true) : '/appointments');
+                setOpen(false);
+              }}
               className="text-xs text-gray-500 hover:text-gray-700 hover:underline w-full text-center"
             >
-              Go to Appointments
+              {pending.length > 0 ? 'Go to pending confirmations' : 'Go to Appointments'}
             </button>
           </div>
         </div>

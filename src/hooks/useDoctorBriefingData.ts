@@ -34,10 +34,26 @@ export type PracticeSnapshotPatient = {
   allergies?: string[];
 };
 
+export type PendingConfirmationAppointment = {
+  id: string;
+  patientId?: string;
+  patientName: string;
+  status: string;
+  startAt?: string;
+  time?: string;
+  consultType?: string;
+};
+
+export function appointmentNeedsDoctorConfirmation(status: string): boolean {
+  return status === 'pending' || status === 'rescheduled';
+}
+
 export type PracticeSnapshot = {
   practiceId?: string;
   timezone?: string;
   patients: PracticeSnapshotPatient[];
+  /** Appointments awaiting doctor confirm (any date — not only today). */
+  pendingConfirmationAppointments?: PendingConfirmationAppointment[];
   todayAppointments: Array<{
     id: string;
     patientId?: string;
@@ -60,6 +76,9 @@ export type PracticeSnapshot = {
     pendingAppointments: number;
     patients: number;
     attention: number;
+    pendingActivation?: number;
+    patientsTruncated?: boolean;
+    patientsInSnapshot?: number;
   };
   pendingAppointments: number;
   pendingPatientRequests: number;
@@ -109,6 +128,11 @@ export function buildBriefingPrompt(snapshot: DoctorBriefingSnapshot): string {
     .map((patient) => formatPatientLine(patient))
     .join('\n');
   const pendingActivation = snapshot.patients.filter((patient) => patient.status === 'pending');
+  const pendingSample = pendingActivation.slice(0, 25);
+  const pendingMore =
+    pendingActivation.length > pendingSample.length
+      ? `\n(and ${pendingActivation.length - pendingSample.length} more not listed — use list-practice-panel with status pending)`
+      : '';
 
   return [
     'What do I need to know today? Give me my practice briefing.',
@@ -133,19 +157,44 @@ export function buildBriefingPrompt(snapshot: DoctorBriefingSnapshot): string {
     '',
     'Pending activation:',
     pendingActivation.length
-      ? pendingActivation.map((patient) => formatPatientLine(patient)).join('\n')
+      ? pendingSample.map((patient) => formatPatientLine(patient)).join('\n') + pendingMore
       : 'none',
   ].join('\n');
 }
 
+function mapPendingConfirmationRows(
+  appointments: Appointment[],
+): PendingConfirmationAppointment[] {
+  return appointments
+    .filter((apt) => appointmentNeedsDoctorConfirmation(apt.status))
+    .slice(0, 30)
+    .map((apt) => ({
+      id: apt.id,
+      patientId: apt.patientId,
+      patientName: apt.patientName || 'Patient',
+      status: apt.status,
+      startAt: (apt.startAt ?? apt.scheduledAt)?.toISOString?.() ?? undefined,
+      time: apt.time,
+      consultType: apt.consultType,
+    }));
+}
+
 export function buildPracticeSnapshot(
   snapshot: DoctorBriefingSnapshot,
-  options?: { practiceId?: string; timezone?: string },
+  options?: { practiceId?: string; timezone?: string; allAppointments?: Appointment[] },
 ): PracticeSnapshot {
+  const pendingConfirmationAppointments = options?.allAppointments
+    ? mapPendingConfirmationRows(options.allAppointments)
+    : mapPendingConfirmationRows([
+        ...snapshot.todayAppointments,
+        ...snapshot.upcomingAppointments,
+      ]);
+
   return {
     practiceId: options?.practiceId,
     timezone: options?.timezone,
     patients: snapshot.patients,
+    pendingConfirmationAppointments,
     todayAppointments: snapshot.todayAppointments.map((apt) => ({
       id: apt.id,
       patientId: apt.patientId,
@@ -264,15 +313,25 @@ export function useDoctorBriefingData() {
       allergies: patient.allergies ?? [],
     }));
 
+    const pendingConfirmationRows = mapPendingConfirmationRows(appointments);
     const attentionItems: AttentionItem[] = [];
     if (pendingAppointments > 0) {
+      const lead = pendingConfirmationRows[0];
       attentionItems.push({
         id: 'pending-appointments',
         title: `${pendingAppointments} appointment request${pendingAppointments === 1 ? '' : 's'}`,
         detail: 'Waiting for your confirmation.',
-        prompt:
-          'Review my pending appointment requests and tell me what needs confirmation. Do not invent patients.',
+        prompt: [
+          `I have ${pendingAppointments} appointment request(s) waiting for my confirmation.`,
+          'Use practiceSnapshot.pendingConfirmationAppointments and get-work-queue.',
+          'For each row, state patient name, date, time, status, consult type, and appointment id.',
+          'Do not say there are zero pending requests if the snapshot list is non-empty.',
+          'Do not confuse roster pending activation with appointment requests.',
+        ].join(' '),
         tone: 'soon',
+        patientId: lead?.patientId,
+        patientName: lead?.patientName,
+        appointmentId: lead?.id,
       });
     }
     if (pendingPatientRequests > 0) {
@@ -337,8 +396,9 @@ export function useDoctorBriefingData() {
       buildPracticeSnapshot(snapshot, {
         practiceId: practiceSession?.practice?.id,
         timezone: timeZone,
+        allAppointments: appointments,
       }),
-    [snapshot, practiceSession?.practice?.id, timeZone],
+    [snapshot, appointments, practiceSession?.practice?.id, timeZone],
   );
 
   return { loading, snapshot, briefingPrompt, practiceSnapshot };

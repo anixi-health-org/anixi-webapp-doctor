@@ -129,8 +129,8 @@ const PrivacyPolicyPage: React.FC = () => (
                 </p>
                 <p className="mt-2 text-sm text-gray-700">
                   Email:{' '}
-                  <a href="mailto:privacy@anixi.health" className="font-medium text-anixi-green underline">
-                    privacy@anixi.health
+                  <a href="mailto:privacy@anixihealth.com" className="font-medium text-anixi-green underline">
+                    privacy@anixihealth.com
                   </a>
                 </p>
                 <p className="mt-1 text-sm text-gray-700">
@@ -338,9 +338,9 @@ const PrivacyPolicyPage: React.FC = () => (
               confidential, use a strong unique password, and obtain appropriate telemedicine
               consent before virtual consultations in line with HPCSA guidance. Report suspected
               incidents to{' '}
-            <a href="mailto:privacy@anixi.health" className="text-anixi-green underline">
-              privacy@anixi.health
-              </a>{' '}
+            <a href="mailto:privacy@anixihealth.com" className="text-anixi-green underline">
+              privacy@anixihealth.com
+              </a>{' '} 
               promptly.
             </p>
           </Section>
@@ -383,8 +383,8 @@ const PrivacyPolicyPage: React.FC = () => (
           </ul>
             <p>
               To exercise these rights, email{' '}
-              <a href="mailto:privacy@anixi.health" className="text-anixi-green underline">
-                privacy@anixi.health
+              <a href="mailto:privacy@anixihealth.com" className="text-anixi-green underline">
+                privacy@anixihealth.com
               </a>{' '}
               with enough detail for us to verify your identity and locate the records. We will
               respond within a reasonable time.
@@ -480,8 +480,8 @@ const PrivacyPolicyPage: React.FC = () => (
             <ul className="list-disc space-y-1 pl-5">
               <li>
                 Privacy:{' '}
-            <a href="mailto:privacy@anixi.health" className="text-anixi-green underline">
-              privacy@anixi.health
+              <a href="mailto:privacy@anixihealth.com" className="text-anixi-green underline">
+                privacy@anixihealth.com
             </a>
               </li>
               <li>
