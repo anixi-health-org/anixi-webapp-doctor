@@ -101,6 +101,12 @@ const normalizeAppointmentDocuments = (value: any): AppointmentDocument[] => {
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 };
 
+/** Older post-consult saves used ids ending in creation time (ms) when dates were missing. */
+function legacyPostConsultDateFromId(id: unknown): Date {
+  const idMs = Number(String(id ?? '').split('-').pop());
+  return Number.isFinite(idMs) && idMs > 1e12 ? new Date(idMs) : new Date();
+}
+
 const normalizePostConsultActions = (value: any): PostConsultAction[] => {
   if (!Array.isArray(value)) return [];
 
@@ -118,9 +124,7 @@ const normalizePostConsultActions = (value: any): PostConsultAction[] => {
       if (!item || typeof item !== 'object') return null;
       const actionType = item.type as PostConsultActionType;
       if (!validTypes.includes(actionType)) return null;
-      // Older saves stored dates as {}; their ids end in the creation time in ms.
-      const idMs = Number(String(item.id ?? '').split('-').pop());
-      const savedAt = Number.isFinite(idMs) && idMs > 1e12 ? new Date(idMs) : new Date();
+      const legacyDate = legacyPostConsultDateFromId(item.id);
 
       return {
         id: typeof item.id === 'string' ? item.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -130,8 +134,8 @@ const normalizePostConsultActions = (value: any): PostConsultAction[] => {
         status: item.status === 'finalized' ? 'finalized' : 'draft',
         metadata: item.metadata && typeof item.metadata === 'object' ? item.metadata : undefined,
         createdBy: typeof item.createdBy === 'string' ? item.createdBy : '',
-        createdAt: convertTimestamp(item.createdAt) || savedAt,
-        updatedAt: convertTimestamp(item.updatedAt) || convertTimestamp(item.createdAt) || savedAt,
+        createdAt: convertTimestamp(item.createdAt) || legacyDate,
+        updatedAt: convertTimestamp(item.updatedAt) || convertTimestamp(item.createdAt) || legacyDate,
       } as PostConsultAction;
     })
     .filter((item): item is PostConsultAction => item !== null)

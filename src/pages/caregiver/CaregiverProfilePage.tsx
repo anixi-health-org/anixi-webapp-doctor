@@ -80,7 +80,7 @@ export const CaregiverProfilePage: React.FC = () => {
                 bio: bio.trim(),
                 city: city.trim(),
                 province: province.trim(),
-                listingRequested: true,
+                listingRequested,
               }
             : undefined,
       });
