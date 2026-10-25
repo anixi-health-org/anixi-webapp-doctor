@@ -7,7 +7,7 @@ import { useNavigateWithFallback } from '../hooks/useNavigateWithFallback';
 import { getAppointmentById } from '../services/appointmentService';
 import { LetterheadSetupBanner } from '../components/invoices/LetterheadSetupBanner';
 import type { Doctor } from '../types';
-import { COMMON_ICD10_CODES, SA_VAT_RATE, computeVatBreakdown } from '../lib/southAfrica';
+import { COMMON_ICD10_CODES, computeVatBreakdown } from '../lib/southAfrica';
 
 const InvoiceCreate: React.FC = () => {
   const { appointmentId } = useParams<{ appointmentId?: string }>();
@@ -35,10 +35,11 @@ const InvoiceCreate: React.FC = () => {
   }, [doctorCurrency]);
 
   const amountNum = parseFloat(amount);
+  const vatRate = invoiceOptionsFromPracticeContext(doctor, practice).vatRate ?? 0;
   const vatPreview = useMemo(() => {
     if (Number.isNaN(amountNum) || amountNum <= 0) return null;
-    return computeVatBreakdown(amountNum, SA_VAT_RATE);
-  }, [amountNum]);
+    return computeVatBreakdown(amountNum, vatRate);
+  }, [amountNum, vatRate]);
 
   const selectedIcd = COMMON_ICD10_CODES.find((c) => c.code === icd10Code);
 
@@ -172,8 +173,11 @@ const InvoiceCreate: React.FC = () => {
           <div className="border-b border-[#e1e7ef] px-5 py-4">
             <p className="text-sm font-semibold text-[#0E2340]">Invoice details</p>
             <p className="mt-1 text-[13px] leading-relaxed text-[#65758b]">
-              Enter amounts exclusive of VAT. HPCSA, BHF, and VAT numbers from your profile are
-              printed on the PDF. Payment is tracked as EFT - Anixi does not process card payments.
+              {vatRate > 0
+                ? 'Enter amounts exclusive of VAT; 15% VAT is added because your VAT number is on file.'
+                : 'No VAT is added because there is no VAT number on your profile.'}{' '}
+              HPCSA and BHF numbers from your profile are printed on the PDF. Payment is tracked as
+              EFT; Anixi does not process card payments.
             </p>
           </div>
 
@@ -228,12 +232,14 @@ const InvoiceCreate: React.FC = () => {
                   <span>Subtotal (ex VAT)</span>
                   <span>R {vatPreview.subtotal.toFixed(2)}</span>
                 </div>
-                <div className="mt-1 flex justify-between">
-                  <span>VAT (15%)</span>
-                  <span>R {vatPreview.vatAmount.toFixed(2)}</span>
-                </div>
+                {vatRate > 0 ? (
+                  <div className="mt-1 flex justify-between">
+                    <span>VAT ({Math.round(vatRate * 100)}%)</span>
+                    <span>R {vatPreview.vatAmount.toFixed(2)}</span>
+                  </div>
+                ) : null}
                 <div className="mt-1 flex justify-between font-semibold">
-                  <span>Total (incl VAT)</span>
+                  <span>{vatRate > 0 ? 'Total (incl VAT)' : 'Total (no VAT charged)'}</span>
                   <span>R {vatPreview.total.toFixed(2)}</span>
                 </div>
               </div>

@@ -365,14 +365,8 @@ function App() {
                     <Route path="/professional-profile" element={<ProfessionalProfile />} />
                     <Route path="/practice-settings" element={<PracticeSettingsPage />} />
                     <Route path="/practice-calendar" element={<PracticeCalendarPage />} />
-                    <Route
-                      path="/content"
-                      element={
-                        <ContentPermissionRoute>
-                          <ContentLibraryPage />
-                        </ContentPermissionRoute>
-                      }
-                    />
+                    {/* Content was removed from the doctor portal (product decision, Oct 2026). */}
+                    <Route path="/content" element={<Navigate to="/dashboard" replace />} />
                     <Route path="/share-anixi" element={<ShareAnixi />} />
                     <Route path="/change-password" element={<ChangePassword />} />
                     <Route path="/support" element={<Support />} />

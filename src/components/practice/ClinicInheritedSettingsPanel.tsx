@@ -12,7 +12,7 @@ function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl bg-[#f6f8fa] px-4 py-3">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-[#0E2340]">{value || '—'}</p>
+      <p className="mt-1 text-sm font-semibold text-[#0E2340]">{value || '-'}</p>
     </div>
   );
 }
@@ -93,7 +93,7 @@ export const ClinicInheritedSettingsPanel: React.FC<Props> = ({
             practice.publicListing?.acceptsMedicalAid
               ? schemeNames.length
                 ? schemeNames.join(', ')
-                : 'Accepted — schemes configured by clinic'
+                : 'Accepted, schemes configured by clinic'
               : 'Private / cash only'
           }
         />

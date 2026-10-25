@@ -4,11 +4,10 @@ import { Heart, Smartphone, UserPlus } from 'lucide-react';
 import { AuthLayout } from '../components/auth/AuthLayout';
 import { useAuth } from '../hooks/AuthContext';
 import { getJoinPathConfig } from '../lib/joinPathConfig';
+import { ANDROID_APP_LINK, IOS_APP_LINK } from '../lib/appStoreLinks';
 import { updateCaregiverProfile } from '../services/caregiverService';
 import type { CaregiverTier } from '../types';
 
-const IOS_APP_LINK = 'https://apps.apple.com/app/anixi-health';
-const ANDROID_APP_LINK = 'https://play.google.com/store/apps/details?id=com.anixi.health';
 
 const caregiverOnboardingKey = (userId: string) => `anixi_caregiver_onboarding_complete_${userId}`;
 
@@ -30,9 +29,26 @@ export const CaregiverOnboardingPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const finish = () => {
-    if (user?.id) markCaregiverOnboardingComplete(user.id);
-    navigate('/caregiver', { replace: true });
+  const finish = async () => {
+    setError('');
+    setSaving(true);
+    try {
+      await updateCaregiverProfile({
+        onboardingCompleted: true,
+        ...(caregiverTier === 'professional'
+          ? {
+              caregiverTier: 'professional',
+              professionalCaregiverProfile: { listingRequested: true },
+            }
+          : {}),
+      });
+      if (user?.id) markCaregiverOnboardingComplete(user.id);
+      navigate('/caregiver', { replace: true });
+    } catch {
+      setError('Could not finish setup. Try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleProfileContinue = async () => {
@@ -40,10 +56,13 @@ export const CaregiverOnboardingPage: React.FC = () => {
     setError('');
     setSaving(true);
     try {
-      await updateCaregiverProfile(user.id, {
+      await updateCaregiverProfile({
         displayName: user.displayName,
         phoneNumber: phoneNumber.trim(),
         caregiverTier,
+        ...(caregiverTier === 'professional'
+          ? { professionalCaregiverProfile: { listingRequested: true } }
+          : {}),
       });
       setStep(2);
     } catch {
@@ -169,12 +188,14 @@ export const CaregiverOnboardingPage: React.FC = () => {
                 Google Play
               </a>
             </div>
+            {error ? <p className="text-sm text-red-600">{error}</p> : null}
             <button
               type="button"
-              onClick={finish}
-              className="w-full rounded-full bg-anixi-green py-3 text-sm font-semibold text-white hover:opacity-90"
+              disabled={saving}
+              onClick={() => void finish()}
+              className="w-full rounded-full bg-anixi-green py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
             >
-              Open caregiver dashboard
+              {saving ? 'Finishing…' : 'Open caregiver dashboard'}
             </button>
           </div>
         )}

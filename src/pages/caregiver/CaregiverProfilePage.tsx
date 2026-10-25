@@ -4,7 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Ca
 import { Toast } from '../../components/ui';
 import { PageHeaderSkeleton } from '../../components/ui/Skeleton';
 import { useAuth } from '../../hooks/useAuth';
-import { getCaregiverProfile, updateCaregiverProfile } from '../../services/caregiverService';
+import {
+  getCaregiverProfile,
+  updateCaregiverProfile,
+  type CaregiverProfileData,
+} from '../../services/caregiverService';
 import type { CaregiverTier } from '../../types';
 
 export const CaregiverProfilePage: React.FC = () => {
@@ -17,7 +21,8 @@ export const CaregiverProfilePage: React.FC = () => {
   const [city, setCity] = useState('');
   const [province, setProvince] = useState('');
   const [services, setServices] = useState('');
-  const [published, setPublished] = useState(false);
+  const [listingRequested, setListingRequested] = useState(true);
+  const [marketListing, setMarketListing] = useState<CaregiverProfileData['marketListing']>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
@@ -28,20 +33,29 @@ export const CaregiverProfilePage: React.FC = () => {
 
   useEffect(() => {
     if (!user?.id) return;
-    void getCaregiverProfile(user.id).then((profile) => {
+    void getCaregiverProfile()
+      .then((profile) => {
       if (profile) {
         setDisplayName(profile.displayName || '');
         setPhoneNumber(profile.phoneNumber || '');
-        setOrganization(profile.organization || profile.professionalCaregiverProfile?.organization || '');
+        setOrganization(profile.professionalCaregiverProfile?.organization || '');
         setCaregiverTier(profile.caregiverTier ?? 'family');
         setBio(profile.professionalCaregiverProfile?.bio || '');
         setCity(profile.professionalCaregiverProfile?.city || '');
         setProvince(profile.professionalCaregiverProfile?.province || '');
         setServices((profile.professionalCaregiverProfile?.services ?? []).join(', '));
-        setPublished(profile.professionalCaregiverProfile?.published === true);
+        setListingRequested(
+          profile.caregiverTier === 'professional'
+            ? profile.professionalCaregiverProfile?.listingRequested !== false
+            : false,
+        );
+        setMarketListing(profile.marketListing ?? null);
       }
-      setLoading(false);
-    });
+      })
+      .catch(() => {
+        setToast({ visible: true, message: 'Could not load your profile.', type: 'error' });
+      })
+      .finally(() => setLoading(false));
   }, [user?.id]);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -54,10 +68,9 @@ export const CaregiverProfilePage: React.FC = () => {
         .map((s) => s.trim())
         .filter(Boolean);
 
-      await updateCaregiverProfile(user.id, {
+      const saved = await updateCaregiverProfile({
         displayName: displayName.trim(),
         phoneNumber: phoneNumber.trim(),
-        organization: organization.trim(),
         caregiverTier,
         professionalCaregiverProfile:
           caregiverTier === 'professional'
@@ -67,10 +80,11 @@ export const CaregiverProfilePage: React.FC = () => {
                 bio: bio.trim(),
                 city: city.trim(),
                 province: province.trim(),
-                published,
+                listingRequested,
               }
             : undefined,
       });
+      setMarketListing(saved.marketListing ?? null);
       setToast({ visible: true, message: 'Profile updated successfully.', type: 'success' });
     } catch {
       setToast({ visible: true, message: 'Failed to update profile.', type: 'error' });
@@ -119,7 +133,11 @@ export const CaregiverProfilePage: React.FC = () => {
               <label className="mb-1.5 block text-sm font-medium text-gray-700">Caregiver type</label>
               <select
                 value={caregiverTier}
-                onChange={(e) => setCaregiverTier(e.target.value as CaregiverTier)}
+                onChange={(e) => {
+                  const next = e.target.value as CaregiverTier;
+                  setCaregiverTier(next);
+                  if (next === 'professional') setListingRequested(true);
+                }}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"
               >
                 <option value="family">Family / informal carer</option>
@@ -202,14 +220,29 @@ export const CaregiverProfilePage: React.FC = () => {
                     />
                   </div>
                 </div>
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={published}
-                    onChange={(e) => setPublished(e.target.checked)}
-                  />
-                  List my profile in the patient marketplace
-                </label>
+                <p className="rounded-lg bg-[#f0f7f4] px-3 py-2.5 text-sm text-[#1a4d4d]">
+                  Professional carers are included in the patient marketplace by default. Anixi
+                  reviews your profile before it goes live.
+                </p>
+                {marketListing ? (
+                  <p
+                    className={
+                      marketListing.status === 'rejected'
+                        ? 'rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900'
+                        : 'rounded-lg bg-[#f0f7f4] px-3 py-2 text-sm text-[#1a4d4d]'
+                    }
+                  >
+                    {marketListing.status === 'pending'
+                      ? 'Your listing is waiting for Anixi review.'
+                      : marketListing.status === 'approved'
+                        ? marketListing.published
+                          ? 'Your listing is live in the patient marketplace. Saving here updates it.'
+                          : 'Your listing is approved but currently hidden from patients.'
+                        : `Your listing was not approved${
+                            marketListing.rejectionReason ? `: ${marketListing.rejectionReason}` : '.'
+                          } Update your profile and save to send it for review again.`}
+                  </p>
+                ) : null}
               </>
             ) : null}
 

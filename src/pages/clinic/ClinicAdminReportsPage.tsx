@@ -236,12 +236,12 @@ export const ClinicAdminReportsPage: React.FC = () => {
             <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
               <p className="text-sm font-semibold text-amber-900">
                 {clinical.needingAttention.toLocaleString()} warrior
-                {clinical.needingAttention === 1 ? '' : 's'} with low adherence — sample
+                {clinical.needingAttention === 1 ? '' : 's'} with low adherence, sample
               </p>
               <ul className="mt-2 grid gap-1 sm:grid-cols-2">
                 {clinical.patients.slice(0, 10).map((p) => (
                   <li key={p.patientId} className="text-sm text-amber-900">
-                    {p.displayName} — {p.adherence.rate}% adherence
+                    {p.displayName}, {p.adherence.rate}% adherence
                   </li>
                 ))}
               </ul>
@@ -262,7 +262,7 @@ export const ClinicAdminReportsPage: React.FC = () => {
           <div className="mb-4">
             <h3 className="font-semibold text-[#344256]">Front desk & billing</h3>
             <p className="mt-1 text-sm text-[#65758b]">
-              Live diary counts, check-ins, invoices, and claims — useful for daily huddles.
+              Live diary counts, check-ins, invoices, and claims, useful for daily huddles.
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

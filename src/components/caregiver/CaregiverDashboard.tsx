@@ -4,7 +4,7 @@ import {
   AlertTriangle,
   BellOff,
   CheckCircle2,
-  Smartphone,
+  Link2,
   Users,
 } from 'lucide-react';
 import { PageHeader, PageShell } from '../page-layout';
@@ -13,11 +13,19 @@ import { DashboardStatsCard } from '../dashboard/DashboardStatsCard';
 import { CaregiverPatientList } from './CaregiverPatientList';
 import { useAuth } from '../../hooks/useAuth';
 import { useCaregiverPatients } from '../../hooks/useCaregiverPatients';
-import { getCaregiverPatientSummaries } from '../../services/caregiverService';
+import {
+  getCaregiverPatientSummaries,
+  type CaregiverPatientCategory,
+} from '../../services/caregiverService';
 import { DashboardPageSkeleton } from '../ui/Skeleton';
 
-const IOS_APP_LINK = 'https://apps.apple.com/app/anixi-health';
-const ANDROID_APP_LINK = 'https://play.google.com/store/apps/details?id=com.anixi.health';
+
+const FILTER_TITLES: Record<'all' | CaregiverPatientCategory, string> = {
+  all: 'Your patients',
+  attention: 'Needs attention',
+  stable: 'Stable',
+  inactive: 'No medication logs in 30 days',
+};
 
 export const CaregiverDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -27,7 +35,8 @@ export const CaregiverDashboard: React.FC = () => {
   const [stableCount, setStableCount] = useState(0);
   const [inactiveCount, setInactiveCount] = useState(0);
   const [adherenceMap, setAdherenceMap] = useState<Map<string, number>>(new Map());
-  const [filter, setFilter] = useState<'all' | 'attention' | 'stable' | 'inactive'>('all');
+  const [categoryMap, setCategoryMap] = useState<Map<string, CaregiverPatientCategory>>(new Map());
+  const [filter, setFilter] = useState<'all' | CaregiverPatientCategory>('all');
 
   useEffect(() => {
     if (patients.length === 0) {
@@ -35,55 +44,43 @@ export const CaregiverDashboard: React.FC = () => {
       setStableCount(0);
       setInactiveCount(0);
       setAdherenceMap(new Map());
+      setCategoryMap(new Map());
       return;
     }
 
+    let cancelled = false;
     const load = async () => {
       setSummariesLoading(true);
       try {
         const summaries = await getCaregiverPatientSummaries(patients);
-        const map = new Map<string, number>();
-        let attention = 0;
-        let stable = 0;
-        let inactive = 0;
-
+        if (cancelled) return;
+        const adherence = new Map<string, number>();
+        const categories = new Map<string, CaregiverPatientCategory>();
         summaries.forEach((s) => {
-          map.set(s.patient.id, s.adherenceRate);
-          if (s.status === 'inactive') inactive += 1;
-          else if (s.needsAttention) attention += 1;
+          if (s.hasAdherenceData) adherence.set(s.patient.id, s.adherenceRate);
+          categories.set(s.patient.id, s.category);
         });
-
-        setAdherenceMap(map);
-        setAttentionCount(attention);
-        setStableCount(stable);
-        setInactiveCount(inactive);
+        const count = (c: CaregiverPatientCategory) => summaries.filter((s) => s.category === c).length;
+        setAdherenceMap(adherence);
+        setCategoryMap(categories);
+        setAttentionCount(count('attention'));
+        setStableCount(count('stable'));
+        setInactiveCount(count('inactive'));
       } finally {
-        setSummariesLoading(false);
+        if (!cancelled) setSummariesLoading(false);
       }
     };
 
     void load();
+    return () => {
+      cancelled = true;
+    };
   }, [patients]);
 
-  const filteredPatients = useMemo(() => {
-    if (filter === 'all') return patients;
-    return patients.filter((patient) => {
-      const status = patient.chronicDiseases?.length ? 'warning' : 'stable';
-      const adherence = adherenceMap.get(patient.id) ?? 100;
-      if (filter === 'attention') {
-        return status === 'warning' || adherence < 70;
-      }
-      if (filter === 'inactive') {
-        const fiveDaysAgo = Date.now() - 5 * 24 * 60 * 60 * 1000;
-        const last = patient.updatedAt ? new Date(patient.updatedAt).getTime() : 0;
-        return last < fiveDaysAgo;
-      }
-      if (filter === 'stable') {
-        return status !== 'warning' && adherence >= 70;
-      }
-      return true;
-    });
-  }, [patients, filter, adherenceMap]);
+  const filteredPatients = useMemo(
+    () => (filter === 'all' ? patients : patients.filter((p) => categoryMap.get(p.id) === filter)),
+    [patients, filter, categoryMap],
+  );
 
   const firstName = user?.displayName?.split(' ')[0] || 'Caregiver';
 
@@ -155,7 +152,7 @@ export const CaregiverDashboard: React.FC = () => {
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>
-              {filter === 'all' ? 'Your patients' : `${filter} patients`}
+              {FILTER_TITLES[filter]}
             </CardTitle>
             {summariesLoading && (
               <span className="text-xs text-gray-400">Updating metrics…</span>
@@ -171,58 +168,36 @@ export const CaregiverDashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
-          <Card className="border-anixi-green/20 bg-gradient-to-br from-white to-anixi-green/5">
-            <CardContent className="space-y-4 p-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-anixi-green/10">
-                  <Smartphone className="h-5 w-5 text-anixi-green" />
-                </div>
-                <div>
-                  <h3 className="font-heading font-semibold text-gray-900">Anixi mobile app</h3>
-                  <p className="text-xs text-gray-500">On-the-go monitoring</p>
-                </div>
+        <Card className="h-fit border-anixi-green/15 bg-gradient-to-br from-white to-anixi-green/[0.04]">
+          <CardHeader className="pb-2">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-anixi-green/10">
+                <Link2 className="h-5 w-5 text-anixi-green" />
               </div>
-              <p className="text-sm leading-relaxed text-gray-600">
-                Get real-time alerts, log care notes, and coordinate with clinical teams from your
-                phone.
-              </p>
-              <div className="flex flex-col gap-2">
-                <a
-                  href={IOS_APP_LINK}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-lg bg-anixi-green px-4 py-2 text-center text-sm font-semibold text-white hover:opacity-90"
-                >
-                  iOS app
-                </a>
-                <a
-                  href={ANDROID_APP_LINK}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-lg border border-anixi-green px-4 py-2 text-center text-sm font-semibold text-anixi-green hover:bg-anixi-green/5"
-                >
-                  Android app
-                </a>
+              <div>
+                <CardTitle className="text-base">Linking patients</CardTitle>
+                <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                  Use this portal or the Anixi mobile app (Caregiver sign-up) once a patient links
+                  you.
+                </p>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Getting linked to a patient</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm text-gray-600">
-              <p>
-                Ask the patient (or their family) to add your email as their caregiver in the Anixi
-                mobile app under <strong>Medical Profile</strong>.
-              </p>
-              <p>
-                Once linked, their medications, mood, and vitals will appear here automatically.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm leading-relaxed text-gray-600">
+            <p>
+              Ask your patient to open the <strong>Anixi mobile app</strong>, go to{' '}
+              <strong>Medical Profile → Caregivers</strong>, and add{' '}
+              <strong className="text-gray-900">{user?.email || 'your sign-in email'}</strong>.
+            </p>
+            <p>After they save, linked warriors show up here with meds, mood, and vitals.</p>
+            <Link
+              to="/caregiver/support"
+              className="inline-flex text-sm font-semibold text-anixi-green hover:underline"
+            >
+              Step-by-step linking guide
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     </PageShell>
   );

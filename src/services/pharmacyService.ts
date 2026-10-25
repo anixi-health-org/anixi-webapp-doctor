@@ -1,8 +1,8 @@
 import type { Pharmacy, PharmacyOrder } from '../types';
 import {
   djangoCreatePharmacyOrder,
+  djangoListPharmacies,
   djangoListPharmacyOrders,
-  djangoListWellnessProviders,
   isDjangoApiEnabled,
 } from './djangoApiService';
 
@@ -54,10 +54,9 @@ function mapPharmacyOrder(row: Record<string, unknown>): PharmacyOrder {
 
 export async function listPublishedPharmacies(): Promise<Pharmacy[]> {
   try {
-    const rows = await djangoListWellnessProviders('pharmacy');
-    return (rows as Record<string, unknown>[]).map((row) =>
-      mapPharmacy(String(row.id ?? ''), row),
-    );
+    const rows = await djangoListPharmacies();
+    // The endpoint only returns published pharmacies.
+    return rows.map((row) => mapPharmacy(String(row.id ?? ''), { ...row, published: true }));
   } catch {
     return [];
   }

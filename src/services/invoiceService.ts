@@ -1,5 +1,5 @@
 import { Doctor, Invoice, InvoiceLineItem, InvoiceStatus, Practice } from '../types';
-import { SA_VAT_RATE, computeVatBreakdown } from '../lib/southAfrica';
+import { SA_VAT_RATE, computeVatBreakdown, vatRateFor } from '../lib/southAfrica';
 import {
   bankingDetailsNoteFromProfile,
   normalizeBillingProfile,
@@ -35,7 +35,7 @@ export const invoiceOptionsFromDoctor = (
     ? `ANIXI-${appointmentId.slice(0, 8).toUpperCase()}`
     : undefined;
   return {
-    vatRate: SA_VAT_RATE,
+    vatRate: vatRateFor(doctor?.vatNumber),
     vatNumber: doctor?.vatNumber || undefined,
     bhfPracticeNumber: doctor?.practiceNumberBhf || undefined,
     hpcsaNumber: doctor?.licenseNumber || undefined,
@@ -59,10 +59,12 @@ export const invoiceOptionsFromPracticeContext = (
   );
   if (!practice || !isManagedOrgType(practice.orgType)) return base;
   const billing = normalizeBillingProfile(practice.billingProfile);
+  const vatNumber = billing.vatNumber || base.vatNumber;
   return {
     ...base,
     bhfPracticeNumber: practice.bhfPracticeNumber || base.bhfPracticeNumber,
-    vatNumber: billing.vatNumber || base.vatNumber,
+    vatNumber,
+    vatRate: vatRateFor(vatNumber),
     bankDetailsNote: bankingDetailsNoteFromProfile(billing) || base.bankDetailsNote,
   };
 };
@@ -113,7 +115,17 @@ function mapInvoiceDoc(id: string, data: Record<string, unknown>): Invoice {
     0,
   );
   const totalAmount = toNumber(data.totalAmount ?? data.total, lineItemTotal);
-  const vatRate = toNumber(data.vatRate, SA_VAT_RATE);
+  const metadata = (data.metadata ?? {}) as Record<string, unknown>;
+  const subtotalExVat = toNumber(data.subtotalExVat, lineItemTotal);
+  // Older rows only carry the total, so read the charged VAT back from it.
+  const chargedVat = Math.max(0, Math.round((totalAmount - subtotalExVat) * 100) / 100);
+  const storedRate = data.vatRate ?? metadata.vatRate;
+  const vatRate =
+    storedRate !== undefined && storedRate !== null
+      ? toNumber(storedRate, SA_VAT_RATE)
+      : subtotalExVat > 0
+        ? Math.round((chargedVat / subtotalExVat) * 100) / 100
+        : 0;
 
   return {
     id,
@@ -121,8 +133,11 @@ function mapInvoiceDoc(id: string, data: Record<string, unknown>): Invoice {
     lineItems,
     totalAmount,
     vatRate,
-    subtotalExVat: toNumber(data.subtotalExVat, lineItemTotal),
-    vatAmount: toNumber(data.vatAmount, 0),
+    subtotalExVat,
+    vatAmount: toNumber(data.vatAmount, chargedVat),
+    vatNumber: (data.vatNumber ?? metadata.vatNumber) as string | undefined,
+    bhfPracticeNumber: (data.bhfPracticeNumber ?? metadata.bhfPracticeNumber) as string | undefined,
+    hpcsaNumber: (data.hpcsaNumber ?? metadata.hpcsaNumber) as string | undefined,
     status: mapInvoiceStatus(data.status),
     issuedAt: toDate(data.issuedAt) || new Date(),
     dueDate: toDate(data.dueDate) ?? undefined,

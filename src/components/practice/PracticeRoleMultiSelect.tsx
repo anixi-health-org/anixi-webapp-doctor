@@ -51,7 +51,7 @@ export const PracticeRoleMultiSelect: React.FC<PracticeRoleMultiSelectProps> = (
     >
       <legend className="px-1 text-sm font-medium text-gray-700">Roles (select all that apply)</legend>
       <p className="mb-3 text-xs text-gray-500">
-        Capabilities combine across roles — e.g. Doctor + Content Creator gets clinical and content tools.
+        Capabilities combine across roles, e.g. Doctor + Content Creator gets clinical and content tools.
       </p>
       <ul className="grid gap-2 sm:grid-cols-2">
         {roles.map((role) => {

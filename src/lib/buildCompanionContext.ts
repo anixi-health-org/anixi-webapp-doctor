@@ -2,6 +2,7 @@ import type { AskAnixiContext } from '../services/askAnixiService';
 import type { PracticeDashboardStats } from '../services/practiceDashboardService';
 import type { PracticeSnapshot } from '../hooks/useDoctorBriefingData';
 import { unichartContextFields } from './ayahUnichartContext';
+import { slimPracticeSnapshotForCompanion } from './slimPracticeSnapshot';
 import type { UnichartPreview } from '../services/djangoApiService';
 
 export type AyahClientSurface =
@@ -74,9 +75,16 @@ export function mergeCompanionRequestContext(
     ? unichartContextFields(enrich.unichartPreview)
     : {};
   const { unichartPreview: _drop, clientSurface, preferredLanguage, ...rest } = enrich;
+  let practiceSnapshot = rest.practiceSnapshot;
+  if (practiceSnapshot && typeof practiceSnapshot === 'object') {
+    practiceSnapshot = slimPracticeSnapshotForCompanion(
+      practiceSnapshot as unknown as PracticeSnapshot,
+    ) as unknown as Record<string, unknown>;
+  }
   return {
     ...base,
     ...rest,
+    ...(practiceSnapshot ? { practiceSnapshot } : {}),
     ...unichartFields,
     ...(clientSurface ? { clientSurface } : {}),
     ...(preferredLanguage ? { preferredLanguage } : {}),

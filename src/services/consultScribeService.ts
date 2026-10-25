@@ -24,55 +24,28 @@ export async function transcribeConsultChunk(
 export async function structureConsultTranscript(params: {
   transcript: string;
   patientName: string;
+  doctorName?: string;
   appointmentId: string;
+  /** Anything the doctor typed in the call notes panel; Ayah folds it into the note. */
+  doctorNotes?: string;
   context?: AskAnixiContext;
 }): Promise<ConsultScribeNote> {
   const trimmed = params.transcript.trim();
-  if (!trimmed) {
-    return {
-      summary: '',
-      subjective: '',
-      objective: '',
-      assessment: '',
-      plan: '',
-      followUps: [],
-      fullText: '',
-    };
-  }
+  if (!trimmed) return parseConsultScribeNote('');
 
+  const doctorNotes = params.doctorNotes?.trim();
   let assembled = '';
+  // The consult-scribe agent carries the note format; it has no tools and keeps no memory.
   await streamAskAnixi({
-    message: `You are Ayah, clinical scribe for a South African doctor. The transcript below is from a live teleconsult (doctor and patient audio from the video call).
-
-Produce a chart-ready post-visit note for ${params.patientName}.
-
-Use EXACTLY this plain-text structure (no markdown, no em dashes):
-
-SUMMARY:
-Two to four sentences capturing why the patient came, what was discussed, and the outcome.
-
-SUBJECTIVE:
-Patient-reported symptoms, history, and concerns from the visit.
-
-OBJECTIVE:
-Observable or stated clinical findings documented in the conversation. If none were discussed, write "Not documented in visit audio."
-
-ASSESSMENT:
-Clinical impression based only on what was said. Do not invent diagnoses.
-
-PLAN:
-Agreed next steps, prescriptions, referrals, tests, or advice mentioned.
-
-FOLLOW_UPS:
-- Bullet list of follow-up actions for the doctor
-
-Rules:
-- Only use information from the transcript.
-- Do not invent vitals, examination findings, or medications.
-- Keep language concise and professional.
-
-Transcript:
-${trimmed}`,
+    agentId: 'consult-scribe',
+    message: [
+      `Patient: ${params.patientName}`,
+      params.doctorName ? `Doctor: ${params.doctorName}` : null,
+      doctorNotes ? `Doctor's own notes typed during the call:\n${doctorNotes}` : null,
+      `Call transcript:\n${trimmed}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
     context: {
       ...params.context,
       appointmentId: params.appointmentId,

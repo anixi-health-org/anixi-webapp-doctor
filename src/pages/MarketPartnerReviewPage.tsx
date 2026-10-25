@@ -17,8 +17,11 @@ export const MarketPartnerReviewPage: React.FC = () => {
   const [signingOut, setSigningOut] = useState(false);
   const heroSlides = getJoinPathConfig('market_partner').heroSlides;
 
+  const [checkedAt, setCheckedAt] = useState(0);
+
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     (async () => {
       try {
         const row = await djangoGetMyMarketplacePartnerApplication();
@@ -30,15 +33,18 @@ export const MarketPartnerReviewPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [checkedAt]);
 
   const status = app?.status ?? 'pending';
 
   useEffect(() => {
-    if (!loading && status === 'approved') {
+    if (loading) return;
+    if (!app) {
+      navigate('/market-partner/onboarding', { replace: true });
+    } else if (status === 'approved') {
       navigate('/partner', { replace: true });
     }
-  }, [loading, status, navigate]);
+  }, [loading, app, status, navigate]);
 
   const goToSignIn = async () => {
     setSigningOut(true);
@@ -91,7 +97,7 @@ export const MarketPartnerReviewPage: React.FC = () => {
               ) : null}
               <Link
                 to="/market-partner/onboarding"
-                className="inline-flex font-semibold text-anixi-green underline"
+                className="mr-4 inline-flex font-semibold text-anixi-green underline"
               >
                 Update and resubmit
               </Link>
@@ -99,7 +105,7 @@ export const MarketPartnerReviewPage: React.FC = () => {
           ) : (
             <>
               <p>
-                Thanks{app?.businessName ? ` — we received ${app.businessName}` : ''}. Our team
+                {app?.businessName ? `Thanks, we received ${app.businessName}.` : 'Thanks, we received your application.'} Our team
                 reviews partner listings before they appear to patients.
               </p>
               <ul className="list-disc space-y-1 pl-5">
@@ -109,6 +115,16 @@ export const MarketPartnerReviewPage: React.FC = () => {
               </ul>
             </>
           )}
+          {status === 'pending' ? (
+            <button
+              type="button"
+              onClick={() => setCheckedAt(Date.now())}
+              disabled={loading}
+              className="mr-4 inline-flex pt-2 font-semibold text-anixi-green underline disabled:opacity-60"
+            >
+              {loading ? 'Checking…' : 'Check status'}
+            </button>
+          ) : null}
           {status !== 'approved' ? (
             <button
               type="button"

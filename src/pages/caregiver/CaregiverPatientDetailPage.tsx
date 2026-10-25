@@ -9,11 +9,12 @@ import { MedicationAdherenceCalendar } from '../../components/dashboard/Medicati
 import { MoodCalendar } from '../../components/MoodCalendar';
 import { useAuth } from '../../hooks/useAuth';
 import {
-  fetchCaregiverPatient,
-  verifyCaregiverPatientAccess,
+  fetchCaregiverPatientDetail,
+  revokeCaregiverPatientLink,
+  type CaregiverLatestVitals,
+  type CaregiverUpcomingAppointment,
 } from '../../services/caregiverService';
 import { getAdherenceStats } from '../../services/adherenceService';
-import { getVitalsLogs } from '../../services/logsService';
 import { Patient } from '../../types';
 import { calculateAge } from '../../utils/dataFormatter';
 
@@ -28,63 +29,68 @@ export const CaregiverPatientDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [adherenceRate, setAdherenceRate] = useState<number | null>(null);
-  const [latestVitals, setLatestVitals] = useState<{
-    heartRate?: number;
-    bloodPressure?: string;
-    temperature?: number;
-  } | null>(null);
+  const [latestVitals, setLatestVitals] = useState<CaregiverLatestVitals | null>(null);
+  const [upcoming, setUpcoming] = useState<CaregiverUpcomingAppointment[]>([]);
+  const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
     if (!patientId || !user?.id) return;
+    let cancelled = false;
 
     const load = async () => {
       setLoading(true);
       setError(null);
       try {
-        const allowed = await verifyCaregiverPatientAccess(user.id, patientId);
-        if (!allowed) {
-          setError('You do not have access to this patient.');
-          setPatient(null);
-          return;
-        }
-
-        const data = await fetchCaregiverPatient(patientId);
-        if (!data) {
+        const detail = await fetchCaregiverPatientDetail(patientId);
+        if (cancelled) return;
+        if (!detail) {
           setError('Patient record not found.');
           return;
         }
-        setPatient(data);
+        setPatient(detail.patient);
+        setLatestVitals(detail.latestVitals);
+        setUpcoming(detail.upcomingAppointments);
+      } catch {
+        if (!cancelled) setError('You do not have access to this patient.');
+        return;
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
 
+      // Adherence is a secondary stat; a failure here must not hide the patient.
+      try {
         const today = new Date();
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(today.getDate() - 30);
         const stats = await getAdherenceStats(
           patientId,
           thirtyDaysAgo.toISOString().split('T')[0],
-          today.toISOString().split('T')[0]
+          today.toISOString().split('T')[0],
         );
-        setAdherenceRate(stats.averageAdherence);
-
-        const vitals = await getVitalsLogs(patientId, today.getFullYear(), today.getMonth());
-        const latest = vitals[0];
-        if (latest) {
-          setLatestVitals({
-            heartRate: latest.heartRate,
-            bloodPressure: latest.bloodPressure
-              ? `${latest.bloodPressure.systolic}/${latest.bloodPressure.diastolic}`
-              : undefined,
-            temperature: latest.temperature,
-          });
-        }
+        if (!cancelled) setAdherenceRate(stats.totalDays > 0 ? stats.averageAdherence : null);
       } catch {
-        setError('Unable to load patient details.');
-      } finally {
-        setLoading(false);
+        if (!cancelled) setAdherenceRate(null);
       }
     };
 
     void load();
+    return () => {
+      cancelled = true;
+    };
   }, [patientId, user?.id]);
+
+  const stopFollowing = async () => {
+    if (!patientId) return;
+    if (!window.confirm('Stop following this patient? They can invite you again from the Anixi app.')) return;
+    setLeaving(true);
+    try {
+      await revokeCaregiverPatientLink(patientId);
+      navigate('/caregiver/patients', { replace: true });
+    } catch {
+      setError('Could not update this link. Try again.');
+      setLeaving(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -134,6 +140,16 @@ export const CaregiverPatientDetailPage: React.FC = () => {
               {Math.round(adherenceRate)}% adherence (30d)
             </span>
           ) : undefined
+        }
+        actions={
+          <button
+            type="button"
+            onClick={() => void stopFollowing()}
+            disabled={leaving}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+          >
+            {leaving ? 'Updating…' : 'Stop following'}
+          </button>
         }
       />
 
@@ -226,10 +242,37 @@ export const CaregiverPatientDetailPage: React.FC = () => {
                     <p className="font-semibold text-gray-900">{latestVitals.heartRate ?? '-'}</p>
                   </div>
                   <div className="rounded-lg bg-gray-50 p-3 text-center">
-                    <p className="text-xs text-gray-500">Temp</p>
-                    <p className="font-semibold text-gray-900">{latestVitals.temperature ?? '-'}</p>
+                    <p className="text-xs text-gray-500">Glucose</p>
+                    <p className="font-semibold text-gray-900">{latestVitals.glucose ?? '-'}</p>
                   </div>
                 </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Upcoming visits</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {upcoming.length === 0 ? (
+                <p className="text-sm text-gray-500">No upcoming visits booked.</p>
+              ) : (
+                <ul className="divide-y divide-gray-100 text-sm">
+                  {upcoming.map((visit) => (
+                    <li key={visit.id} className="flex items-center justify-between gap-4 py-2.5">
+                      <span className="font-medium text-gray-900">{visit.doctorName || 'Doctor'}</span>
+                      <span className="text-gray-600">
+                        {new Date(visit.startAt).toLocaleString('en-ZA', {
+                          weekday: 'short',
+                          day: 'numeric',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               )}
             </CardContent>
           </Card>
@@ -272,11 +315,13 @@ export const CaregiverPatientDetailPage: React.FC = () => {
                 </div>
                 <div className="rounded-xl border border-gray-200 p-5">
                   <p className="text-sm text-gray-500">Heart rate</p>
-                  <p className="mt-1 text-2xl font-bold text-gray-900">{latestVitals.heartRate ?? '-'} bpm</p>
+                  <p className="mt-1 text-2xl font-bold text-gray-900">
+                    {latestVitals.heartRate ? `${latestVitals.heartRate} bpm` : '-'}
+                  </p>
                 </div>
                 <div className="rounded-xl border border-gray-200 p-5">
-                  <p className="text-sm text-gray-500">Temperature</p>
-                  <p className="mt-1 text-2xl font-bold text-gray-900">{latestVitals.temperature ?? '-'}°C</p>
+                  <p className="text-sm text-gray-500">Glucose</p>
+                  <p className="mt-1 text-2xl font-bold text-gray-900">{latestVitals.glucose ?? '-'}</p>
                 </div>
               </div>
             ) : (

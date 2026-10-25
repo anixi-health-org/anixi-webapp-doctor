@@ -8,8 +8,6 @@ import { SoftBlocksEditor } from '../../components/practice/SoftBlocksEditor';
 import { BookingPoliciesForm } from '../../components/practice/BookingPoliciesForm';
 import { PracticeLogoUploader } from '../../components/practice/PracticeLogoUploader';
 import { LetterheadSetupBanner } from '../../components/invoices/LetterheadSetupBanner';
-import { VitalRulesEditor } from '../../components/vitals/VitalRulesEditor';
-import { AdherenceRulesEditor } from '../../components/adherence/AdherenceRulesEditor';
 import { Toast, SettingsPageSkeleton } from '../../components/ui';
 import { TabBar, TabPill } from '../../components/ui/TabPill';
 import { PageShell } from '../../components/page-layout';
@@ -22,6 +20,7 @@ import { ClinicMedicalAidPanel } from '../../components/clinic/ClinicMedicalAidP
 import { ClinicPublicListingPanel } from '../../components/clinic/ClinicPublicListingPanel';
 import { memberDisplayLabel } from '../../services/practiceMemberService';
 import { normalizeBillingProfile } from '../../lib/practiceBillingProfile';
+import { timezoneSelectOptions } from '../../lib/timezones';
 import type { Doctor, PracticeBillingProfile, PracticeLocation, PracticeMember } from '../../types';
 
 type Tab =
@@ -29,8 +28,6 @@ type Tab =
   | 'listing'
   | 'medical-aid'
   | 'booking'
-  | 'vitals'
-  | 'adherence'
   | 'schedules';
 
 const TAB_CONFIG: { id: Tab; label: string }[] = [
@@ -38,8 +35,6 @@ const TAB_CONFIG: { id: Tab; label: string }[] = [
   { id: 'listing', label: 'Marketplace' },
   { id: 'medical-aid', label: 'Medical aid' },
   { id: 'booking', label: 'Booking rules' },
-  { id: 'vitals', label: 'Vital alerts' },
-  { id: 'adherence', label: 'Adherence' },
   { id: 'schedules', label: 'Doctor schedules' },
 ];
 
@@ -91,7 +86,6 @@ export const ClinicAdminSettingsPage: React.FC = () => {
   const visibleTabs = TAB_CONFIG.filter((tab) => {
     if (tab.id === 'profile' || tab.id === 'listing' || tab.id === 'medical-aid') return true;
     if (tab.id === 'booking') return canEditBooking;
-    if (tab.id === 'vitals' || tab.id === 'adherence') return canEditBooking || can('manageMembers');
     if (tab.id === 'schedules') return canManageSchedules;
     return true;
   });
@@ -359,13 +353,19 @@ export const ClinicAdminSettingsPage: React.FC = () => {
                       </div>
                       <div>
                         <label className="text-xs font-medium text-[#65758b]">Timezone</label>
-                        <input
+                        <select
                           value={profileDraft.timezone}
                           onChange={(e) =>
                             setProfileDraft((d) => ({ ...d, timezone: e.target.value }))
                           }
-                          className="mt-1 w-full rounded-lg border border-[#e1e7ef] px-3 py-2 text-sm"
-                        />
+                          className="mt-1 w-full rounded-lg border border-[#e1e7ef] bg-white px-3 py-2 text-sm"
+                        >
+                          {timezoneSelectOptions(profileDraft.timezone).map((tz) => (
+                            <option key={tz.value} value={tz.value}>
+                              {tz.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div>
                         <label className="text-xs font-medium text-[#65758b]">Trading name</label>
@@ -616,14 +616,6 @@ export const ClinicAdminSettingsPage: React.FC = () => {
               onSaved={reload}
               readOnly={!canEditBooking}
             />
-          )}
-
-          {activeTab === 'vitals' && (
-            <VitalRulesEditor canEdit={canEditBooking || can('manageMembers')} />
-          )}
-
-          {activeTab === 'adherence' && (
-            <AdherenceRulesEditor canEdit={canEditBooking || can('manageMembers')} />
           )}
 
           {activeTab === 'schedules' && (

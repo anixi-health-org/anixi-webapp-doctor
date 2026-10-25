@@ -32,6 +32,7 @@ import {
   structureConsultTranscript,
   type ConsultScribeNote,
 } from '../services/consultScribeService';
+import { parseConsultScribeNote, scribeNoteToMetadata } from '../lib/consultScribeNote';
 
 const CALL_NOTES_TITLE = 'Call notes';
 const CALL_NOTES_ACTION_ID = 'call_notes';
@@ -130,7 +131,8 @@ export const TeleconsultPage: React.FC = () => {
   const [notesOpen, setNotesOpen] = useState(true);
   const [notesStatus, setNotesStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [mediaHint, setMediaHint] = useState<string | null>(null);
-  const [scribeEnabled, setScribeEnabled] = useState(true);
+  // Ayah only listens once the patient has agreed to it, separately from telemedicine consent.
+  const [scribeEnabled, setScribeEnabled] = useState(false);
   const [scribeFinalizing, setScribeFinalizing] = useState(false);
   const scribeRef = useRef<LiveKitScribeHandle>(null);
   const [scribeState, setScribeState] = useState<LiveKitScribeState>({
@@ -174,6 +176,7 @@ export const TeleconsultPage: React.FC = () => {
         }
         if (cancelled) return;
         setAppointment(apt);
+        setScribeEnabled(Boolean(apt.teleconsultConsent?.scribe));
 
         const existing = findCallNotes(apt);
         if (existing?.content) {
@@ -270,14 +273,39 @@ export const TeleconsultPage: React.FC = () => {
     [appointmentId, user?.id]
   );
 
+  const handleScribeToggle = async (next: boolean) => {
+    if (!next) {
+      setScribeEnabled(false);
+      return;
+    }
+    if (appointment?.teleconsultConsent?.scribe) {
+      setScribeEnabled(true);
+      return;
+    }
+    const agreed = window.confirm(
+      'Has the patient agreed to Ayah listening and transcribing this call for your notes? Audio is transcribed, not recorded.',
+    );
+    if (!agreed || !user?.id || !appointmentId || !appointment?.teleconsultConsent) return;
+    const consent = { ...appointment.teleconsultConsent, scribe: true, scribeAt: new Date() };
+    try {
+      await updateAppointment(user.id, appointmentId, { teleconsultConsent: consent });
+      setAppointment((prev) => (prev ? { ...prev, teleconsultConsent: consent } : prev));
+      setScribeEnabled(true);
+    } catch {
+      setMediaHint('Could not save the patient\'s agreement, so Ayah is not listening.');
+    }
+  };
+
   const persistAyahScribeNote = useCallback(
-    async (note: ConsultScribeNote, transcriptLength: number) => {
+    async (note: ConsultScribeNote, transcript: string) => {
       if (!user?.id || !appointmentId) return;
       const apt = appointmentRef.current;
       if (!apt) return;
 
-      const trimmed = note.fullText.trim();
-      if (!trimmed) return;
+      // Keep the transcript even when Ayah could not structure it, so nothing said is lost.
+      const trimmed =
+        note.fullText.trim() ||
+        'Ayah could not prepare the summary. The call transcript is saved; use Draft with Ayah to try again.';
 
       const now = new Date();
       const existing = apt.postConsultActions ?? [];
@@ -289,13 +317,10 @@ export const TeleconsultPage: React.FC = () => {
         status: 'draft',
         metadata: {
           source: 'ayah_scribe',
-          transcriptLength,
-          summary: note.summary,
-          subjective: note.subjective,
-          objective: note.objective,
-          assessment: note.assessment,
-          plan: note.plan,
-          followUps: note.followUps.join('|'),
+          transcriptLength: transcript.length,
+          transcript,
+          structured: Boolean(note.fullText.trim()),
+          ...scribeNoteToMetadata(note),
         },
         createdBy: user.id,
         createdAt:
@@ -371,22 +396,27 @@ export const TeleconsultPage: React.FC = () => {
         setScribeFinalizing(true);
         const rawTranscript = (await scribeRef.current?.stop()) ?? '';
         if (rawTranscript.length > 24 && appointmentRef.current) {
+          let structured = parseConsultScribeNote('');
           try {
-            const structured = await structureConsultTranscript({
+            structured = await structureConsultTranscript({
               transcript: rawTranscript,
               patientName: appointmentRef.current.patientName || 'Patient',
+              doctorName: user.displayName || undefined,
               appointmentId,
+              doctorNotes: callNotesRef.current,
               context: {
                 patientId: appointmentRef.current.patientId,
                 appointmentId,
                 patientName: appointmentRef.current.patientName,
               },
             });
-            if (structured.fullText) {
-              await persistAyahScribeNote(structured, rawTranscript.length);
-            }
           } catch (err) {
-            console.warn('[TeleconsultPage] Ayah scribe finalize failed', err);
+            console.warn('[TeleconsultPage] Ayah scribe summary failed', err);
+          }
+          try {
+            await persistAyahScribeNote(structured, rawTranscript);
+          } catch (err) {
+            console.warn('[TeleconsultPage] Ayah scribe save failed', err);
           }
         }
         setScribeFinalizing(false);
@@ -550,7 +580,7 @@ export const TeleconsultPage: React.FC = () => {
           <div className="border-b border-white/10 px-3 py-3">
             <AyahScribePanel
               enabled={scribeEnabled}
-              onEnabledChange={setScribeEnabled}
+              onEnabledChange={(next) => void handleScribeToggle(next)}
               listening={scribeState.listening}
               processing={scribeState.processing}
               segmentCount={scribeState.segmentCount}

@@ -19,7 +19,6 @@ import {
   isDjangoApiEnabled,
   type DjangoPanelPatient,
 } from './djangoApiService';
-import { logPatientEvent } from './centralEventLogService';
 import { subscribeDoctorLiveChannel } from './doctorLiveDataHub';
 
 const patientAppUrl = () =>
@@ -343,6 +342,7 @@ export const addPatientManually = async (
       payload.practiceId,
     );
     const created = imported.rows[0];
+    invalidateDoctorPatientPanelCache();
     if (!created?.patientId) {
       throw new Error(
         imported.skipped
@@ -351,33 +351,6 @@ export const addPatientManually = async (
       );
     }
 
-    if (payload.practiceId) {
-      try {
-        await logPatientEvent({
-          organizationId: payload.practiceId,
-          action: 'patient.created',
-          actorUid: doctorId,
-          actorName: 'Doctor',
-          patientId: created.patientId,
-          patientName: payload.displayName,
-          newValue: {
-            displayName: payload.displayName,
-            email: payload.email,
-            phoneNumber: payload.phoneNumber,
-            dateOfBirth:
-              payload.dateOfBirth instanceof Date
-                ? payload.dateOfBirth.toISOString()
-                : payload.dateOfBirth,
-            notes: payload.notes,
-          },
-          outcome: 'success',
-          confirmation: created.patientId,
-          metadata: { inviteQueued: Boolean(inviteOptions?.sendInvite && targetEmail) },
-        });
-      } catch (error) {
-        console.warn('[patientManagementService] Failed to log patient creation event:', error);
-      }
-    }
 
     let inviteQueued = false;
     let inviteError: string | undefined;

@@ -59,6 +59,9 @@ const AuthHero: React.FC<{ slides?: AuthHeroSlide[] }> = ({ slides = HERO_SLIDES
     setActive(0);
   }, [slides]);
 
+  // The reset above runs after render, so clamp when a shorter slide set arrives.
+  const activeIndex = active < slides.length ? active : 0;
+
   useEffect(() => {
     const id = setInterval(() => {
       setActive((prev) => (prev + 1) % slides.length);
@@ -73,7 +76,7 @@ const AuthHero: React.FC<{ slides?: AuthHeroSlide[] }> = ({ slides = HERO_SLIDES
           key={slide.image}
           aria-hidden
           className={`absolute inset-0 bg-cover bg-center transition-opacity duration-[1200ms] ease-out ${
-            index === active ? 'scale-100 opacity-100' : 'scale-105 opacity-0'
+            index === activeIndex ? 'scale-100 opacity-100' : 'scale-105 opacity-0'
           }`}
           style={{ backgroundImage: `url(${slide.image})`, transitionProperty: 'opacity, transform' }}
         />
@@ -94,7 +97,7 @@ const AuthHero: React.FC<{ slides?: AuthHeroSlide[] }> = ({ slides = HERO_SLIDES
           <div
             key={slide.heading}
             className={`absolute inset-x-0 flex flex-col transition-all duration-700 ease-out ${
-              index === active
+              index === activeIndex
                 ? 'translate-y-0 opacity-100'
                 : 'pointer-events-none translate-y-3 opacity-0'
             }`}
@@ -127,7 +130,7 @@ const AuthHero: React.FC<{ slides?: AuthHeroSlide[] }> = ({ slides = HERO_SLIDES
 
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium tracking-wide text-[#e7ce8f] [text-shadow:0_1px_8px_rgba(0,0,0,0.5)]">
-            {slides[active].caption}
+            {slides[activeIndex].caption}
           </span>
           <div className="flex items-center gap-2">
             {slides.map((slide, index) => (
@@ -137,7 +140,7 @@ const AuthHero: React.FC<{ slides?: AuthHeroSlide[] }> = ({ slides = HERO_SLIDES
                 onClick={() => setActive(index)}
                 aria-label={`Show slide ${index + 1}`}
                 className={`h-1.5 rounded-full transition-all duration-300 ${
-                  index === active ? 'w-7 bg-[#e7ce8f]' : 'w-2.5 bg-white/35 hover:bg-white/60'
+                  index === activeIndex ? 'w-7 bg-[#e7ce8f]' : 'w-2.5 bg-white/35 hover:bg-white/60'
                 }`}
               />
             ))}

@@ -3,16 +3,16 @@ import { Check, Copy, Smartphone } from 'lucide-react';
 import { PageHeader, PageShell } from '../../components/page-layout';
 import { Card, CardContent } from '../../components/ui/Card';
 import { useAuth } from '../../hooks/useAuth';
+import { ANDROID_APP_LINK, IOS_APP_LINK } from '../../lib/appStoreLinks';
 
-const IOS_APP_LINK = 'https://apps.apple.com/app/anixi-health';
-const ANDROID_APP_LINK = 'https://play.google.com/store/apps/details?id=com.anixi.health';
-const PATIENT_SIGNUP = `${typeof window !== 'undefined' ? window.location.origin : ''}/register?role=patient`;
 
 export const CaregiverSharePage: React.FC = () => {
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
 
-  const inviteMessage = `Join me on Anixi Health - a platform that helps families and caregivers stay connected to patient health.\n\nPatient sign-up: ${PATIENT_SIGNUP}\n\nDownload the app:\niOS: ${IOS_APP_LINK}\nAndroid: ${ANDROID_APP_LINK}`;
+  const inviteMessage = `Join me on Anixi Health, a platform that helps families and caregivers stay connected to patient health.\n\nDownload the Anixi Health app, sign up, then open Caregivers and add my email${
+    user?.email ? ` (${user.email})` : ''
+  } so I can support you.\n\niOS: ${IOS_APP_LINK}\nAndroid: ${ANDROID_APP_LINK}`;
 
   const handleCopy = async () => {
     try {
@@ -75,12 +75,6 @@ export const CaregiverSharePage: React.FC = () => {
               className="rounded-lg border border-anixi-green px-5 py-2.5 text-sm font-semibold text-anixi-green hover:bg-anixi-green/5"
             >
               Google Play
-            </a>
-            <a
-              href={PATIENT_SIGNUP}
-              className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-            >
-              Patient web sign-up
             </a>
           </div>
         </CardContent>

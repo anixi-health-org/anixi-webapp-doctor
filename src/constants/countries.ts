@@ -41,7 +41,37 @@ export function getCurrencyForCountry(countryCode: string | undefined): string |
   return getCountryByCode(countryCode)?.currency;
 }
 
+/** Timezones for the countries above. Many African browsers report en-US, so zone wins over language. */
+const COUNTRY_BY_TIMEZONE: Record<string, string> = {
+  'Africa/Johannesburg': 'ZA',
+  'Africa/Casablanca': 'MA',
+  'Africa/Cairo': 'EG',
+  'Africa/Lagos': 'NG',
+  'Africa/Nairobi': 'KE',
+  'Africa/Accra': 'GH',
+  'Europe/London': 'GB',
+  'Europe/Dublin': 'IE',
+  'Europe/Paris': 'FR',
+  'Europe/Berlin': 'DE',
+  'Europe/Zurich': 'CH',
+  'Asia/Dubai': 'AE',
+  'Asia/Riyadh': 'SA',
+  'Asia/Kolkata': 'IN',
+  'Asia/Calcutta': 'IN',
+  'Asia/Tokyo': 'JP',
+  'Asia/Shanghai': 'CN',
+  'Pacific/Auckland': 'NZ',
+};
+
 export function detectDefaultCountryCode(): string {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const byZone = zone ? COUNTRY_BY_TIMEZONE[zone] : undefined;
+    if (byZone) return byZone;
+    if (zone?.startsWith('Africa/')) return 'ZA';
+  } catch {
+    // ignore
+  }
   try {
     const locale = navigator.language || 'en-ZA';
     const region = new Intl.Locale(locale).region;

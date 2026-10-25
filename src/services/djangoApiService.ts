@@ -15,6 +15,8 @@ import {
   isDirectBrowserMediaUrl,
 } from '../lib/mediaUrls';
 import type { PracticePermissions } from '../types';
+import type { PracticeSnapshot } from '../hooks/useDoctorBriefingData';
+import { slimPracticeSnapshotForCompanion } from '../lib/slimPracticeSnapshot';
 
 type Envelope<T> = {
   success: boolean;
@@ -75,14 +77,30 @@ function enabled(): boolean {
 let refreshInFlight: Promise<string | null> | null = null;
 let lastRefreshAt = 0;
 
+/** Thrown when the API could not be reached; the stored session is still good. */
+export class SessionUnavailableError extends Error {
+  constructor() {
+    super('Anixi is temporarily unreachable. Please try again in a moment.');
+    this.name = 'SessionUnavailableError';
+  }
+}
+
+/** null means the server rejected the refresh token; network and 5xx failures throw instead. */
 async function refreshAccessToken(refresh: string): Promise<string | null> {
   if (!API_BASE) return null;
+  let res: Response;
   try {
-    const res = await fetch(`${API_BASE}/api/v1/auth/refresh/`, {
+    res = await fetch(`${API_BASE}/api/v1/auth/refresh/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Client': 'doctor-web' },
       body: JSON.stringify({ refresh }),
     });
+  } catch (error) {
+    console.warn('refreshAccessToken failed:', error);
+    throw new SessionUnavailableError();
+  }
+  if (res.status >= 500) throw new SessionUnavailableError();
+  try {
     if (!res.ok) return null;
     const json = await readResponseJson<Envelope<{ access: string; refresh?: string }>>(res);
     if (!json.success || !json.data?.access) return null;
@@ -153,6 +171,20 @@ export function isDjangoApiEnabled(): boolean {
   return enabled();
 }
 
+function slimCompanionContext(
+  context?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (!context?.practiceSnapshot || typeof context.practiceSnapshot !== 'object') {
+    return context;
+  }
+  return {
+    ...context,
+    practiceSnapshot: slimPracticeSnapshotForCompanion(
+      context.practiceSnapshot as PracticeSnapshot,
+    ),
+  };
+}
+
 export async function djangoCompanionStream(params: {
   message: string;
   context?: Record<string, unknown>;
@@ -163,6 +195,7 @@ export async function djangoCompanionStream(params: {
 }): Promise<void> {
   if (!enabled()) throw new Error('Django API not configured');
   const headers = await authHeaders();
+  const context = slimCompanionContext(params.context);
   const res = await fetch(`${API_BASE}/api/v1/companion/stream/`, {
     method: 'POST',
     headers,
@@ -170,7 +203,7 @@ export async function djangoCompanionStream(params: {
       message: params.message,
       agentId: params.agentId || 'doctor-practice-partner',
       threadId: params.threadId,
-      context: params.context,
+      context,
     }),
     signal: params.signal,
   });
@@ -225,11 +258,13 @@ export async function djangoVoiceTurn(params: {
 }): Promise<DjangoVoiceTurnResult> {
   if (!enabled()) throw new Error('Django API not configured');
   const headers = await authHeaders();
+  const context = slimCompanionContext(params.context);
   const res = await fetch(`${API_BASE}/api/v1/companion/voice/turn/`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
       ...params,
+      context,
       agentId: 'doctor-practice-partner',
     }),
   });
@@ -262,6 +297,7 @@ export async function djangoVoiceStream(params: {
 }): Promise<void> {
   if (!enabled()) throw new Error('Django API not configured');
   const headers = await authHeaders();
+  const context = slimCompanionContext(params.context);
   const res = await fetch(`${API_BASE}/api/v1/companion/voice/stream/`, {
     method: 'POST',
     headers,
@@ -272,7 +308,7 @@ export async function djangoVoiceStream(params: {
       languageCode: params.languageCode,
       threadId: params.threadId,
       speakReply: params.speakReply,
-      context: params.context,
+      context,
       agentId: 'doctor-practice-partner',
     }),
     signal: params.signal,
@@ -549,7 +585,7 @@ async function djangoJson<T>(res: Response): Promise<T> {
 
 export async function djangoUploadDocument(
   file: Blob,
-  purpose: 'doctor-profile' | 'practice-logo' | 'medical-file' | 'appointment-document',
+  purpose: 'doctor-profile' | 'practice-logo' | 'medical-file' | 'appointment-document' | 'doctor-credential',
   filename: string,
 ): Promise<{ storageKey: string; url: string; mimeType: string; sizeBytes: number; recordId?: string }> {
   if (!enabled()) throw new Error('Django API not configured');
@@ -995,6 +1031,27 @@ export async function djangoGetMe() {
   }
 }
 
+/** Like djangoGetMe, but an unreachable API throws SessionUnavailableError instead of looking signed out. */
+export async function djangoGetMeForSession() {
+  if (!enabled() || !API_BASE) return null;
+  let headers: HeadersInit;
+  try {
+    headers = await authHeaders();
+  } catch (error) {
+    if (error instanceof SessionUnavailableError) throw error;
+    return null;
+  }
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/v1/auth/me/`, { headers });
+  } catch {
+    throw new SessionUnavailableError();
+  }
+  if (res.status >= 500) throw new SessionUnavailableError();
+  if (!res.ok) return null;
+  return djangoJson<Record<string, unknown>>(res);
+}
+
 export async function djangoPatchMe(patch: Record<string, unknown>) {
   if (!enabled()) throw new Error('Django API not configured');
   const headers = await authHeaders();
@@ -1053,6 +1110,18 @@ export async function djangoListAppointments(
     console.warn('djangoListAppointments failed:', error);
     return [];
   }
+}
+
+/** One appointment, with post-consult actions for clinicians. null when it does not exist. */
+export async function djangoGetAppointment(appointmentId: string) {
+  if (!enabled() || !API_BASE) return null;
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/appointments/${encodeURIComponent(appointmentId)}/`,
+    { headers },
+  );
+  if (res.status === 404) return null;
+  return djangoJson<Record<string, unknown>>(res);
 }
 
 export async function djangoCancelAppointment(appointmentId: string) {
@@ -1189,6 +1258,53 @@ export async function djangoListCaregiverLinkedPatients() {
   const res = await fetch(`${API_BASE}/api/v1/patients/caregiver/linked-patients/`, { headers });
   if (!res.ok) return [];
   return (await djangoJson<Array<Record<string, unknown>>>(res)) ?? [];
+}
+
+/** Links this caregiver to every warrior who nominated their own sign-in email. */
+export async function djangoLinkCaregiverToNominations(): Promise<number> {
+  if (!enabled() || !API_BASE) return 0;
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/patients/caregiver/link/`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({}),
+  });
+  const data = await djangoJson<{ linked: number }>(res);
+  return Number(data?.linked ?? 0);
+}
+
+export async function djangoGetCaregiverPatientSummary(patientId: string) {
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/patients/caregiver/patients/${encodeURIComponent(patientId)}/summary/`,
+    { headers },
+  );
+  return djangoJson<Record<string, unknown>>(res);
+}
+
+export async function djangoUnlinkCaregiverPatient(patientId: string): Promise<void> {
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${API_BASE}/api/v1/patients/caregiver/patients/${encodeURIComponent(patientId)}/unlink/`,
+    { method: 'POST', headers, body: JSON.stringify({}) },
+  );
+  await djangoJson(res);
+}
+
+export async function djangoGetCaregiverProfile() {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/patients/caregiver/profile/`, { headers });
+  return djangoJson<Record<string, unknown>>(res);
+}
+
+export async function djangoPatchCaregiverProfile(patch: Record<string, unknown>) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/patients/caregiver/profile/`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(patch),
+  });
+  return djangoJson<Record<string, unknown>>(res);
 }
 
 const sharingListCache = new Map<
@@ -1735,6 +1851,14 @@ export async function djangoListPharmacyOrders() {
   return djangoJson<Array<Record<string, unknown>>>(res);
 }
 
+/** Published pharmacies (approved Market partners) a prescription can be sent to. */
+export async function djangoListPharmacies() {
+  if (!enabled()) return [];
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/api/v1/marketplace/pharmacies/`, { headers });
+  return djangoJson<Array<Record<string, unknown>>>(res);
+}
+
 export async function djangoCreatePharmacyOrder(payload: Record<string, unknown>) {
   if (!enabled()) throw new Error('Django API not configured');
   const headers = await authHeaders();
@@ -1786,6 +1910,23 @@ export async function djangoMarkNotificationRead(notificationId: string) {
 export function clearDjangoTokens() {
   localStorage.removeItem('anixi_jwt_access');
   localStorage.removeItem('anixi_jwt_refresh');
+}
+
+/** Blacklist the refresh token on the server, then drop local tokens. Best effort. */
+export async function revokeDjangoSession(): Promise<void> {
+  const refresh = localStorage.getItem('anixi_jwt_refresh');
+  if (enabled() && refresh) {
+    try {
+      await fetch(`${API_BASE}/api/v1/auth/logout/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Client': 'doctor-web' },
+        body: JSON.stringify({ refresh }),
+      });
+    } catch {
+      // Offline: the refresh token still expires on its own.
+    }
+  }
+  clearDjangoTokens();
 }
 
 const clinicOnboardingKey = (userId: string) => `anixi_clinic_onboarding_complete_${userId}`;
@@ -2681,6 +2822,10 @@ export type MarketplacePartnerApplication = {
   address?: string | null;
   deliveryAvailable?: boolean;
   offerings?: Array<{ name: string; description?: string; price?: string | null }>;
+  website?: string | null;
+  registrationNumber?: string | null;
+  operatingHours?: string | null;
+  country?: string | null;
   status: 'pending' | 'approved' | 'rejected';
   rejectionReason?: string | null;
   createdAt?: string | null;

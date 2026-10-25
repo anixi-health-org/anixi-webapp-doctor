@@ -29,7 +29,7 @@ const PATHS: {
   {
     path: 'market_partner',
     label: 'Market Partner',
-    description: 'Wellness provider or pharmacy — list products & services for patients',
+    description: 'Wellness provider or pharmacy- list products & services for patients',
     Icon: Store,
   },
   {
@@ -66,16 +66,12 @@ export const Join: React.FC = () => {
   return (
     <AuthLayout
       title="Join Anixi Health"
-      subtitle="Set up in minutes, whether you practise alone or run a clinic."
       maxWidth="2xl"
       compact
       heroSlides={heroSlides}
     >
       <div className="rounded-2xl border border-gray-100 bg-white px-5 py-5 shadow-lg sm:px-6 sm:py-6">
         <div className="mb-4 text-center">
-          <h2 className="font-heading text-xl font-semibold text-gray-900 sm:text-[1.35rem]">
-            How are you joining?
-          </h2>
           <p className="mt-1.5 text-sm text-gray-500">
             We&apos;ll tailor onboarding to your setup. No extra steps you don&apos;t need.
           </p>

@@ -1,6 +1,7 @@
 import {
   clearDjangoTokens,
-  djangoGetMe,
+  revokeDjangoSession,
+  djangoGetMeForSession,
   djangoLogin,
   djangoRegister,
   enrichDoctorMediaUrls,
@@ -90,11 +91,11 @@ export const loginDoctor = async (email: string, password: string): Promise<Doct
 };
 
 export const logoutDoctor = async (): Promise<void> => {
-  clearDjangoTokens();
+  await revokeDjangoSession();
 };
 
 export const getCurrentProfessionalFromSession = async (): Promise<ProfessionalUser | null> => {
-  const me = await djangoGetMe();
+  const me = await djangoGetMeForSession();
   if (!me) return null;
   const role = String(me.role ?? '');
   if (role !== 'doctor' && role !== 'staff' && role !== 'caregiver') {

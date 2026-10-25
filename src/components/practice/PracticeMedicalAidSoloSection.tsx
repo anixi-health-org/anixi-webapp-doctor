@@ -33,12 +33,19 @@ export const PracticeMedicalAidSoloSection: React.FC<Props> = ({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
 
+  // The practice object is rebuilt on every session refresh; only re-seed when the
+  // practice or its saved selection actually changes, or the doctor's ticks get wiped.
+  const savedSchemesKey = (practice?.acceptedSchemes ?? []).map((row) => row.slug).join('|');
+  const savedPlansKey = (practice?.acceptedPlans ?? []).map((row) => row.slug).join('|');
+  const savedAcceptsMedicalAid = practice?.publicListing?.acceptsMedicalAid ?? true;
   useEffect(() => {
-    setLocalPractice(practice);
-    setAcceptsMedicalAid(practice?.publicListing?.acceptsMedicalAid ?? true);
-    setSchemeSlugs((practice?.acceptedSchemes ?? []).map((row) => row.slug));
-    setPlanSlugs((practice?.acceptedPlans ?? []).map((row) => row.slug));
+    if (practice) setLocalPractice(practice);
   }, [practice]);
+  useEffect(() => {
+    setAcceptsMedicalAid(savedAcceptsMedicalAid);
+    setSchemeSlugs(savedSchemesKey ? savedSchemesKey.split('|') : []);
+    setPlanSlugs(savedPlansKey ? savedPlansKey.split('|') : []);
+  }, [practice?.id, savedAcceptsMedicalAid, savedSchemesKey, savedPlansKey]);
 
   useEffect(() => {
     if (localPractice?.id || provisionAttempted.current) return;

@@ -1,12 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { usePermissions } from '../hooks/usePermissions';
 import { listenToDoctorAppointments } from '../services/appointmentService';
 import { userFacingLoadError } from '../services/djangoApiService';
 import { Appointment } from '../types';
 import { AppointmentList } from '../components/appointments/AppointmentList';
+import { PendingConfirmationsPanel } from '../components/appointments/PendingConfirmationsPanel';
 import { CreateAppointmentModal } from '../components/appointments/CreateAppointmentModal';
+import {
+  APPOINTMENTS_FOCUS_PENDING,
+  pendingConfirmationAppointments,
+} from '../lib/pendingConfirmations';
 import {
   CheckCircle2,
   ClipboardList,
@@ -29,6 +34,8 @@ export const AppointmentsPage: React.FC = () => {
   const { user } = useAuth();
   const { can } = usePermissions();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingPanelRef = useRef<HTMLElement | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +77,25 @@ export const AppointmentsPage: React.FC = () => {
 
     return unsubscribe;
   }, [user?.id]);
+
+  const pendingConfirmations = useMemo(
+    () => pendingConfirmationAppointments(appointments),
+    [appointments],
+  );
+
+  useEffect(() => {
+    if (searchParams.get('focus') !== APPOINTMENTS_FOCUS_PENDING) return;
+    if (pendingConfirmations.length === 0) return;
+    pendingPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('focus');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [pendingConfirmations.length, searchParams, setSearchParams]);
 
   const handleAppointmentClick = (apt: Appointment) => {
     if (apt.id) {
@@ -141,7 +167,11 @@ export const AppointmentsPage: React.FC = () => {
 
       <PageHeader
         title="Appointments"
-        description="Today's schedule and recent patient visits"
+        description={
+          pendingConfirmations.length > 0
+            ? 'Confirm booking requests below, then browse your schedule'
+            : "Today's schedule and recent patient visits"
+        }
         actions={
           can('manageAppointments') ? (
             <button
@@ -155,6 +185,15 @@ export const AppointmentsPage: React.FC = () => {
           ) : undefined
         }
       />
+
+      {pendingConfirmations.length > 0 && (
+        <div ref={(node) => { pendingPanelRef.current = node; }}>
+          <PendingConfirmationsPanel
+            appointments={pendingConfirmations}
+            canConfirm={can('manageAppointments')}
+          />
+        </div>
+      )}
 
       {error && (
         <div className="mb-6 rounded-[12px] border border-red-200 bg-red-50 p-4">
@@ -192,7 +231,16 @@ export const AppointmentsPage: React.FC = () => {
             {[
               { label: 'Total', value: stats.total, status: 'All' as StatusFilter, icon: <ClipboardList className="h-3.5 w-3.5" /> },
               { label: 'Confirmed', value: stats.confirmed, status: 'confirmed' as StatusFilter, icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
-              { label: 'Pending', value: stats.pending, status: 'pending' as StatusFilter, icon: <Clock className="h-3.5 w-3.5" /> },
+              {
+                label: pendingConfirmations.length > stats.pending ? 'Pending (range)' : 'Pending',
+                value: stats.pending,
+                status: 'pending' as StatusFilter,
+                icon: <Clock className="h-3.5 w-3.5" />,
+                hint:
+                  pendingConfirmations.length > stats.pending
+                    ? `${pendingConfirmations.length} awaiting confirm overall`
+                    : undefined,
+              },
               { label: 'Completed', value: stats.completed, status: 'completed' as StatusFilter, icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
               { label: 'Cancelled', value: stats.cancelled, status: 'cancelled' as StatusFilter, icon: <XCircle className="h-3.5 w-3.5" /> },
             ].map((item) => (
@@ -209,9 +257,21 @@ export const AppointmentsPage: React.FC = () => {
                 <div className="mb-1 flex items-center gap-1 text-anixi-green">{item.icon}</div>
                 <p className="text-lg font-bold leading-none text-[#344256]">{item.value}</p>
                 <p className="mt-1 truncate text-[11px] text-[#65758b]">{item.label}</p>
+                {'hint' in item && item.hint ? (
+                  <p className="mt-0.5 truncate text-[10px] font-medium text-amber-700">{item.hint}</p>
+                ) : null}
               </button>
             ))}
           </div>
+
+          {pendingConfirmations.length > 0 && stats.pending === 0 && dateRange === 'today' && (
+            <p className="mb-4 rounded-[10px] border border-amber-100 bg-amber-50/80 px-3 py-2 text-sm text-amber-900">
+              Nothing on today&apos;s calendar, but you still have{' '}
+              {pendingConfirmations.length} request{pendingConfirmations.length === 1 ? '' : 's'} to
+              confirm above. Try &quot;This week&quot; or &quot;All time&quot; to see them in the
+              list below.
+            </p>
+          )}
         </>
       )}
 
@@ -243,6 +303,16 @@ export const AppointmentsPage: React.FC = () => {
         pageSize={10}
         onSelectAppointment={handleAppointmentClick}
         isLoading={isLoading}
+        emptyTitle={
+          pendingConfirmations.length > 0 && filteredAppointments.length === 0
+            ? 'No visits in this date range'
+            : undefined
+        }
+        emptyDescription={
+          pendingConfirmations.length > 0 && filteredAppointments.length === 0
+            ? 'Booking requests waiting for you are listed in Needs your confirmation above.'
+            : undefined
+        }
       />
 
       <CreateAppointmentModal

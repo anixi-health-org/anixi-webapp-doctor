@@ -28,11 +28,15 @@ export const PracticeMedicalAidOnboardingStep: React.FC<Props> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Reset only when the saved selection changes. The practice object is rebuilt on every
+  // session refresh, so depending on its arrays wiped the admin's ticks immediately.
+  const savedSchemesKey = (practice.acceptedSchemes ?? []).map((row) => row.slug).join('|');
+  const savedPlansKey = (practice.acceptedPlans ?? []).map((row) => row.slug).join('|');
   useEffect(() => {
     setAcceptsMedicalAid(practice.publicListing?.acceptsMedicalAid ?? true);
-    setSchemeSlugs((practice.acceptedSchemes ?? []).map((row) => row.slug));
-    setPlanSlugs((practice.acceptedPlans ?? []).map((row) => row.slug));
-  }, [practice.id, practice.publicListing?.acceptsMedicalAid, practice.acceptedSchemes, practice.acceptedPlans]);
+    setSchemeSlugs(savedSchemesKey ? savedSchemesKey.split('|') : []);
+    setPlanSlugs(savedPlansKey ? savedPlansKey.split('|') : []);
+  }, [practice.id, practice.publicListing?.acceptsMedicalAid, savedSchemesKey, savedPlansKey]);
 
   const handleContinue = async () => {
     setError('');

@@ -222,14 +222,14 @@ export const ClinicAdminPatientsPage: React.FC = () => {
       if (inviteChannel === 'whatsapp') {
         setSuccess(
           fail > 0
-            ? `WhatsApp invites — sent: ${wa}, failed: ${fail}.`
+            ? `WhatsApp invites, sent: ${wa}, failed: ${fail}.`
             : `WhatsApp app invites sent to ${wa} patient${wa === 1 ? '' : 's'}.`,
         );
       } else if (inviteChannel === 'email') {
         setSuccess(`Email app invites sent to ${em} patient${em === 1 ? '' : 's'}.`);
       } else {
         setSuccess(
-          `App invites sent — WhatsApp: ${wa}, email: ${em}${fail ? `, failed: ${fail}` : ''}.`,
+          `App invites sent, WhatsApp: ${wa}, email: ${em}${fail ? `, failed: ${fail}` : ''}.`,
         );
       }
       if (fail > 0 && (result.results?.length ?? 0) > 0) {
@@ -535,10 +535,10 @@ export const ClinicAdminPatientsPage: React.FC = () => {
                           })()}
                         </td>
                         <td className="px-4 py-3 font-mono text-xs">
-                          {patient.email || '—'}
+                          {patient.email || '-'}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 tabular-nums text-[#344256]">
-                          {formatSaPhoneIntlDisplay(patient.phoneE164, patient.phoneNumber) || '—'}
+                          {formatSaPhoneIntlDisplay(patient.phoneE164, patient.phoneNumber) || '-'}
                         </td>
                         <td className="px-4 py-3">
                           <span

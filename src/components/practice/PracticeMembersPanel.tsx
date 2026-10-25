@@ -261,7 +261,7 @@ export const PracticeMembersPanel: React.FC<PracticeMembersPanelProps> = ({
               <h3 className="text-xl font-semibold text-gray-900">Team</h3>
               <p className="mt-1 max-w-xl text-sm text-gray-600">
                 Invite staff by role. Core roles: Administrator, Practice Manager, Doctor,
-                Clinical Associate, Receptionist, and Content Creator. They join with one link —
+                Clinical Associate, Receptionist, and Content Creator. They join with one link -
                 no separate clinic setup.
               </p>
             </div>

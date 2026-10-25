@@ -382,7 +382,7 @@ export const ClinicAdminPatientAccountPage: React.FC = () => {
       <PageHeader
         className="mt-3"
         title="Patient profile"
-        description={isEditing ? 'Editing — save when done.' : 'Roster & clinical chart.'}
+        description={isEditing ? 'Editing, save when done.' : 'Roster & clinical chart.'}
         actions={
           account ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -709,7 +709,7 @@ export const ClinicAdminPatientAccountPage: React.FC = () => {
                 ) : (
                   <>
                     <p className="text-xs font-medium text-[#65758b]">Recent encounters</p>
-                    <p className={`${readOnlyClass} text-sm text-[#65758b]`}>—</p>
+                    <p className={`${readOnlyClass} text-sm text-[#65758b]`}>-</p>
                   </>
                 )}
               </div>

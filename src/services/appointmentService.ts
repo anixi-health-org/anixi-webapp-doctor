@@ -4,6 +4,7 @@ import {
   djangoBookAppointment,
   djangoAttachAppointmentDocument,
   djangoGetPracticePatientEncounterSummaries,
+  djangoGetAppointment,
   djangoListAppointments,
   djangoPatchAppointment,
   djangoResolveMediaUrl,
@@ -18,7 +19,6 @@ import {
   resolveScheduledAt,
 } from './appointmentCanonical';
 import { calendarDateKeyInTimeZone } from '../lib/timezones';
-import { logAppointmentEvent } from './centralEventLogService';
 import { subscribeDoctorLiveChannel } from './doctorLiveDataHub';
 
 export type Unsubscribe = () => void;
@@ -101,6 +101,12 @@ const normalizeAppointmentDocuments = (value: any): AppointmentDocument[] => {
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 };
 
+/** Older post-consult saves used ids ending in creation time (ms) when dates were missing. */
+function legacyPostConsultDateFromId(id: unknown): Date {
+  const idMs = Number(String(id ?? '').split('-').pop());
+  return Number.isFinite(idMs) && idMs > 1e12 ? new Date(idMs) : new Date();
+}
+
 const normalizePostConsultActions = (value: any): PostConsultAction[] => {
   if (!Array.isArray(value)) return [];
 
@@ -118,6 +124,7 @@ const normalizePostConsultActions = (value: any): PostConsultAction[] => {
       if (!item || typeof item !== 'object') return null;
       const actionType = item.type as PostConsultActionType;
       if (!validTypes.includes(actionType)) return null;
+      const legacyDate = legacyPostConsultDateFromId(item.id);
 
       return {
         id: typeof item.id === 'string' ? item.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -127,8 +134,8 @@ const normalizePostConsultActions = (value: any): PostConsultAction[] => {
         status: item.status === 'finalized' ? 'finalized' : 'draft',
         metadata: item.metadata && typeof item.metadata === 'object' ? item.metadata : undefined,
         createdBy: typeof item.createdBy === 'string' ? item.createdBy : '',
-        createdAt: convertTimestamp(item.createdAt) || new Date(),
-        updatedAt: convertTimestamp(item.updatedAt) || convertTimestamp(item.createdAt) || new Date(),
+        createdAt: convertTimestamp(item.createdAt) || legacyDate,
+        updatedAt: convertTimestamp(item.updatedAt) || convertTimestamp(item.createdAt) || legacyDate,
       } as PostConsultAction;
     })
     .filter((item): item is PostConsultAction => item !== null)
@@ -291,9 +298,18 @@ export const migrateDoctorAppointmentsToGlobal = async (_doctorId: string): Prom
   return 0;
 };
 
-export const getDoctorAppointments = async (doctorId: string): Promise<Appointment[]> => {
+/**
+ * Appointments for `doctorId`. Pass `practiceId` when staff book for another doctor:
+ * without it the API returns the signed-in user's own calendar.
+ */
+export const getDoctorAppointments = async (
+  doctorId: string,
+  practiceId?: string,
+): Promise<Appointment[]> => {
   try {
-    const rows = await djangoListAppointments('doctor');
+    const rows = await djangoListAppointments(
+      practiceId ? { practiceId, doctorId } : 'doctor',
+    );
     return mapDjangoAppointments(rows as Array<Record<string, unknown>>, doctorId);
   } catch (error) {
     console.error('Django getDoctorAppointments failed:', error);
@@ -349,10 +365,7 @@ export const getAppointmentById = async (
   appointmentId: string
 ): Promise<Appointment | null> => {
   try {
-    const rows = await djangoListAppointments('doctor');
-    const row = (rows as Array<Record<string, unknown>>).find(
-      (item) => String(item.id) === appointmentId
-    );
+    const row = await djangoGetAppointment(appointmentId);
     if (!row) return null;
     return mapAppointmentFields(appointmentId, doctorId, row as Record<string, any>);
   } catch (error) {
@@ -405,34 +418,6 @@ export const createAppointment = async (
       practiceId: data.practiceId,
     });
 
-    // Log appointment creation event
-    if (data.practiceId) {
-      try {
-        await logAppointmentEvent({
-          organizationId: data.practiceId,
-          action: 'appointment.created',
-          actorUid: data.doctorId,
-          actorName: 'Doctor',
-          appointmentId: booked.appointmentId,
-          patientId: data.patientId || 'unknown',
-          patientName: data.patientName,
-          newValue: {
-            type: data.type,
-            date: data.date.toISOString(),
-            time: data.time,
-            consultType: data.consultType,
-            locationId: data.locationId,
-            durationMinutes,
-            status: data.status,
-          },
-          outcome: 'success',
-          confirmation: booked.appointmentId,
-          metadata: { requestedByRole: data.requestedByRole },
-        });
-      } catch (error) {
-        console.warn('[appointmentService] Failed to log appointment creation event:', error);
-      }
-    }
 
     return booked.appointmentId;
   } catch (error) {
@@ -465,52 +450,8 @@ export const updateAppointment = async (
     patch.endAt = updates.endAt instanceof Date ? updates.endAt.toISOString() : updates.endAt;
   }
 
-  // Get current appointment for old value tracking
-  let currentAppointment: Appointment | null = null;
-  if (Object.keys(patch).length > 0) {
-    try {
-      currentAppointment = await getAppointmentById(doctorId, appointmentId);
-    } catch (error) {
-      console.warn('[appointmentService] Failed to fetch current appointment for logging:', error);
-    }
-  }
-
   if (Object.keys(patch).length > 0) {
     await djangoPatchAppointment(appointmentId, patch);
-
-    // Log appointment update event
-    if (currentAppointment && currentAppointment.practiceId) {
-      try {
-        const actionType = updates.status === 'cancelled' ? 'appointment.cancelled' :
-                          updates.status === 'completed' ? 'appointment.completed' :
-                          'appointment.updated';
-        
-        await logAppointmentEvent({
-          organizationId: currentAppointment.practiceId,
-          action: actionType,
-          actorUid: doctorId,
-          actorName: 'Doctor',
-          appointmentId,
-          patientId: currentAppointment.patientId,
-          patientName: currentAppointment.patientName,
-          oldValue: {
-            status: currentAppointment.status,
-            notes: currentAppointment.notes,
-            type: currentAppointment.type,
-          },
-          newValue: {
-            status: updates.status,
-            notes: updates.notes,
-            type: updates.type,
-          },
-          outcome: 'success',
-          confirmation: appointmentId,
-          metadata: { updatedFields: Object.keys(patch) },
-        });
-      } catch (error) {
-        console.warn('[appointmentService] Failed to log appointment update event:', error);
-      }
-    }
   }
 };
 

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BuildingStorefrontIcon,
@@ -13,9 +13,16 @@ import {
   detectDefaultCountryCode,
 } from '../constants/countries';
 import { SA_PROVINCES } from '../lib/southAfrica';
-import { djangoSubmitMarketplacePartnerApplication } from '../services/djangoApiService';
+import {
+  djangoGetMyMarketplacePartnerApplication,
+  djangoSubmitMarketplacePartnerApplication,
+} from '../services/djangoApiService';
 import { useAuth } from '../hooks/AuthContext';
-import { PartnerOperatingHoursEditor } from '../components/partner/PartnerOperatingHoursEditor';
+import {
+  PartnerOperatingHoursEditor,
+  formatOperatingHours,
+  parseOperatingHours,
+} from '../components/partner/PartnerOperatingHoursEditor';
 
 type PartnerType = 'wellness' | 'pharmacy';
 
@@ -61,7 +68,10 @@ export const MarketPartnerOnboardingPage: React.FC = () => {
   const [description, setDescription] = useState('');
   const [website, setWebsite] = useState('');
   const [registrationNumber, setRegistrationNumber] = useState('');
-  const [operatingHours, setOperatingHours] = useState('');
+  // Start from the schedule the editor shows, so the hours on screen are the hours saved.
+  const [operatingHours, setOperatingHours] = useState(() =>
+    formatOperatingHours(parseOperatingHours('')),
+  );
 
   const [email, setEmail] = useState(user?.email || '');
   const [phone, setPhone] = useState('');
@@ -75,6 +85,50 @@ export const MarketPartnerOnboardingPage: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // A rejected partner resubmits from what they sent before; anyone further along goes to review.
+  const prefilledRef = useRef(false);
+  useEffect(() => {
+    if (prefilledRef.current) return undefined;
+    prefilledRef.current = true;
+    void djangoGetMyMarketplacePartnerApplication()
+      .then((app) => {
+        if (!app) return;
+        if (app.status !== 'rejected') {
+          navigate('/market-partner/review', { replace: true });
+          return;
+        }
+        setPartnerType(app.partnerType);
+        setBusinessName(app.businessName || '');
+        if (app.category) setCategory(app.category);
+        setTagline(app.tagline || '');
+        setDescription(app.description || '');
+        setWebsite(app.website || '');
+        setRegistrationNumber(app.registrationNumber || '');
+        if (app.operatingHours) setOperatingHours(app.operatingHours);
+        setEmail(app.email || '');
+        setPhone(app.phone || '');
+        if (app.country) setCountry(app.country);
+        setCity(app.city || '');
+        setProvince(app.province || '');
+        setAddress(app.address || '');
+        setDeliveryAvailable(Boolean(app.deliveryAvailable));
+        if (app.offerings?.length) {
+          setOfferings(
+            app.offerings.map((item) => ({
+              ...newOffering(),
+              name: item.name,
+              description: item.description || '',
+              price: item.price || '',
+            })),
+          );
+        }
+      })
+      .catch(() => {
+        // Starting from a blank form is fine when the lookup fails.
+      });
+    return undefined;
+  }, [navigate]);
 
   const stepMeta = getOnboardingStepMeta('market_partner', step);
   const isSouthAfrica = country === 'ZA';

@@ -37,8 +37,8 @@ const API_BASE = (process.env.REACT_APP_ANIXI_API_URL || 'http://127.0.0.1:8000'
 );
 
 const SEED_USER = {
-  email: 'doctor@test.com',
-  password: 'Test12345!!',
+  email: (process.env.REACT_APP_SEED_DOCTOR_EMAIL || 'doctor@test.com').trim(),
+  password: (process.env.REACT_APP_SEED_DOCTOR_PASSWORD || 'change-me-local-only').trim(),
   displayName: 'Test Doctor',
   role: 'doctor',
 };

@@ -239,7 +239,11 @@ const doctor = user?.role === 'doctor' ? user : null;
   const documents = useMemo<AppointmentDocument[]>(() => appointment?.documents ?? [], [appointment?.documents]);
 
   const fromTeleconsult = Boolean((location.state as LocationState | undefined)?.fromTeleconsult);
-  const callEnded = appointment?.teleconsult?.status === 'ended' || fromTeleconsult;
+  // In-person visits have no call to end; once completed they get the same after-visit tools.
+  const callEnded =
+    appointment?.teleconsult?.status === 'ended' ||
+    fromTeleconsult ||
+    appointment?.status === 'completed';
 
   const callNotes = useMemo(() => {
     const actions = appointment?.postConsultActions ?? [];
@@ -267,6 +271,18 @@ const doctor = user?.role === 'doctor' ? user : null;
     () => (ayahScribeNote ? scribeNoteFromAction(ayahScribeNote) : null),
     [ayahScribeNote],
   );
+  const scribeTranscript =
+    typeof ayahScribeNote?.metadata?.transcript === 'string' ? ayahScribeNote.metadata.transcript : '';
+
+  // Ayah's drafts open in the normal editors; nothing is saved until the doctor saves it.
+  const applyPrescriptionFromScribe = (text: string) => {
+    setPrescriptionDraft(text);
+    setShowPrescriptionModal(true);
+  };
+  const applyReferralFromScribe = (text: string) => {
+    setDoctorLetterDraft(text);
+    setShowDoctorLetterModal(true);
+  };
 
   const latestPrescriptionDraft = useMemo(() => {
     const actions = appointment?.postConsultActions ?? [];
@@ -424,6 +440,40 @@ const doctor = user?.role === 'doctor' ? user : null;
     setShowClinicalReportModal(true);
   };
 
+  const renderPharmacySend = () =>
+    pharmacies.length > 0 ? (
+      <div className="mt-4 space-y-2 border-t border-[#eef2f6] pt-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[#65758b]">
+          Send to pharmacy
+        </p>
+        <select
+          value={selectedPharmacyId}
+          onChange={(e) => setSelectedPharmacyId(e.target.value)}
+          className="w-full rounded-lg border border-[#e1e7ef] px-3 py-2 text-sm"
+        >
+          <option value="">Select pharmacy</option>
+          {pharmacies.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+              {p.city ? ` · ${p.city}` : ''}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          disabled={sendingToPharmacy || !selectedPharmacyId}
+          onClick={() => void handleSendToPharmacy()}
+          className="rounded-lg bg-[#1a4d4d] px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+        >
+          {sendingToPharmacy ? 'Sending…' : 'Send to pharmacy'}
+        </button>
+      </div>
+    ) : (
+      <p className="mt-4 border-t border-[#eef2f6] pt-4 text-xs text-[#65758b]">
+        No pharmacies are listed on the Anixi Market yet, so this prescription can only be printed or shared.
+      </p>
+    );
+
   const handleSendToPharmacy = async () => {
     if (!appointment || !user?.id) return;
     const content = (prescriptionDraft || latestPrescriptionDraft?.content || '').trim();
@@ -521,6 +571,7 @@ const doctor = user?.role === 'doctor' ? user : null;
     const sanitize = (v: any): any => {
       if (v === undefined) return undefined;
       if (v === null) return null;
+      if (v instanceof Date) return v.toISOString();
       if (Array.isArray(v)) return v.map((item) => sanitize(item)).filter((x) => x !== undefined);
       if (typeof v === 'object') {
         const out: any = {};
@@ -1452,6 +1503,21 @@ const doctor = user?.role === 'doctor' ? user : null;
     navigate(`/teleconsult/${appointment.id}`, { state: { appointment } });
   };
 
+  const handleScribeConsentChange = async (checked: boolean) => {
+    if (!user?.id || !appointment?.teleconsultConsent?.obtained) return;
+    const consent = {
+      ...appointment.teleconsultConsent,
+      scribe: checked,
+      scribeAt: checked ? new Date() : undefined,
+    };
+    try {
+      await updateAppointment(user.id, appointment.id, { teleconsultConsent: consent });
+      setAppointment((prev) => (prev ? { ...prev, teleconsultConsent: consent } : prev));
+    } catch {
+      setToast({ visible: true, message: 'Failed to save the Ayah notes agreement.', type: 'error' });
+    }
+  };
+
   const handleTeleconsultConsentChange = async (checked: boolean) => {
     setTeleconsultConsentChecked(checked);
     if (!checked || !user?.id || !appointment) return;
@@ -1659,6 +1725,9 @@ const doctor = user?.role === 'doctor' ? user : null;
                 <AyahScribeSummaryCard
                   note={ayahScribeParsed}
                   onApply={() => setNoteValue(ayahScribeParsed.fullText)}
+                  transcript={scribeTranscript}
+                  onUsePrescription={applyPrescriptionFromScribe}
+                  onUseReferral={applyReferralFromScribe}
                 />
               </div>
             ) : null}
@@ -1732,6 +1801,9 @@ const doctor = user?.role === 'doctor' ? user : null;
                     <AyahScribeSummaryCard
                       note={ayahScribeParsed}
                       onApply={() => setNoteValue(ayahScribeParsed.fullText)}
+                      transcript={scribeTranscript}
+                      onUsePrescription={applyPrescriptionFromScribe}
+                      onUseReferral={applyReferralFromScribe}
                     />
                   </div>
                 ) : null}
@@ -1793,6 +1865,9 @@ const doctor = user?.role === 'doctor' ? user : null;
                     {hasPrescription ? 'Edit' : 'Add'}
                   </span>
                 </button>
+                {hasPrescription && latestPrescriptionDraft ? (
+                  <div className="pb-3.5">{renderPharmacySend()}</div>
+                ) : null}
 
                 <button
                   type="button"
@@ -1825,7 +1900,7 @@ const doctor = user?.role === 'doctor' ? user : null;
                     <p className="text-sm font-semibold text-[#0E2340]">Consultation report (H&amp;P)</p>
                     <p className="mt-0.5 text-xs text-[#65758b]">
                       {hasClinicalReport
-                        ? 'Structured report on file — review or update'
+                        ? 'Structured report on file - review or update'
                         : 'Full History & Physical report with PDF export'}
                     </p>
                   </div>
@@ -1993,34 +2068,7 @@ const doctor = user?.role === 'doctor' ? user : null;
                   <Eye className="h-4 w-4" />
                   View prescription
                 </button>
-                {pharmacies.length > 0 ? (
-                  <div className="mt-4 space-y-2 border-t border-[#eef2f6] pt-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[#65758b]">
-                      Send to pharmacy
-                    </p>
-                    <select
-                      value={selectedPharmacyId}
-                      onChange={(e) => setSelectedPharmacyId(e.target.value)}
-                      className="w-full rounded-lg border border-[#e1e7ef] px-3 py-2 text-sm"
-                    >
-                      <option value="">Select pharmacy</option>
-                      {pharmacies.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                          {p.city ? ` · ${p.city}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      disabled={sendingToPharmacy || !selectedPharmacyId}
-                      onClick={() => void handleSendToPharmacy()}
-                      className="rounded-lg bg-[#1a4d4d] px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
-                    >
-                      {sendingToPharmacy ? 'Sending…' : 'Send to pharmacy'}
-                    </button>
-                  </div>
-                ) : null}
+                {renderPharmacySend()}
               </div>
             )}
           </>
@@ -2045,6 +2093,22 @@ const doctor = user?.role === 'doctor' ? user : null;
                 </span>
               </span>
             </label>
+            {teleconsultConsentChecked ? (
+              <label className="flex max-w-xs cursor-pointer items-start gap-3 rounded-xl border border-[#e1e7ef] bg-[#f6f8fa] px-3.5 py-3 text-[13px] text-[#344256]">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-anixi-green focus:ring-anixi-green"
+                  checked={Boolean(appointment.teleconsultConsent?.scribe)}
+                  onChange={(e) => void handleScribeConsentChange(e.target.checked)}
+                />
+                <span>
+                  <span className="font-semibold text-[#0E2340]">Ayah notes (optional)</span>
+                  <span className="mt-0.5 block text-[#65758b]">
+                    Patient agreed to Ayah transcribing the call for your notes.
+                  </span>
+                </span>
+              </label>
+            ) : null}
             <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:items-end">
               {!teleconsultConsentChecked ? (
                 <p className="text-center text-[12px] text-[#8FA0B6] sm:text-right">

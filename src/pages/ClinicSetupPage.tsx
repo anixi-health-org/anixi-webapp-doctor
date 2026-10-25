@@ -8,7 +8,7 @@ import { OnboardingShell } from '../components/onboarding/OnboardingShell';
 import { getOnboardingStepMeta } from '../components/onboarding/OnboardingProgress';
 import { AppShellSkeleton } from '../components/ui/Skeleton';
 import { useAuth } from '../hooks/AuthContext';
-import { detectBrowserTimezone, PRACTICE_TIMEZONES } from '../lib/timezones';
+import { defaultPracticeTimezone, PRACTICE_TIMEZONES } from '../lib/timezones';
 import { notifyPendingInvitesClinicLive } from '../services/practiceInviteService';
 import {
   djangoPatchDoctorProfile,
@@ -53,10 +53,7 @@ export const ClinicSetupPage: React.FC = () => {
 
   const [name, setName] = useState('');
   const [tradingName, setTradingName] = useState('');
-  const [timezone, setTimezone] = useState(() => {
-    const detected = detectBrowserTimezone();
-    return detected === 'UTC' ? 'Africa/Johannesburg' : detected;
-  });
+  const [timezone, setTimezone] = useState(() => defaultPracticeTimezone(doctor?.country));
   const [locationName, setLocationName] = useState('Main Clinic');
   const [locationAddress, setLocationAddress] = useState('');
   const [bhfPracticeNumber, setBhfPracticeNumber] = useState('');
@@ -410,7 +407,8 @@ export const ClinicSetupPage: React.FC = () => {
               </p>
               <p className="mt-1 text-sm text-emerald-800/90">
                 Doctors you invited will create their own logins and complete their profiles.
-                Patients with email addresses receive app download links.
+                Share your clinic code with patients, or send app invites from Patients, so they can
+                activate their accounts in the Anixi app.
               </p>
             </div>
           </div>

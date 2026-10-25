@@ -10,7 +10,6 @@ import {
   HeartIcon,
   HomeIcon,
   QuestionMarkCircleIcon,
-  RectangleStackIcon,
   SparklesIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
@@ -25,6 +24,7 @@ import { setAdherenceRulesPracticeContext } from '../services/adherenceRulesServ
 import { useIncomingRecordShares } from '../hooks/useIncomingRecordShares';
 import { useIncomingSharingRequests } from '../hooks/useIncomingSharingRequests';
 import { usePendingAppointmentsCount } from '../hooks/usePendingAppointments';
+import { appointmentsPageHref } from '../lib/pendingConfirmations';
 import {
   getUnreadPingCount,
   listenToDoctorConversations,
@@ -92,7 +92,7 @@ function NavLink({
 
 const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const { user, practiceSession } = useAuth();
-  const { isClinicEmployedClinician, canManageContent } = usePermissions();
+  const { isClinicEmployedClinician } = usePermissions();
   const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const { requests: sharingRequests } = useIncomingSharingRequests(user?.id);
@@ -154,7 +154,7 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
     },
     {
       name: 'Appointments',
-      href: '/appointments',
+      href: appointmentsPageHref(pendingAppointments > 0),
       icon: CalendarIcon,
       badge: pendingAppointments || undefined,
       badgeTone: 'teal',
@@ -187,9 +187,6 @@ const DoctorShell: React.FC<{ children?: React.ReactNode }> = ({ children }) => 
       href: '/practice-settings',
       icon: WrenchScrewdriverIcon,
     },
-    ...(canManageContent
-      ? [{ name: 'Content', href: '/content', icon: RectangleStackIcon } as NavItem]
-      : []),
   ];
 
   const supportNav: NavItem = {

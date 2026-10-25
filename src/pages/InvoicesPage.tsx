@@ -332,8 +332,8 @@ export const InvoicesPage: React.FC = () => {
               </div>
               <p className="mt-4 text-[15px] font-semibold text-[#0E2340]">No invoices yet</p>
               <p className="mx-auto mt-1.5 max-w-xs text-[13px] leading-relaxed text-[#65758b]">
-                Invoices appear here when you complete appointments. Track Issued, Outstanding, and
-                Paid status from this list.
+                Open an appointment, choose Manage appointment, then Invoice. Track Issued,
+                Outstanding, and Paid status from this list.
               </p>
             </div>
           ) : (
@@ -438,10 +438,10 @@ export const InvoicesPage: React.FC = () => {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
         </span>
         <p className="text-[13px] leading-relaxed text-[#344256]">
-          <span className="font-semibold">How it works:</span> Invoices are created when you
-          complete an appointment. Track Issued, Outstanding, and Paid status and resend invoices
-          to patients. Anixi does not process payments - funds go directly to you via Phase 2
-          payment integrations.
+          <span className="font-semibold">How it works:</span> Create an invoice from any
+          appointment under Manage appointment, then Invoice. Track Issued, Outstanding, and Paid
+          status and resend invoices to patients. Anixi does not process payments: patients pay you
+          directly by EFT using the reference on the invoice.
         </p>
       </div>
     </PageShell>

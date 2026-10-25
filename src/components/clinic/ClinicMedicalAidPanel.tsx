@@ -139,7 +139,7 @@ export const ClinicMedicalAidPanel: React.FC<Props> = ({
             <h2 className="text-lg font-semibold text-[#0E2340]">Medical aid at your clinic</h2>
             <p className="mt-1 text-[13px] leading-relaxed text-[#65758b]">
               Warriors see these schemes when booking. Every doctor on your team uses the same
-              list — you set it once here.
+              list, you set it once here.
             </p>
           </div>
         </div>
@@ -184,7 +184,7 @@ export const ClinicMedicalAidPanel: React.FC<Props> = ({
             <div className="mt-4 min-h-[4.5rem] rounded-xl border border-[#e8eeec] bg-[#fafcfb] p-4">
               {selectedSchemes.length === 0 ? (
                 <p className="text-center text-sm text-[#94a3b8]">
-                  No schemes yet — add one below.
+                  No schemes yet, add one below.
                 </p>
               ) : (
                 <ul className="flex flex-wrap gap-2">

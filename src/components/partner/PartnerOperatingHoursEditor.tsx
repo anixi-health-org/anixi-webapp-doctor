@@ -252,7 +252,7 @@ export const PartnerOperatingHoursEditor: React.FC<Props> = ({
     commit({ ...schedule, [key]: nextDay });
   };
 
-  const summary = value.trim() || formatOperatingHours(schedule);
+  const summary = value.trim() || 'not set yet';
 
   return (
     <div id="operating-hours" className="space-y-3">

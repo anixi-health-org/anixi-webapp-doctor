@@ -25,6 +25,11 @@ export const SA_MEDICAL_SCHEMES = [
 
 export const SA_VAT_RATE = 0.15;
 
+/** Only VAT vendors may charge VAT: no VAT number on file means no VAT on the invoice. */
+export function vatRateFor(vatNumber: string | null | undefined): number {
+  return vatNumber && vatNumber.trim() ? SA_VAT_RATE : 0;
+}
+
 export function computeVatBreakdown(
   subtotalExVat: number,
   vatRate: number = SA_VAT_RATE
@@ -140,7 +145,7 @@ export const COMMON_ICD10_CODES: { code: string; description: string }[] = [
   { code: 'Z23', description: 'Encounter for immunisation' },
   { code: 'Z71.9', description: 'Counselling, unspecified' },
   { code: 'S61.0', description: 'Open wound of finger without damage to nail' },
-  { code: 'J45.909', description: 'Unspecified asthma, uncomplicated' },
+  { code: 'J45.9', description: 'Asthma, unspecified' },
   { code: 'A09', description: 'Infectious gastroenteritis and colitis, unspecified' },
 ];
 

@@ -1,8 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { CaregiverAppShellSkeleton } from './ui';
 import { useAuth } from '../hooks/AuthContext';
-import { readCaregiverOnboardingComplete } from '../pages/CaregiverOnboardingPage';
+import {
+  markCaregiverOnboardingComplete,
+  readCaregiverOnboardingComplete,
+} from '../pages/CaregiverOnboardingPage';
+import { getCaregiverProfile } from '../services/caregiverService';
 
 interface CaregiverRouteProps {
   children: React.ReactNode;
@@ -16,8 +20,30 @@ export const CaregiverRoute: React.FC<CaregiverRouteProps> = ({
 }) => {
   const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
+  const isCaregiver = user?.role === 'caregiver';
+  const localDone = Boolean(user?.id && readCaregiverOnboardingComplete(user.id));
+  // Onboarding state lives on the server; localStorage only avoids a round trip on this device.
+  const [serverDone, setServerDone] = useState<boolean | null>(localDone ? true : null);
 
-  if (isLoading) {
+  useEffect(() => {
+    if (skipOnboardingCheck || !isCaregiver || !user?.id || localDone) return;
+    let cancelled = false;
+    getCaregiverProfile()
+      .then((profile) => {
+        if (cancelled) return;
+        const done = Boolean(profile?.onboardingCompleted);
+        if (done) markCaregiverOnboardingComplete(user.id);
+        setServerDone(done);
+      })
+      .catch(() => {
+        if (!cancelled) setServerDone(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [skipOnboardingCheck, isCaregiver, user?.id, localDone]);
+
+  if (isLoading || (isCaregiver && !skipOnboardingCheck && !localDone && serverDone === null)) {
     return <CaregiverAppShellSkeleton />;
   }
 
@@ -32,7 +58,8 @@ export const CaregiverRoute: React.FC<CaregiverRouteProps> = ({
   if (
     !skipOnboardingCheck &&
     user.id &&
-    !readCaregiverOnboardingComplete(user.id) &&
+    !localDone &&
+    serverDone !== true &&
     location.pathname !== '/caregiver/onboarding'
   ) {
     return <Navigate to="/caregiver/onboarding" replace />;

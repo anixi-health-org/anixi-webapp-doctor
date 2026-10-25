@@ -3,7 +3,6 @@ import { getDoctorPatientAdherenceSummary } from './adherenceService';
 import { getMoodEntriesForMonth, getPatientMedications, getVitalsLogs } from './logsService';
 import { getPatientUploadedFiles } from './patientDocumentService';
 import { getPatientForDoctorView } from './patientManagementService';
-import { logAyahEvent } from './centralEventLogService';
 
 export type AyahPatientChartSnapshot = {
   patientId: string;
@@ -145,32 +144,6 @@ export async function loadAyahPatientChart(
       adherence && adherence.statusLabel !== 'no-data' ? adherence.adherenceRate : null,
   };
 
-  // Log Ayah chart generation event
-  if (practiceId) {
-    try {
-      await logAyahEvent({
-        organizationId: practiceId,
-        action: 'ayah.chart_generated',
-        actorUid: doctorId,
-        actorName: 'Ayah',
-        targetId: patientId,
-        summary: `Patient chart generated for ${chart.displayName}`,
-        newValue: {
-          patientId,
-          displayName: chart.displayName,
-          medicationsCount: chart.medications.length,
-          appointmentsCount: chart.appointments.length,
-          vitalsCount: chart.vitals.length,
-          documentsCount: chart.documents.length,
-        },
-        outcome: 'success',
-        confirmation: `chart-${Date.now()}`,
-        metadata: { doctorId },
-      });
-    } catch (error) {
-      console.warn('[ayahPatientChart] Failed to log chart generation event:', error);
-    }
-  }
 
   return chart;
 }

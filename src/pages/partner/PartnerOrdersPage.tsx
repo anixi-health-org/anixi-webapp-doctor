@@ -24,7 +24,7 @@ import {
 } from '../../services/djangoApiService';
 
 function formatWhen(iso?: string | null): string {
-  if (!iso) return '—';
+  if (!iso) return 'Not set';
   try {
     return new Date(iso).toLocaleString('en-ZA', {
       dateStyle: 'medium',
@@ -308,7 +308,7 @@ export const PartnerOrdersPage: React.FC = () => {
                     <p className="mt-1 text-sm font-medium text-[#344256]">
                       {detail.source === 'marketplace'
                         ? 'Patient Market order'
-                        : detail.doctorName || '—'}
+                        : detail.doctorName || 'Not recorded'}
                     </p>
                     {detail.source !== 'marketplace' && detail.doctorEmail ? (
                       <p className="text-xs text-[#65758b]">{detail.doctorEmail}</p>
@@ -388,7 +388,7 @@ export const PartnerOrdersPage: React.FC = () => {
                   >
                     {ORDER_STATUS_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
-                        {opt.label} — {opt.hint}
+                        {opt.label}: {opt.hint}
                       </option>
                     ))}
                   </select>

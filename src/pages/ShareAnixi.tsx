@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { PageHeader, PageShell } from '../components/page-layout';
 import { SharePageSkeleton } from '../components/ui';
 import { Card, CardContent } from '../components/ui/Card';
+import { ANDROID_APP_LINK, IOS_APP_LINK } from '../lib/appStoreLinks';
 import { getDoctorReferral, getReferralStats, logInvitation } from '../services/referralService';
 
 export const ShareAnixi: React.FC = () => {
@@ -180,7 +181,7 @@ export const ShareAnixi: React.FC = () => {
           <p className="text-gray-600 mb-4 text-sm">Share the mobile app with your patients and colleagues.</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <a
-              href="https://apps.apple.com/app/anixi-health"
+              href={IOS_APP_LINK}
               target="_blank"
               rel="noopener noreferrer"
               className="p-4 bg-gradient-to-r from-gray-900 to-gray-800 text-white rounded-lg hover:shadow-lg transition-shadow flex items-center justify-center space-x-3"
@@ -191,7 +192,7 @@ export const ShareAnixi: React.FC = () => {
               </div>
             </a>
             <a
-              href="https://play.google.com/store/apps/details?id=com.anixi.health"
+              href={ANDROID_APP_LINK}
               target="_blank"
               rel="noopener noreferrer"
               className="p-4 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:shadow-lg transition-shadow flex items-center justify-center space-x-3"

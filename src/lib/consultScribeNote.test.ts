@@ -1,0 +1,38 @@
+import { parseConsultScribeNote, scribeNoteFromAction, scribeNoteToMetadata } from './consultScribeNote';
+
+// Real consult-scribe output for a diabetes follow-up (local run, fictional patient).
+const SAMPLE = "SUMMARY:\nNomsa Dlamini is a patient with poorly controlled type 2 diabetes reporting morning blood sugars of 14\u201315 mmol/L despite metformin 850 mg twice daily, with adherence challenges during night shifts. She has symptoms of hyperglycaemia (polydipsia, nocturia) and new paraesthesia in her toes. Blood pressure this morning was 148/92. The doctor added gliclazide modified release 30 mg once daily, arranged blood tests (HbA1c and renal function) and a referral to the diabetic foot clinic. Nomsa also disclosed low mood and sleep disturbance; the doctor arranged counsellor support and a follow-up visit in four weeks. The call was in English.\n\nKEY_POINTS:\n- Morning fasting blood sugar readings 14\u201315 mmol/L despite metformin\n- Adherence issue: forgets evening metformin dose during night shifts\n- Polydipsia and nocturia present\n- Tingling in toes at night (new paraesthesia)\n- Blood pressure 148/92 this morning\n- Gliclazide modified release 30 mg once daily with breakfast started\n- Metformin 850 mg twice daily to continue\n- Hypoglycaemia counselling given: eat breakfast with gliclazide, recognise shaky/sweaty symptoms, take sugar and check reading\n- Referral to diabetic foot clinic at Chris Hani Bara for assessment of foot symptoms\n- HbA1c and kidney function blood tests ordered for this week\n- Patient reports low mood, sleep disturbance, and feeling life is pointless; denies active suicidal ideation\n- Counsellor referral arranged\n- Follow-up appointment in four weeks with blood results\n\nSUBJECTIVE:\nNomsa reports that since the last visit her blood sugar has been high: the glucometer shows 14\u201315 mmol/L in the mornings. She takes metformin 850 mg twice daily but sometimes forgets the evening dose when she works night shift. She has marked thirst and wakes at night to pass urine. She notices tingling in her toes at night. She checks her blood pressure and this morning it read 148/92. She is concerned whether the new tablet will make her hungry or dizzy. She also discloses that she has been feeling very down, not sleeping well, and some days feels that \"what's the point.\" When asked about thoughts of self-harm, she denies them but describes feeling tired of it all.\n\nOBJECTIVE:\nMorning blood sugar: 14\u201315 mmol/L (patient-reported glucometer reading).\nBlood pressure this morning: 148/92 (patient-reported).\n\nASSESSMENT:\nType 2 diabetes mellitus, poorly controlled on current metformin monotherapy with morning hyperglycaemia, polydipsia, nocturia, and emerging diabetic peripheral neuropathy (paraesthesia in toes). Blood pressure elevated at 148/92. Low mood and sleep disturbance, without active suicidal intent. Adherence complicated by shift work.\n\nPLAN:\n- Start gliclazide modified release 30 mg once daily with breakfast; continue metformin 850 mg twice daily\n- Counsel on hypoglycaemia risk: take breakfast with gliclazide, recognise symptoms (shakiness, sweating), check blood sugar and take sugar if needed\n- Order HbA1c and kidney function (creatinine, eGFR, electrolytes) blood tests this week\n- Referral to diabetic foot clinic at Chris Hani Bara for assessment and management of paraesthesia\n- Counsellor to contact patient to discuss mood and sleep\n- Follow-up appointment in four weeks to review blood results and progress\n\nPRESCRIPTION_DRAFT:\nGliclazide modified release 30 mg, once daily with breakfast, [confirm duration]\nMetformin 850 mg, twice daily, continue\n\nREFERRAL_DRAFT:\nDear Diabetic Foot Clinic, Chris Hani Bara Hospital,\n\nI am referring Mrs Nomsa Dlamini for assessment of emerging diabetic peripheral neuropathy. She reports tingling in her toes at night and has poorly controlled type 2 diabetes with morning fasting blood sugars of 14\u201315 mmol/L. She is currently on metformin 850 mg twice daily; gliclazide modified release 30 mg once daily has been initiated today. Blood pressure today was 148/92. Kidney function and HbA1c are being checked this week. Please assess for peripheral neuropathy, provide foot care counselling, and advise on preventive measures.\n\nYours sincerely,\n[Doctor name]\n\nPATIENT_INSTRUCTIONS:\n- Take the new tablet (gliclazide) once a day with your breakfast, every morning\n- Keep taking the metformin 850 twice a day, even on night shifts\u2014set a phone alarm if it helps you remember the evening dose\n- Eat breakfast every morning before or with the gliclazide, to protect against low blood sugar\n- If you feel shaky, sweaty, dizzy or confused, check your blood sugar straight away and eat something sweet (sugar, juice, biscuit) until you feel better\n- Have blood tests (sugar levels and kidney function) done at the clinic this week\u2014the nurse will book you\n- Go to the diabetic foot clinic at Chris Hani Bara when we send your appointment\u2014they will look after your toes\n- A counsellor will call you soon to talk about how you've been feeling; please answer when they ring\n- Come back to see the doctor in four weeks with your blood test results\n\nFOLLOW_UPS:\n- Book Nomsa for blood tests (HbA1c and renal function) this week at clinic or pathology service\n- Send referral to diabetic foot clinic, Chris Hani Bara, and track appointment confirmation\n- Arrange for practice counsellor to contact Nomsa regarding low mood and sleep disturbance\n- Schedule follow-up appointment in four weeks (approximately 2026-11-21) for review of blood results and medication response\n\nRED_FLAGS:\n- Low mood with passive expression \"what's the point\"\u2014counsellor referral already arranged; patient denies active suicidal ideation but mood warrants close monitoring\n- Emerging diabetic peripheral neuropathy (tingling in toes) requires early intervention to prevent progression\n- Poorly controlled diabetes with evidence of hyperglycaemic symptoms (polydipsia, nocturia) and shift-work-related adherence challenges";
+
+describe('parseConsultScribeNote', () => {
+  const note = parseConsultScribeNote(SAMPLE);
+
+  it('reads every section the scribe writes', () => {
+    expect(note.summary).toMatch(/gliclazide/i);
+    expect(note.keyPoints.length).toBeGreaterThan(8);
+    expect(note.prescriptionDraft).toMatch(/Gliclazide modified release 30 mg/);
+    expect(note.prescriptionDraft).toMatch(/\[confirm duration\]/);
+    expect(note.referralDraft).toMatch(/Diabetic Foot Clinic/);
+    expect(note.patientInstructions).toMatch(/breakfast/);
+    expect(note.followUps.length).toBeGreaterThan(2);
+    expect(note.redFlags.some((item) => /mood/i.test(item))).toBe(true);
+  });
+
+  it('keeps em dashes out of the chart', () => {
+    expect(note.fullText).not.toMatch(/\u2014/);
+    expect(note.patientInstructions).not.toMatch(/\u2014/);
+  });
+
+  it('treats "None discussed" as no draft', () => {
+    const empty = parseConsultScribeNote('SUMMARY:\nRoutine review.\n\nPRESCRIPTION_DRAFT:\nNone discussed.\n\nREFERRAL_DRAFT:\nNone discussed.\n\nRED_FLAGS:\n- None noted.');
+    expect(empty.prescriptionDraft).toBe('');
+    expect(empty.referralDraft).toBe('');
+    expect(empty.redFlags).toEqual([]);
+  });
+
+  it('round-trips through saved action metadata', () => {
+    const restored = scribeNoteFromAction({ content: note.fullText, metadata: scribeNoteToMetadata(note) });
+    expect(restored.prescriptionDraft).toBe(note.prescriptionDraft);
+    expect(restored.keyPoints).toEqual(note.keyPoints);
+    expect(restored.redFlags).toEqual(note.redFlags);
+  });
+});

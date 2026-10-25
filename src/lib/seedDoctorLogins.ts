@@ -14,11 +14,13 @@ export type SeedLogin = {
   notes?: string;
 };
 
-export const SEED_PASSWORD = 'Test12345!!';
+/** Local-only; set REACT_APP_SEED_DOCTOR_PASSWORD in .env.local (never commit real passwords). */
+export const SEED_PASSWORD =
+  (process.env.REACT_APP_SEED_DOCTOR_PASSWORD ?? '').trim() || 'change-me-local-only';
 
 export const SEED_DOCTOR_LOGINS: SeedLogin[] = [
   {
-    email: 'doctor@test.com',
+    email: (process.env.REACT_APP_SEED_DOCTOR_EMAIL ?? 'doctor@test.com').trim(),
     password: SEED_PASSWORD,
     displayName: 'Test Doctor',
     role: 'doctor',

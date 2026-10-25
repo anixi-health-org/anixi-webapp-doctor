@@ -4,7 +4,11 @@ import {
   logoutDoctor,
   getCurrentProfessionalFromSession,
 } from '../services/authService';
-import { djangoGetMe, readClinicOnboardingComplete } from '../services/djangoApiService';
+import {
+  SessionUnavailableError,
+  djangoGetMe,
+  readClinicOnboardingComplete,
+} from '../services/djangoApiService';
 import { loadDjangoPracticeSession } from '../services/djangoPracticeSession';
 import type { PracticeSession, ProfessionalUser } from '../types';
 import { AuthRole, JoinPath, parseJoinPath } from '../types/auth';
@@ -80,7 +84,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     (async () => {
       setIsLoading(true);
       try {
-        const professional = await getCurrentProfessionalFromSession();
+        // A deploy or brief outage should not sign people out: retry before giving up.
+        let professional: ProfessionalUser | null = null;
+        for (let attempt = 0; ; attempt += 1) {
+          try {
+            professional = await getCurrentProfessionalFromSession();
+            break;
+          } catch (err) {
+            if (!(err instanceof SessionUnavailableError) || attempt >= 3 || cancelled) throw err;
+            await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+          }
+        }
         if (cancelled) return;
         await syncSessionForUser(professional);
       } catch (err) {

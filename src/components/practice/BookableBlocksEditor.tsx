@@ -130,6 +130,8 @@ export const BookableBlocksEditor: React.FC<Props> = ({
 }) => {
   const { user } = useAuth();
   const doctorId = doctorIdProp || user?.id || '';
+  // Admins edit other doctors' hours from the team page; don't call those "your" hours.
+  const editingOwnSchedule = !doctorIdProp || doctorIdProp === user?.id;
 
   const doctorBlocks = useMemo(
     () => blocks.filter((b) => b.doctorId === doctorId && b.active !== false),
@@ -295,6 +297,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
         consultType: previewConsultType,
         typeSettings,
         legacyEnabledTypes: practiceConsultTypes,
+        timeZone: timezone,
       }),
     [
       previewDateObj,
@@ -303,6 +306,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
       previewConsultType,
       typeSettings,
       practiceConsultTypes,
+      timezone,
     ],
   );
 
@@ -343,7 +347,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h3 className="text-[17px] font-semibold text-[#0E2340]">
-            {readOnly ? 'Your clinic hours' : 'Your hours'}
+            {readOnly ? 'Your clinic hours' : editingOwnSchedule ? 'Your hours' : 'Doctor hours'}
           </h3>
           <p className="mt-1 text-[13px] leading-relaxed text-[#65758b]">
             {readOnly
@@ -367,7 +371,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
 
       <div className="rounded-xl border border-[#e1e7ef] bg-[#f8fafc] p-4">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA0B6]">
-          Your booking schedule
+          {editingOwnSchedule ? 'Your booking schedule' : 'Booking schedule'}
         </p>
         <p className="mt-1.5 text-sm font-medium text-[#0E2340]">{weekSummary}</p>
         <p className="mt-2 text-[12px] text-[#65758b]">
@@ -699,6 +703,7 @@ export const BookableBlocksEditor: React.FC<Props> = ({
                       className="rounded-md border border-[#e1e7ef] bg-white px-2.5 py-1 text-[12px] font-medium text-[#0E2340]"
                     >
                       {slot.startAt.toLocaleTimeString([], {
+                        timeZone: slot.timeZone,
                         hour: '2-digit',
                         minute: '2-digit',
                       })}

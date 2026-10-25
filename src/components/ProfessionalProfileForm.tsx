@@ -1,11 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { TabBar, TabPill } from '../components/ui/TabPill';
 import { PageHeader } from './page-layout/PageHeader';
 import { PageShell } from './page-layout/PageShell';
 import { LogoCropModal } from './LogoCropModal';
 import { useAuth } from '../hooks/useAuth';
-import { getDoctorProfileFormData, saveDoctorProfileForm, uploadDoctorProfilePhoto, uploadPracticeLogo } from '../services/doctorService';
+import {
+  getDoctorProfileFormData,
+  saveDoctorProfileForm,
+  uploadDoctorCredential,
+  uploadDoctorProfilePhoto,
+  uploadPracticeLogo,
+} from '../services/doctorService';
+import { djangoResolveMediaUrl } from '../services/djangoApiService';
 import { updatePractice } from '../services/practiceSettingsService';
 import {
   EMPTY_PROFILE_FORM,
@@ -21,7 +28,7 @@ import {
 import { ClinicManagedNotice } from './practice/ClinicManagedNotice';
 import { InheritedMedicalSchemesNotice } from './practice/InheritedMedicalSchemesNotice';
 import { PracticeMedicalAidSoloSection } from './practice/PracticeMedicalAidSoloSection';
-import { detectBrowserTimezone, timezoneSelectOptions } from '../lib/timezones';
+import { defaultPracticeTimezone, timezoneSelectOptions } from '../lib/timezones';
 import { SA_PROVINCES, validateSouthAfricanId } from '../lib/southAfrica';
 import {
   ACCEPTED_IMAGE_INPUT,
@@ -30,6 +37,8 @@ import {
   shouldSkipCrop,
   validateImageFile,
 } from '../lib/imageUpload';
+
+type CredentialField = 'hpcsaCertificate' | 'practiceLicenceUrl';
 
 const ProfileFormSkeleton: React.FC = () => (
   <>
@@ -96,6 +105,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState('');
   const [logoUploading, setLogoUploading] = useState(false);
+  const [credentialUploading, setCredentialUploading] = useState<CredentialField | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState('');
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -113,15 +123,30 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
     hpcsaRegistrationNumber: doctor?.licenseNumber || '',
     medicalSpecialty: doctor?.specialty || '',
     practiceName: doctor?.practiceName || '',
-    timezone: practiceSession?.practice?.timezone || detectBrowserTimezone(),
+    timezone: practiceSession?.practice?.timezone || defaultPracticeTimezone(doctor?.country),
     practiceAddress: doctor?.officeAddress || '',
     logoUrl: doctor?.logoUrl || '',
     profileImageUrl: doctor?.profileImageUrl || '',
   });
 
+  // Full load happens once per doctor. Session refreshes (e.g. after saving medical aid
+  // schemes) used to reload the saved profile over unsaved edits and wipe the form.
+  const loadedForDoctorRef = useRef<string | null>(null);
+  const practiceRef = useRef(practiceSession?.practice);
+  practiceRef.current = practiceSession?.practice;
+  const practiceId = practiceSession?.practice?.id;
+
   useEffect(() => {
     if (!doctor?.id) {
       setIsProfileLoading(false);
+      return;
+    }
+
+    if (loadedForDoctorRef.current === doctor.id) {
+      const practice = practiceRef.current;
+      if (clinicEmployed && practice) {
+        setFormData((prev) => ({ ...prev, ...inheritClinicPracticeFields(practice) }));
+      }
       return;
     }
 
@@ -135,8 +160,8 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
 
         if (saved) {
           const inherited =
-            clinicEmployed && practiceSession?.practice
-              ? inheritClinicPracticeFields(practiceSession.practice)
+            clinicEmployed && practiceRef.current
+              ? inheritClinicPracticeFields(practiceRef.current)
               : {};
           setFormData((prev) => ({
             ...prev,
@@ -147,8 +172,8 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
             timezone:
               inherited.timezone ||
               saved.timezone ||
-              practiceSession?.practice?.timezone ||
-              detectBrowserTimezone(),
+              practiceRef.current?.timezone ||
+              defaultPracticeTimezone(doctor?.country),
           }));
           if (saved.logoUrl) {
             setLogoPreview(saved.logoUrl);
@@ -158,8 +183,8 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
           }
         } else {
           const inherited =
-            clinicEmployed && practiceSession?.practice
-              ? inheritClinicPracticeFields(practiceSession.practice)
+            clinicEmployed && practiceRef.current
+              ? inheritClinicPracticeFields(practiceRef.current)
               : {};
           setFormData((prev) => ({
             ...prev,
@@ -167,8 +192,8 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
             timezone:
               inherited.timezone ||
               prev.timezone ||
-              practiceSession?.practice?.timezone ||
-              detectBrowserTimezone(),
+              practiceRef.current?.timezone ||
+              defaultPracticeTimezone(doctor?.country),
           }));
         }
       } catch {
@@ -177,6 +202,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
         }
       } finally {
         if (!cancelled) {
+          loadedForDoctorRef.current = doctor.id;
           setIsProfileLoading(false);
         }
       }
@@ -187,7 +213,8 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [doctor?.id, doctor?.displayName, doctor?.email, practiceSession?.practice, clinicEmployed]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- practice is read via ref; re-run only when its id changes
+  }, [doctor?.id, doctor?.displayName, doctor?.email, doctor?.country, practiceId, clinicEmployed]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -309,6 +336,73 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
     const src = URL.createObjectURL(file);
     setCropImageSrc(src);
     setCropModalOpen(true);
+  };
+
+  const handleCredentialSelected = async (field: CredentialField, file: File | undefined) => {
+    if (!file) return;
+    setMessage('');
+    setCredentialUploading(field);
+    try {
+      const url = await uploadDoctorCredential(file);
+      setFormData((prev) => ({ ...prev, [field]: url }));
+    } catch (err) {
+      console.error('[ProfessionalProfileForm] credential upload failed:', err);
+      setMessage(err instanceof Error ? err.message : 'Upload failed. Try again.');
+    } finally {
+      setCredentialUploading(null);
+    }
+  };
+
+  const openCredential = async (url: string) => {
+    const resolved = (await djangoResolveMediaUrl(url)) ?? url;
+    window.open(resolved, '_blank', 'noopener,noreferrer');
+  };
+
+  const renderCredentialUpload = (field: CredentialField, label: string) => {
+    const value = formData[field];
+    const uploading = credentialUploading === field;
+    return (
+      <div>
+        <label className={labelClass}>
+          {label} <span className="text-gray-500">(PDF, JPEG or PNG)</span>
+        </label>
+        <input
+          type="file"
+          accept="application/pdf,image/jpeg,image/png"
+          disabled={uploading}
+          onChange={(e) => {
+            void handleCredentialSelected(field, e.target.files?.[0]);
+            e.target.value = '';
+          }}
+          className={fieldClass}
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          {uploading ? (
+            'Uploading…'
+          ) : value ? (
+            <>
+              Uploaded ·{' '}
+              <button type="button" className="text-[#1f6feb] underline" onClick={() => void openCredential(value)}>
+                View
+              </button>
+            </>
+          ) : (
+            'Only Anixi verification staff can see this file.'
+          )}
+        </p>
+      </div>
+    );
+  };
+
+  // Save a draft on every step so a closed tab or refresh doesn't lose the application.
+  const handleContinue = async () => {
+    setCurrentStep((step) => Math.min(lastStep, step + 1));
+    if (!doctor?.id) return;
+    try {
+      await saveDoctorProfileForm(doctor.id, formData);
+    } catch {
+      // Draft save is best effort; the final submit still validates and saves everything.
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -475,7 +569,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
           <span className="font-semibold text-[#1a4d4d]">Practice role:</span> {practiceRoleLabel}
           {!usesDoctorTitle ? (
             <span className="mt-1 block text-[#65758b]">
-              Your honorific (Mr/Ms/Dr) is separate from your clinic role — choose the title that matches how you
+              Your honorific (Mr/Ms/Dr) is separate from your clinic role, choose the title that matches how you
               introduce yourself.
             </span>
           ) : null}
@@ -756,33 +850,9 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
           </select>
         </div>
 
-        <div>
-          <label className={labelClass}>
-            HPCSA Certificate <span className="text-gray-500">(optional)</span>
-          </label>
-          <input
-            type="url"
-            name="hpcsaCertificate"
-            value={formData.hpcsaCertificate}
-            onChange={handleInputChange}
-            placeholder="URL to certificate or upload link"
-            className={fieldClass}
-          />
-        </div>
+        {renderCredentialUpload('hpcsaCertificate', 'HPCSA certificate')}
 
-        <div className="md:col-span-2">
-          <label className={labelClass}>
-            Practice Licence URL <span className="text-gray-500">(optional)</span>
-          </label>
-          <input
-            type="url"
-            name="practiceLicenceUrl"
-            value={formData.practiceLicenceUrl}
-            onChange={handleInputChange}
-            placeholder="URL to practice licence"
-            className={fieldClass}
-          />
-        </div>
+        <div className="md:col-span-2">{renderCredentialUpload('practiceLicenceUrl', 'Practice licence')}</div>
       </div>
     </div>
   );
@@ -1088,7 +1158,7 @@ const ProfessionalProfileForm: React.FC<ProfessionalProfileFormProps> = ({
                 {currentStep < lastStep && (
                   <button
                     type="button"
-                    onClick={() => setCurrentStep((s) => Math.min(lastStep, s + 1))}
+                    onClick={() => void handleContinue()}
                     className={btnPrimaryClass}
                   >
                     Continue
