@@ -129,6 +129,21 @@ function isJwtExpired(token: string, skewSeconds = 30): boolean {
   }
 }
 
+/** The account the stored access token belongs to, or null when no one is signed in. */
+export function storedSessionUserId(): string | null {
+  const token = localStorage.getItem('anixi_jwt_access');
+  const payloadPart = token?.split('.')[1];
+  if (!payloadPart) return null;
+  try {
+    const payload = JSON.parse(
+      atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/')),
+    ) as { user_id?: string | number };
+    return payload.user_id == null ? null : String(payload.user_id);
+  } catch {
+    return null;
+  }
+}
+
 async function resolveAccessToken(forceRefresh = false): Promise<string> {
   const storedAccess = localStorage.getItem('anixi_jwt_access');
   const recentlyRefreshed = Date.now() - lastRefreshAt < 4000;
