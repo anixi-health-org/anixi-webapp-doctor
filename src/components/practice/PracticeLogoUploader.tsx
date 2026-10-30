@@ -93,7 +93,12 @@ export const PracticeLogoUploader: React.FC<PracticeLogoUploaderProps> = ({
       onUploaded?.(uploadedUrl);
     } catch (err) {
       console.error('[PracticeLogoUploader] upload failed:', err);
-      setError(describeImageUploadError(err, 'logo'));
+      const refused = err instanceof Error && /^forbidden$/i.test(err.message.trim());
+      setError(
+        refused && practiceId
+          ? 'Only the clinic owner or practice manager can change the clinic logo. If you signed in to another account in a different tab, reload this page and sign in again.'
+          : describeImageUploadError(err, 'logo'),
+      );
       URL.revokeObjectURL(nextPreview);
     } finally {
       setUploading(false);

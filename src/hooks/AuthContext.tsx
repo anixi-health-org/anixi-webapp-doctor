@@ -8,6 +8,7 @@ import {
   SessionUnavailableError,
   djangoGetMe,
   readClinicOnboardingComplete,
+  storedSessionUserId,
 } from '../services/djangoApiService';
 import { loadDjangoPracticeSession } from '../services/djangoPracticeSession';
 import type { PracticeSession, ProfessionalUser } from '../types';
@@ -108,6 +109,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       cancelled = true;
     };
   }, []);
+
+  // Every tab shares the stored tokens. When another tab signs in as someone else or signs
+  // out, this tab would keep showing the old account while its requests go out as the new
+  // one (a clinic admin screen saving as a doctor gets "Forbidden"), so reload to match.
+  useEffect(() => {
+    if (!user) return undefined;
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== 'anixi_jwt_access') return;
+      if (storedSessionUserId() !== String(user.id)) window.location.reload();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [user]);
 
   const login = async (
     email: string,
