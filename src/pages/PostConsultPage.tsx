@@ -17,6 +17,7 @@ import { Appointment, AppointmentDocument, PostConsultAction, PostConsultActionT
 import {
   canDoctorStartVideoCall,
   formatAppointmentTypeLabel,
+  isJoinableTeleconsult,
   isWhatsAppComingSoon,
   isWhatsAppConsult,
   whatsAppVideoCallLink,
@@ -1465,6 +1466,9 @@ const doctor = user?.role === 'doctor' ? user : null;
   }
 
   const canStartCall = canDoctorStartVideoCall(appointment);
+  // In-person and phone visits have no call to start: the clinical actions are open from the
+  // start of the consultation (as on mobile). Video visits get them once the call has ended.
+  const consultTools = callEnded || !isJoinableTeleconsult(appointment);
   const whatsappSoon = isWhatsAppComingSoon(appointment);
   const visitCompleted = appointment.status === 'completed';
   const hasClinicalNote = Boolean(callNotes?.content?.trim() || noteValue.trim());
@@ -1695,7 +1699,7 @@ const doctor = user?.role === 'doctor' ? user : null;
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-[22px] font-bold tracking-tight text-[#0E2340]">
-                {callEnded ? 'After the visit' : 'Pre-call briefing'}
+                {callEnded ? 'After the visit' : consultTools ? 'Consultation' : 'Pre-call briefing'}
               </h1>
               {!callEnded && canStartCall && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-[#eef4f1] px-2.5 py-0.5 text-[11px] font-semibold text-anixi-green">
@@ -1708,14 +1712,14 @@ const doctor = user?.role === 'doctor' ? user : null;
               {appointment.patientName}
               {appointment.time ? ` · ${appointment.time}` : ''}
               {' · '}
-              {callEnded
+              {consultTools
                 ? 'Document, prescribe, schedule follow-up, then close the chart'
                 : 'Review the chart, then join when you and the patient are ready'}
             </p>
           </div>
         </div>
 
-        {callEnded ? (
+        {consultTools ? (
           <>
             {fromTeleconsult && ayahScribeParsed ? (
               <div className="mb-2">
@@ -2134,7 +2138,7 @@ const doctor = user?.role === 'doctor' ? user : null;
         </div>
       )}
 
-      {callEnded && !visitCompleted && (
+      {consultTools && !visitCompleted && (
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#e1e7ef] bg-white/80 px-4 py-3 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] backdrop-blur-md md:left-64">
           <div className="mx-auto flex max-w-4xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[13px] text-[#65758b]">
@@ -2155,7 +2159,7 @@ const doctor = user?.role === 'doctor' ? user : null;
         </div>
       )}
 
-      {callEnded && visitCompleted && (
+      {consultTools && visitCompleted && (
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#e1e7ef] bg-white/80 px-4 py-3 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] backdrop-blur-md md:left-64">
           <div className="mx-auto flex max-w-4xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[13px] text-[#65758b]">This visit is closed. Notes and drafts remain on the chart.</p>
